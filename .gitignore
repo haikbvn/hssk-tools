@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Packaging
+build/
+dist/
+*.spec.bak
+
+# App runtime data / secrets / PII — NEVER commit
+secrets/
+.auth/
+data/
+output/
+.env
+config/mapping.yaml
+
+# OS
+.DS_Store
+Thumbs.db

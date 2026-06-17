@@ -1,0 +1,68 @@
+# HSSK Tools — Excel → API field mapping
+#
+# Copy this to your active mapping (the app does it automatically on first run) and tweak the
+# Excel column names on the LEFT to match your spreadsheet's header row. The `target` on the
+# right is the API field name and must not be changed.
+#
+# Per-row values come from Excel. Everything under `defaults` is constant for every patient.
+
+sheet: null # null = first sheet; otherwise the sheet name
+header_row: 1 # 1-based row that holds the column headers
+
+identifier:
+  column: "Mã định danh" # the Excel column holding medicalIdentifierCode (drives patient search)
+
+columns:
+  # --- key + dates (-> medicalRecordInfo) ---
+  "Mã định danh": { target: medicalIdentifierCode, type: str, required: true }
+  "Ngày khám":
+    { target: examinationDate, type: datetime, out_format: "%d/%m/%Y %H:%M:%S", default_time: "07:00:00" }
+  "Giờ kết thúc":
+    { target: finishExaminationDate, type: datetime, out_format: "%d/%m/%Y %H:%M:%S", default_time: "08:00:00" }
+  # "Bác sĩ":           { target: doctorName, type: str }   # optional per-row override of the default doctor
+
+  # --- vitals (-> medicalPatientDetailInfo) ---
+  "Mạch": { target: pulse, type: int }
+  "Nhiệt độ": { target: temperature, type: float }
+  "HA tối đa": { target: bloodPressureMax, type: int }
+  "HA tối thiểu": { target: bloodPressureMin, type: int }
+  "Nhịp thở": { target: breath, type: int }
+  "Cân nặng": { target: weight, type: str_num } # API sends weight/height/bmi as strings
+  "Chiều cao": { target: height, type: str_num }
+  "BMI": { target: bmi, type: str_num } # leave blank in Excel to auto-calculate
+  "Vòng bụng": { target: waistCircumference, type: int }
+  "Vòng ngực": { target: chestCircumference, type: int }
+  "Mắt trái (kính)": { target: leftEyeGlasses, type: int }
+  "Mắt trái (không kính)": { target: leftEyeNoGlasses, type: int }
+  "Mắt phải (kính)": { target: rightEyeGlasses, type: int }
+  "Mắt phải (không kính)": { target: rightEyeNoGlasses, type: int }
+
+computed:
+  bmi:
+    from: [weight, height] # bmi = weight_kg / (height_m ** 2)
+    only_if_missing: true # only compute when the BMI cell is blank
+    round: 2
+
+search:
+  profileStatus: "1"
+  page: 1
+  size: 20
+  multi_match: skip # skip | first | error  — what to do when >1 patient matches
+
+defaults:
+  normal_desc_value: "Bình thường" # fanned out to every *Desc organ field
+  medicalRecordInfo:
+    typeOfExamination: 100
+    reasonCode: 93
+    reasonsMedicalexamination: "Khám sức khoẻ"
+    symptoms: "Không"
+    treatmentDayNumber: "1"
+    diagnosesDischarge: "0000 - Bình thường"
+    diagnosesDischargeList: ["0000 - Bình thường"]
+    noteDisease: "Không"
+    treatmentDirection: "Bình thường"
+    treatmentResultId: 3
+    dischargeStatusId: 1
+    healthfacilitiesId: "27084"
+    doctorName: "Nguyễn Thị Hoa"
+  medicalPatientDetailInfo: {}
