@@ -52,6 +52,7 @@ def settings() -> Settings:
 
 # --- Path resolution -------------------------------------------------------------------
 
+
 def data_dir() -> Path:
     s = settings()
     base = s.data_dir or Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))

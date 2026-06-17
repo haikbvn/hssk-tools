@@ -73,9 +73,7 @@ def capture_token(
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:  # pragma: no cover
-        raise HsskError(
-            "Playwright is not installed. Run: playwright install chromium"
-        ) from exc
+        raise HsskError("Playwright is not installed. Run: playwright install chromium") from exc
 
     s = settings or default_settings()
     status = on_status or (lambda _m: None)

@@ -12,9 +12,7 @@ from . import templates
 def validate_targets(mapping: MappingConfig) -> list[str]:
     """Return any mapped ``target`` names that aren't real API fields."""
     return [
-        spec.target
-        for spec in mapping.columns.values()
-        if spec.target not in templates.ALL_TARGETS
+        spec.target for spec in mapping.columns.values() if spec.target not in templates.ALL_TARGETS
     ]
 
 
@@ -54,4 +52,9 @@ def build(
     record["patientId"] = patient_id
     if medical_identifier_code is not None:
         record["medicalIdentifierCode"] = medical_identifier_code
+
+    # Mirror diagnosesDischarge into the list field when the list was not explicitly provided.
+    if "diagnosesDischarge" in row.values and "diagnosesDischargeList" not in row.values:
+        record["diagnosesDischargeList"] = [record["diagnosesDischarge"]]
+
     return payload

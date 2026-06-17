@@ -8,9 +8,11 @@ failures. A 401 surfaces as ``AuthExpired`` so the pipeline can stop and prompt 
 
 from __future__ import annotations
 
+import datetime as dt
 import random
 import time
 from collections.abc import Callable
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -94,6 +96,13 @@ class ApiClient:
         try:
             return float(raw)
         except ValueError:
+            pass
+        try:
+            # RFC 7231 HTTP-date format (e.g. "Wed, 21 Oct 2015 07:28:00 GMT")
+            then = parsedate_to_datetime(raw)
+            delay = (then - dt.datetime.now(tz=dt.UTC)).total_seconds()
+            return max(0.0, delay)
+        except Exception:
             return None
 
     # -- public -------------------------------------------------------------------------

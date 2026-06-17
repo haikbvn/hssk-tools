@@ -106,6 +106,11 @@ def _coerce_one(value: Any, spec: ColumnSpec) -> Any:
             ht = dt.datetime.strptime(spec.default_time, "%H:%M:%S").time()
             d = d.replace(hour=ht.hour, minute=ht.minute, second=ht.second)
         return d.strftime(spec.out_format)
+    if t == "list":
+        import re
+
+        parts = re.split(r"[;\n]+", str(value))
+        return [p.strip() for p in parts if p.strip()]
     raise ValueError(f"unknown column type {t!r}")
 
 

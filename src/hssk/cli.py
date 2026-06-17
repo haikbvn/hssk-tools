@@ -90,8 +90,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     cb = runner.Callbacks(on_row=on_row, on_log=lambda m: print(f"  · {m}"))
     summary = runner.run(
-        args.input, mapping, token=token, dry_run=dry_run,
-        limit=args.limit, settings=s, callbacks=cb, ledger=led,
+        args.input,
+        mapping,
+        token=token,
+        dry_run=dry_run,
+        limit=args.limit,
+        settings=s,
+        callbacks=cb,
+        ledger=led,
     )
 
     print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")

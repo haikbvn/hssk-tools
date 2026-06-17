@@ -140,27 +140,54 @@ def run(
             key = Ledger.make_key(identifier, coerced.exam_date)
 
             if not coerced.ok:
-                emit(RowOutcome(row_index, identifier, Status.INVALID,
-                                message="; ".join(coerced.errors), warnings=coerced.warnings))
+                emit(
+                    RowOutcome(
+                        row_index,
+                        identifier,
+                        Status.INVALID,
+                        message="; ".join(coerced.errors),
+                        warnings=coerced.warnings,
+                    )
+                )
                 continue
             if led.done(key):
-                emit(RowOutcome(row_index, identifier, Status.SKIPPED_ALREADY,
-                                record_id=led.record_id(key), message="already processed",
-                                warnings=coerced.warnings))
+                emit(
+                    RowOutcome(
+                        row_index,
+                        identifier,
+                        Status.SKIPPED_ALREADY,
+                        record_id=led.record_id(key),
+                        message="already processed",
+                        warnings=coerced.warnings,
+                    )
+                )
                 continue
 
+            assert identifier is not None  # guaranteed: coerced.ok requires identifier set
             try:
-                resolved = patients.resolve(
-                    client, identifier, mapping.search, on_raw=raw_logger
-                )
+                resolved = patients.resolve(client, identifier, mapping.search, on_raw=raw_logger)
                 pid = resolved.patient_id
             except PatientNotFound as exc:
-                emit(RowOutcome(row_index, identifier, Status.NO_PATIENT,
-                                message=str(exc), warnings=coerced.warnings))
+                emit(
+                    RowOutcome(
+                        row_index,
+                        identifier,
+                        Status.NO_PATIENT,
+                        message=str(exc),
+                        warnings=coerced.warnings,
+                    )
+                )
                 continue
             except MultiMatch as exc:
-                emit(RowOutcome(row_index, identifier, Status.MULTI_MATCH,
-                                message=str(exc), warnings=coerced.warnings))
+                emit(
+                    RowOutcome(
+                        row_index,
+                        identifier,
+                        Status.MULTI_MATCH,
+                        message=str(exc),
+                        warnings=coerced.warnings,
+                    )
+                )
                 continue
             except AuthExpired as exc:
                 emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
@@ -172,7 +199,9 @@ def run(
                 break
 
             payload = builder.build(
-                coerced, mapping, pid,
+                coerced,
+                mapping,
+                pid,
                 medical_identifier_code=resolved.medical_identifier_code,
             )
             who = resolved.fullname or ""
@@ -182,9 +211,16 @@ def run(
                 (payloads_dir / f"row_{row_index}.json").write_text(
                     json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
-                emit(RowOutcome(row_index, identifier, Status.DRY_RUN_OK, patient_id=pid,
-                                message=f"payload built (not sent) — {who}".strip(" —"),
-                                warnings=coerced.warnings))
+                emit(
+                    RowOutcome(
+                        row_index,
+                        identifier,
+                        Status.DRY_RUN_OK,
+                        patient_id=pid,
+                        message=f"payload built (not sent) — {who}".strip(" —"),
+                        warnings=coerced.warnings,
+                    )
+                )
                 continue
 
             try:
@@ -198,19 +234,39 @@ def run(
                 aborted, abort_reason = True, str(exc)
                 break
             except ApiError as exc:
-                emit(RowOutcome(row_index, identifier, Status.FAILED,
-                                patient_id=pid, message=str(exc), warnings=coerced.warnings))
+                emit(
+                    RowOutcome(
+                        row_index,
+                        identifier,
+                        Status.FAILED,
+                        patient_id=pid,
+                        message=str(exc),
+                        warnings=coerced.warnings,
+                    )
+                )
                 continue
 
             led.mark_done(key, rid)
-            emit(RowOutcome(row_index, identifier, Status.CREATED, patient_id=pid,
-                            record_id=rid, message=f"created — {who}".strip(" —"),
-                            warnings=coerced.warnings))
+            emit(
+                RowOutcome(
+                    row_index,
+                    identifier,
+                    Status.CREATED,
+                    patient_id=pid,
+                    record_id=rid,
+                    message=f"created — {who}".strip(" —"),
+                    warnings=coerced.warnings,
+                )
+            )
 
     cb.on_progress(total, total)
     summary = RunSummary(
-        total=total, counts=counts, outcomes=outcomes, run_dir=run_dir,
-        aborted=aborted, abort_reason=abort_reason,
+        total=total,
+        counts=counts,
+        outcomes=outcomes,
+        run_dir=run_dir,
+        aborted=aborted,
+        abort_reason=abort_reason,
     )
     report_mod.write_report(run_dir, outcomes, dry_run=dry_run)
     return summary

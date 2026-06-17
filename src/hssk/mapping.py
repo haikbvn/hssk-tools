@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from .errors import ConfigError
 
-ColumnType = Literal["str", "int", "float", "str_num", "datetime"]
+ColumnType = Literal["str", "int", "float", "str_num", "datetime", "list"]
 
 
 class ColumnSpec(BaseModel):
@@ -76,9 +76,7 @@ class MappingConfig(BaseModel):
         col = self.identifier.column
         spec = self.columns.get(col)
         if spec is None:
-            raise ValueError(
-                f"identifier.column {col!r} is not defined under columns:"
-            )
+            raise ValueError(f"identifier.column {col!r} is not defined under columns:")
         if spec.target != "medicalIdentifierCode":
             raise ValueError(
                 f"identifier column {col!r} must map to target 'medicalIdentifierCode', "
