@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -222,11 +222,15 @@ class MainWindow(QMainWindow):
         self._login_worker.moveToThread(self._login_thread)
         self._login_thread.started.connect(self._login_worker.run)
         self._login_worker.status.connect(lambda m: self._set_token_label(m, "#0969da"))
-        self._login_worker.finished.connect(self._on_login_finished)
-        self._login_worker.failed.connect(self._on_login_failed)
+        # Stop the thread first, then update UI; only drop our references once the thread has
+        # fully finished (dropping a running QThread is a fatal crash).
         self._login_worker.finished.connect(self._login_thread.quit)
         self._login_worker.failed.connect(self._login_thread.quit)
+        self._login_worker.finished.connect(self._on_login_finished)
+        self._login_worker.failed.connect(self._on_login_failed)
         self._login_thread.finished.connect(self._login_worker.deleteLater)
+        self._login_thread.finished.connect(self._login_thread.deleteLater)
+        self._login_thread.finished.connect(self._on_login_thread_finished)
         self._login_thread.start()
 
     def _on_login_finished(self, _data: object) -> None:
@@ -238,6 +242,10 @@ class MainWindow(QMainWindow):
         self.login_btn.setEnabled(True)
         self._refresh_token_status()
         QMessageBox.warning(self, "Login failed", message)
+
+    def _on_login_thread_finished(self) -> None:
+        self._login_thread = None
+        self._login_worker = None
 
     # -- data ---------------------------------------------------------------------------
 
@@ -343,11 +351,15 @@ class MainWindow(QMainWindow):
         self._run_thread.started.connect(self._run_worker.run)
         self._run_worker.progress.connect(self._on_progress)
         self._run_worker.row.connect(self._on_row)
-        self._run_worker.finished.connect(self._on_run_finished)
-        self._run_worker.failed.connect(self._on_run_failed)
+        # Stop the thread first, then run the UI handlers; drop references only after the thread
+        # has fully finished — destroying a running QThread aborts the process.
         self._run_worker.finished.connect(self._run_thread.quit)
         self._run_worker.failed.connect(self._run_thread.quit)
+        self._run_worker.finished.connect(self._on_run_finished)
+        self._run_worker.failed.connect(self._on_run_failed)
         self._run_thread.finished.connect(self._run_worker.deleteLater)
+        self._run_thread.finished.connect(self._run_thread.deleteLater)
+        self._run_thread.finished.connect(self._on_run_thread_finished)
 
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
@@ -401,10 +413,6 @@ class MainWindow(QMainWindow):
     def _on_run_finished(self, summary: RunSummary) -> None:
         self._last_run_dir = summary.run_dir
         self.open_report_btn.setEnabled(True)
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
-        self._run_thread = None
-        self._run_worker = None
         self._refresh_token_status()
         msg = f"Done — {summary.total} rows processed.\nReport: {summary.run_dir}"
         if summary.aborted:
@@ -412,12 +420,28 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Run complete", msg)
 
     def _on_run_failed(self, message: str) -> None:
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
+        QMessageBox.critical(self, "Run failed", message)
+
+    def _on_run_thread_finished(self) -> None:
+        # Thread has fully stopped — now it is safe to drop references and re-enable Start.
         self._run_thread = None
         self._run_worker = None
-        QMessageBox.critical(self, "Run failed", message)
+        self.stop_btn.setEnabled(False)
+        self._update_start_enabled()
 
     def _open_report(self) -> None:
         if self._last_run_dir is not None:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._last_run_dir)))
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        # Never let the window (and its QThreads) be torn down while a worker is still running.
+        for worker, thread in (
+            (self._run_worker, self._run_thread),
+            (self._login_worker, self._login_thread),
+        ):
+            if worker is not None:
+                worker.cancel()
+            if thread is not None and thread.isRunning():
+                thread.quit()
+                thread.wait(10000)
+        event.accept()
