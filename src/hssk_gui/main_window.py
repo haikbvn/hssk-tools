@@ -101,12 +101,15 @@ class MainWindow(QMainWindow):
         self.choose_btn = QPushButton("Choose Excel…")
         self.choose_btn.clicked.connect(self._choose_excel)
         self.file_label = QLabel("No file selected")
+        self.template_btn = QPushButton("Template…")
+        self.template_btn.clicked.connect(self._make_template)
         self.mapping_btn = QPushButton("Open mapping")
         self.mapping_btn.clicked.connect(self._open_mapping)
         self.validate_btn = QPushButton("Validate")
         self.validate_btn.clicked.connect(self._validate)
         lay.addWidget(self.choose_btn)
         lay.addWidget(self.file_label, stretch=1)
+        lay.addWidget(self.template_btn)
         lay.addWidget(self.mapping_btn)
         lay.addWidget(self.validate_btn)
         return box
@@ -261,6 +264,27 @@ class MainWindow(QMainWindow):
         self.file_label.setText(str(path))
         self._ui.last_file = str(path)
         self._update_start_enabled()
+
+    def _make_template(self) -> None:
+        from hssk.excel.template import make_template
+
+        default = "hssk_template.xlsx"
+        if self._ui.last_file:
+            default = str(Path(self._ui.last_file).with_name("hssk_template.xlsx"))
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Excel template", default, "Excel files (*.xlsx)"
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        try:
+            out = make_template(self._load_mapping(), path)
+        except (ConfigError, HsskError) as exc:
+            QMessageBox.critical(self, "Template error", str(exc))
+            return
+        QMessageBox.information(self, "Template created", f"Saved to:\n{out}")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(out)))
 
     def _open_mapping(self) -> None:
         path = ensure_mapping_file()
