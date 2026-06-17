@@ -63,9 +63,7 @@ def _find_patient_list(data: Any) -> list[dict[str, Any]]:
                 if found:
                     return found
         for val in data.values():
-            if isinstance(val, list) and any(
-                isinstance(x, dict) and "patientId" in x for x in val
-            ):
+            if isinstance(val, list) and any(isinstance(x, dict) and "patientId" in x for x in val):
                 return [x for x in val if isinstance(x, dict)]
     return []
 
@@ -90,8 +88,7 @@ def search(
 def _echoed_exact(record: dict[str, Any], query: str) -> bool:
     q = query.strip()
     return any(
-        record.get(f) is not None and str(record.get(f)).strip() == q
-        for f in _ECHOED_ID_FIELDS
+        record.get(f) is not None and str(record.get(f)).strip() == q for f in _ECHOED_ID_FIELDS
     )
 
 
@@ -122,7 +119,9 @@ def resolve(
     else:
         chosen = pool[0]
 
-    pid = chosen.get("patientId") or chosen.get("id")
+    pid = chosen.get("patientId")
+    if pid is None:
+        pid = chosen.get("id")
     if pid is None:
         raise PatientNotFound(f"match for {query!r} has no patientId field")
     return ResolvedPatient(

@@ -34,6 +34,15 @@ def cmd_login(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_template(args: argparse.Namespace) -> int:
+    from .excel.template import make_template
+
+    mapping = _resolve_mapping(args.mapping)
+    out = make_template(mapping, args.output, examples=not args.no_examples)
+    print(f"✓ Template written to {out}")
+    return 0
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     mapping = _resolve_mapping(args.mapping)
     bad = builder.validate_targets(mapping)
@@ -81,8 +90,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     cb = runner.Callbacks(on_row=on_row, on_log=lambda m: print(f"  · {m}"))
     summary = runner.run(
-        args.input, mapping, token=token, dry_run=dry_run,
-        limit=args.limit, settings=s, callbacks=cb, ledger=led,
+        args.input,
+        mapping,
+        token=token,
+        dry_run=dry_run,
+        limit=args.limit,
+        settings=s,
+        callbacks=cb,
+        ledger=led,
     )
 
     print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")
@@ -101,6 +116,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("login", help="Open the website and capture the API token").set_defaults(
         func=cmd_login
     )
+
+    t = sub.add_parser("template", help="Generate a blank Excel template matching the mapping")
+    t.add_argument("-o", "--output", default="hssk_template.xlsx", help="Output .xlsx path")
+    t.add_argument("-m", "--mapping", help="Mapping YAML path (defaults to user config)")
+    t.add_argument("--no-examples", action="store_true", help="Omit the example rows")
+    t.set_defaults(func=cmd_template)
 
     v = sub.add_parser("validate", help="Offline mapping/data validation (no network)")
     v.add_argument("-i", "--input", required=True, help="Excel file path")

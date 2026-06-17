@@ -6,6 +6,7 @@ build, plus the example mapping. Run from the repo root: ``pyinstaller packaging
 """
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -23,13 +24,27 @@ datas += pw_datas
 binaries += pw_binaries
 hiddenimports += pw_hidden
 
-# Bundle the browser CI installed into PLAYWRIGHT_BROWSERS_PATH -> "ms-playwright/" in the app.
-_browsers = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
-if _browsers and Path(_browsers).is_dir():
-    base = Path(_browsers)
-    for f in base.rglob("*"):
-        if f.is_file():
-            datas.append((str(f), str(Path("ms-playwright") / f.relative_to(base).parent)))
+# Locate the Playwright Chromium to bundle (so operators install nothing). CI installs it into
+# $PLAYWRIGHT_BROWSERS_PATH; a plain local `playwright install chromium` puts it in Playwright's
+# default per-user cache. Honor the env var if set, else fall back to that cache so local builds
+# aren't silently shipped without a browser. The actual copy happens *after* the build (see below) —
+# routing the nested "Google Chrome for Testing.app" through Analysis flattens its framework symlinks
+# and makes PyInstaller's ad-hoc codesign step reject it as an invalid bundle.
+def _default_browsers_path():
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "ms-playwright"
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ms-playwright"
+    return Path.home() / ".cache" / "ms-playwright"
+
+
+_env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+_browsers = Path(_env) if _env else _default_browsers_path()
+if not (_browsers.is_dir() and any(_browsers.glob("chromium-*"))):
+    raise SystemExit(
+        f"No Playwright Chromium found at {_browsers}. Run `playwright install chromium` "
+        "(or set PLAYWRIGHT_BROWSERS_PATH) before building, or the app will ship without a browser."
+    )
 
 # App resources
 datas.append((str(ROOT / "config" / "mapping.example.yaml"), "config"))
@@ -65,3 +80,12 @@ if sys.platform == "darwin":
         icon=None,
         bundle_identifier="vn.hososuckhoe.hssktools",
     )
+    _ms_dest = Path(DISTPATH) / "HSSK Tools.app" / "Contents" / "Resources" / "ms-playwright"
+else:
+    _ms_dest = Path(DISTPATH) / "hssk-gui" / "ms-playwright"
+
+# Copy Chromium into the finished app, preserving symlinks so the nested .app/.framework bundles stay
+# valid. Done here (post-build) rather than via Analysis datas to avoid symlink flattening and the
+# ad-hoc codesign step that rejects the collected browser binary. runtime_hook_playwright.py then
+# points PLAYWRIGHT_BROWSERS_PATH at this directory.
+shutil.copytree(_browsers, _ms_dest, symlinks=True, dirs_exist_ok=True)

@@ -19,29 +19,131 @@ def _settings(tmp: Path) -> Settings:
     return Settings(base_url=BASE, request_delay=0.0, jitter=0.0, data_dir=tmp)
 
 
+_ALL_HEADERS = [
+    # key + dates
+    "Mã định danh",
+    "Ngày khám",
+    "Giờ kết thúc",
+    # exam meta
+    "Mã hình thức khám",
+    "Mã đối tượng khám",
+    "Lý do khám",
+    "Bệnh sử",
+    # organ descriptions
+    "Da niêm mạc",
+    "Toàn thân khác",
+    "Tim mạch",
+    "Hô hấp",
+    "Tiêu hoá",
+    "Thận, tiết niệu",
+    "Tâm thần - Thần kinh",
+    "Cơ xương khớp",
+    "Nội tiết",
+    "Bệnh máu",
+    "Ngoại khoa",
+    "Sản phụ khoa",
+    "Tai mũi họng",
+    "Răng hàm mặt",
+    "Mắt",
+    "Da liễu",
+    "Dinh dưỡng",
+    "Vận động",
+    "Đánh giá phát triển thể chất",
+    "Cơ quan khác",
+    # diagnosis / treatment
+    "Chẩn đoán",
+    "Bệnh kèm theo",
+    "Bệnh theo dõi",
+    "Tư vấn điều trị",
+    "Mã kết quả khám",
+    "Mã tình trạng ra viện",
+    # doctor
+    "Bác sĩ",
+    # vitals
+    "Mạch",
+    "Nhiệt độ",
+    "HA tối đa",
+    "HA tối thiểu",
+    "Nhịp thở",
+    "Cân nặng",
+    "Chiều cao",
+    "BMI",
+    "Vòng bụng",
+    "Vòng ngực",
+    "Mắt trái (kính)",
+    "Mắt trái (không kính)",
+    "Mắt phải (kính)",
+    "Mắt phải (không kính)",
+]
+
+
+# Row values aligned with _ALL_HEADERS — None for unused optional cells.
+def _make_row(identifier, exam_date="17/06/2026", finish="17/06/2026"):
+    return [
+        identifier,
+        exam_date,
+        finish,
+        100,
+        93,
+        None,
+        None,  # exam meta (required: typeOfExamination, reasonCode)
+        None,
+        None,
+        None,
+        None,
+        None,  # organ descs 1–5
+        None,
+        None,
+        None,
+        None,
+        None,  # organ descs 6–10
+        None,
+        None,
+        None,
+        None,
+        None,  # organ descs 11–15
+        None,
+        None,
+        None,
+        None,
+        None,  # organ descs 16–20
+        "0000 - Bình thường",
+        None,
+        None,
+        None,  # diagnosesDischarge (req), list, notes, direction
+        3,
+        1,  # treatmentResultId, dischargeStatusId (required)
+        "Nguyễn Thị Hoa",  # doctorName (required)
+        80,
+        36.8,
+        110,
+        70,
+        20,
+        18,
+        140,
+        None,  # weight / height / BMI (auto-calc)
+        60,
+        60,
+        10,
+        10,
+        10,
+        10,
+    ]
+
+
 def _two_row_xlsx(tmp: Path) -> Path:
     wb = Workbook()
     ws = wb.active
-    headers = [
-        "Mã định danh", "Ngày khám", "Giờ kết thúc", "Mạch", "Nhiệt độ",
-        "HA tối đa", "HA tối thiểu", "Nhịp thở", "Cân nặng", "Chiều cao", "BMI",
-        "Vòng bụng", "Vòng ngực", "Mắt trái (kính)", "Mắt trái (không kính)",
-        "Mắt phải (kính)", "Mắt phải (không kính)",
-    ]
-    ws.append(headers)
-    ws.append(["2700020596A", "17/06/2026", "17/06/2026", 80, 36.8, 110, 70, 20,
-               18, 140, None, 60, 60, 10, 10, 10, 10])
-    ws.append([None, "17/06/2026", "17/06/2026", 80, 36.8, 110, 70, 20,  # missing identifier
-               18, 140, None, 60, 60, 10, 10, 10, 10])
+    ws.append(_ALL_HEADERS)
+    ws.append(_make_row("2700020596A"))
+    ws.append(_make_row(None))  # missing identifier → INVALID
     path = tmp / "in.xlsx"
     wb.save(path)
     return path
 
 
 def _mock_search(found: bool):
-    content = (
-        [{"patientId": 372954970, "medicalIdentifierCode": "2700020596A"}] if found else []
-    )
+    content = [{"patientId": 372954970, "medicalIdentifierCode": "2700020596A"}] if found else []
     respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
         return_value=httpx.Response(200, json={"data": {"content": content}})
     )
@@ -75,7 +177,11 @@ def test_no_patient(mapping, tmp_path):
     xlsx = _two_row_xlsx(tmp_path)
     s = _settings(tmp_path)
     summary = runner.run(
-        xlsx, mapping, token="t", dry_run=False, settings=s,
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=False,
+        settings=s,
         ledger=Ledger(tmp_path / "l.jsonl"),
     )
     assert summary.counts.get(Status.NO_PATIENT) == 1
@@ -90,7 +196,11 @@ def test_dry_run_writes_payload_and_does_not_create(mapping, tmp_path):
     xlsx = _two_row_xlsx(tmp_path)
     s = _settings(tmp_path)
     summary = runner.run(
-        xlsx, mapping, token="t", dry_run=True, settings=s,
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=True,
+        settings=s,
         ledger=Ledger(tmp_path / "l.jsonl"),
     )
     assert summary.counts.get(Status.DRY_RUN_OK) == 1

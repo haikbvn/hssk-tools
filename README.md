@@ -47,6 +47,13 @@ py -3.12 -m venv .venv
 4. Untick **Dry-run**, confirm the PRODUCTION prompt, and **Start** to push for real. Start with a
    small **Limit** (e.g. 1) and verify it in the website before scaling up.
 
+### Getting a blank template
+
+Click **Template…** in the app (or `hssk template -o my_template.xlsx`) to generate an Excel file
+whose columns exactly match the active mapping, with per-column hints (hover the header) and a couple
+of example rows to delete. The "Mã định danh" column is the search key — a **CCCD or insurance
+number**, exactly what you'd type into the website's search box.
+
 ### Configuring the column mapping
 
 The mapping lives at your user-config dir (`~/Library/Application Support/hssk-tools/mapping.yaml`
@@ -58,6 +65,7 @@ values (doctor, facility, "Bình thường" descriptions) live under `defaults`.
 ### CLI (for debugging)
 
 ```bash
+hssk template -o my_template.xlsx # generate a blank template matching the mapping
 hssk login                       # capture a token
 hssk validate -i data/input.xlsx # offline mapping/validation report
 hssk run -i data/input.xlsx      # dry-run by default; add --commit to send

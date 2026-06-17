@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QSpinBox,
@@ -61,6 +63,8 @@ class MainWindow(QMainWindow):
         self._token: str | None = None
         self._excel_path: Path | None = None
         self._last_run_dir: Path | None = None
+        self._last_results_file: Path | None = None
+        self._run_start: float = 0.0
         self._counts: dict[Status, int] = {}
 
         # thread/worker handles (kept alive while running)
@@ -101,12 +105,15 @@ class MainWindow(QMainWindow):
         self.choose_btn = QPushButton("Choose Excel…")
         self.choose_btn.clicked.connect(self._choose_excel)
         self.file_label = QLabel("No file selected")
+        self.template_btn = QPushButton("Template…")
+        self.template_btn.clicked.connect(self._make_template)
         self.mapping_btn = QPushButton("Open mapping")
         self.mapping_btn.clicked.connect(self._open_mapping)
         self.validate_btn = QPushButton("Validate")
         self.validate_btn.clicked.connect(self._validate)
         lay.addWidget(self.choose_btn)
         lay.addWidget(self.file_label, stretch=1)
+        lay.addWidget(self.template_btn)
         lay.addWidget(self.mapping_btn)
         lay.addWidget(self.validate_btn)
         return box
@@ -159,10 +166,18 @@ class MainWindow(QMainWindow):
 
         prog_row = QHBoxLayout()
         self.progress = QProgressBar()
+        self.status_label = QLabel("")
         self.counter_label = QLabel("—")
         prog_row.addWidget(self.progress, stretch=1)
+        prog_row.addWidget(self.status_label)
         prog_row.addWidget(self.counter_label)
         lay.addLayout(prog_row)
+
+        self.log_pane = QPlainTextEdit()
+        self.log_pane.setReadOnly(True)
+        self.log_pane.setMaximumHeight(80)
+        self.log_pane.setPlaceholderText("Engine log…")
+        lay.addWidget(self.log_pane)
 
         self.table = QTableWidget(0, len(_TABLE_COLS))
         self.table.setHorizontalHeaderLabels(_TABLE_COLS)
@@ -174,6 +189,10 @@ class MainWindow(QMainWindow):
 
         bottom = QHBoxLayout()
         bottom.addStretch(1)
+        self.open_results_btn = QPushButton("Open results spreadsheet")
+        self.open_results_btn.setEnabled(False)
+        self.open_results_btn.clicked.connect(self._open_results)
+        bottom.addWidget(self.open_results_btn)
         self.open_report_btn = QPushButton("Open report folder")
         self.open_report_btn.setEnabled(False)
         self.open_report_btn.clicked.connect(self._open_report)
@@ -262,6 +281,27 @@ class MainWindow(QMainWindow):
         self._ui.last_file = str(path)
         self._update_start_enabled()
 
+    def _make_template(self) -> None:
+        from hssk.excel.template import make_template
+
+        default = "hssk_template.xlsx"
+        if self._ui.last_file:
+            default = str(Path(self._ui.last_file).with_name("hssk_template.xlsx"))
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Excel template", default, "Excel files (*.xlsx)"
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        try:
+            out = make_template(self._load_mapping(), path)
+        except (ConfigError, HsskError) as exc:
+            QMessageBox.critical(self, "Template error", str(exc))
+            return
+        QMessageBox.information(self, "Template created", f"Saved to:\n{out}")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(out)))
+
     def _open_mapping(self) -> None:
         path = ensure_mapping_file()
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
@@ -342,15 +382,21 @@ class MainWindow(QMainWindow):
         limit = self.limit_spin.value() or None
 
         self._reset_results()
+        self._run_start = time.monotonic()
         self._run_thread = QThread()
         self._run_worker = RunWorker(
-            self._excel_path, mapping, self._token,
-            dry_run=dry_run, limit=limit, settings=settings,
+            self._excel_path,
+            mapping,
+            self._token,
+            dry_run=dry_run,
+            limit=limit,
+            settings=settings,
         )
         self._run_worker.moveToThread(self._run_thread)
         self._run_thread.started.connect(self._run_worker.run)
         self._run_worker.progress.connect(self._on_progress)
         self._run_worker.row.connect(self._on_row)
+        self._run_worker.log.connect(self._on_log)
         # Stop the thread first, then run the UI handlers; drop references only after the thread
         # has fully finished — destroying a running QThread aborts the process.
         self._run_worker.finished.connect(self._run_thread.quit)
@@ -375,11 +421,26 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
         self._counts = {}
         self.counter_label.setText("—")
+        self.status_label.setText("")
+        self.log_pane.clear()
         self.open_report_btn.setEnabled(False)
+        self.open_results_btn.setEnabled(False)
 
     def _on_progress(self, done: int, total: int) -> None:
         self.progress.setMaximum(max(total, 1))
         self.progress.setValue(done)
+        if done == 0:
+            self.status_label.setText(f"Starting… ({total} rows)")
+        elif done >= total:
+            self.status_label.setText(f"All {total} rows processed")
+        else:
+            elapsed = time.monotonic() - self._run_start
+            if elapsed > 0:
+                rem = int((elapsed / done) * (total - done))
+                eta = f"~{rem // 60}m {rem % 60}s left" if rem >= 60 else f"~{rem}s left"
+                self.status_label.setText(f"Row {done} of {total}   {eta}")
+            else:
+                self.status_label.setText(f"Row {done} of {total}")
 
     def _on_row(self, outcome: RowOutcome) -> None:
         self._counts[outcome.status] = self._counts.get(outcome.status, 0) + 1
@@ -408,18 +469,61 @@ class MainWindow(QMainWindow):
             self._counts.get(s, 0)
             for s in (Status.FAILED, Status.NO_PATIENT, Status.MULTI_MATCH, Status.INVALID)
         )
-        self.counter_label.setText(f"✓ {created}   ↷ {skipped}   ✗ {failed}")
+        aborted = self._counts.get(Status.AUTH_EXPIRED, 0) + self._counts.get(
+            Status.RATE_LIMITED, 0
+        )
+        text = f"✓ {created}   ↷ {skipped}   ✗ {failed}"
+        if aborted:
+            text += f"   ⛔ {aborted}"
+        self.counter_label.setText(text)
+
+    def _on_log(self, message: str) -> None:
+        self.log_pane.appendPlainText(message)
 
     def _on_run_finished(self, summary: RunSummary) -> None:
         self._last_run_dir = summary.run_dir
+        self._last_results_file = summary.run_dir / "results.xlsx"
         self.open_report_btn.setEnabled(True)
+        self.open_results_btn.setEnabled(self._last_results_file.exists())
         self._refresh_token_status()
-        msg = f"Done — {summary.total} rows processed.\nReport: {summary.run_dir}"
+
+        processed = len(summary.outcomes)
+        skipped = summary.counts.get(Status.SKIPPED_ALREADY, 0)
+        parts: list[str] = []
+
         if summary.aborted:
-            msg = f"Stopped: {summary.abort_reason}\n\n" + msg
-        QMessageBox.information(self, "Run complete", msg)
+            if summary.counts.get(Status.AUTH_EXPIRED, 0):
+                parts.append(
+                    "Your login token expired.\n\n"
+                    "Click 'Open website & log in', then press Start again — "
+                    "rows already sent will be skipped automatically."
+                )
+                self.status_label.setText("Aborted — token expired.")
+            elif summary.counts.get(Status.RATE_LIMITED, 0):
+                parts.append(
+                    "The server is busy or temporarily unreachable.\n\n"
+                    "Wait a few minutes and press Start again — "
+                    "rows already sent will be skipped automatically."
+                )
+                self.status_label.setText("Aborted — server error.")
+            else:
+                parts.append("Run cancelled.")
+                self.status_label.setText("Cancelled.")
+            parts.append(f"Processed {processed} of {summary.total} rows before stopping.")
+        else:
+            parts.append(f"Done — {processed} rows processed.")
+            self.status_label.setText(f"Finished ({processed} rows).")
+
+        if skipped > 0:
+            parts.append(
+                f"\n{skipped} already-sent row(s) were skipped — safe to re-run, "
+                "previously sent rows are always skipped."
+            )
+        parts.append(f"\nReport: {summary.run_dir}")
+        QMessageBox.information(self, "Run complete", "\n".join(parts))
 
     def _on_run_failed(self, message: str) -> None:
+        self.status_label.setText("Error.")
         QMessageBox.critical(self, "Run failed", message)
 
     def _on_run_thread_finished(self) -> None:
@@ -428,6 +532,10 @@ class MainWindow(QMainWindow):
         self._run_worker = None
         self.stop_btn.setEnabled(False)
         self._update_start_enabled()
+
+    def _open_results(self) -> None:
+        if self._last_results_file is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._last_results_file)))
 
     def _open_report(self) -> None:
         if self._last_run_dir is not None:

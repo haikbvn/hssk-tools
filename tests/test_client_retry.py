@@ -150,8 +150,13 @@ def test_resolve_broadcasts_query_across_fields():
     with _client() as c, pytest.raises(PatientNotFound):
         patients.resolve(c, "027148003240", SearchSpec())
     sent = json.loads(route.calls.last.request.content)
-    for field in ("fullname", "medicalIdentifierCode", "identification",
-                  "personalPhoneNumber", "healthInsuranceNumber"):
+    for field in (
+        "fullname",
+        "medicalIdentifierCode",
+        "identification",
+        "personalPhoneNumber",
+        "healthInsuranceNumber",
+    ):
         assert sent[field] == "027148003240"
     assert sent["profileStatus"] == "1"
 
@@ -164,3 +169,25 @@ def test_create_extracts_record_id():
     with _client() as c:
         rid, _raw = exams.create(c, {"medicalRecordInfo": {}})
     assert rid == 555
+
+
+@respx.mock
+def test_429_http_date_retry_after_is_honored():
+    import datetime as dt
+
+    sleep = FakeSleep()
+    # Build an HTTP-date ~5 seconds in the future
+    future = dt.datetime.now(tz=dt.UTC) + dt.timedelta(seconds=5)
+    http_date = future.strftime("%a, %d %b %Y %H:%M:%S GMT")
+    respx.post(f"{BASE}/x").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": http_date}),
+            httpx.Response(200, json={"ok": 1}),
+        ]
+    )
+    with _client(sleep=sleep) as c:
+        assert c.post("/x", {}) == {"ok": 1}
+    # Should have slept approximately 5s (within a few seconds of tolerance)
+    backoff_delays = [s for s in sleep.calls if s > 0]
+    assert backoff_delays, "no backoff sleep was performed"
+    assert any(3 <= d <= 10 for d in backoff_delays), f"unexpected delays: {backoff_delays}"

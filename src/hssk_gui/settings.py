@@ -22,7 +22,7 @@ class UiSettings:
 
     @property
     def delay(self) -> float:
-        return float(self._s.value("delay", 1.0, type=float))
+        return float(self._s.value("delay", 1.0, type=float))  # type: ignore[arg-type]
 
     @delay.setter
     def delay(self, value: float) -> None:

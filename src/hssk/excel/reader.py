@@ -28,9 +28,7 @@ def read_rows(path: str | Path, mapping: MappingConfig) -> list[tuple[int, dict[
     try:
         ws = wb[mapping.sheet] if mapping.sheet else wb[wb.sheetnames[0]]
     except KeyError as exc:
-        raise ConfigError(
-            f"Sheet {mapping.sheet!r} not found. Available: {wb.sheetnames}"
-        ) from exc
+        raise ConfigError(f"Sheet {mapping.sheet!r} not found. Available: {wb.sheetnames}") from exc
 
     headers: list[str] = []
     rows: list[tuple[int, dict[str, Any]]] = []
@@ -59,6 +57,5 @@ def _check_columns(headers: list[str], mapping: MappingConfig, path: Path) -> No
     missing = [c for c in mapping.columns if c not in present]
     if missing:
         raise ConfigError(
-            f"Excel {path.name} is missing mapped column(s): {missing}. "
-            f"Found headers: {headers}"
+            f"Excel {path.name} is missing mapped column(s): {missing}. Found headers: {headers}"
         )

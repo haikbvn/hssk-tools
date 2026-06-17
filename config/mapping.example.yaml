@@ -16,10 +16,61 @@ columns:
   # --- key + dates (-> medicalRecordInfo) ---
   "Mã định danh": { target: medicalIdentifierCode, type: str, required: true }
   "Ngày khám":
-    { target: examinationDate, type: datetime, out_format: "%d/%m/%Y %H:%M:%S", default_time: "07:00:00" }
+    {
+      target: examinationDate,
+      type: datetime,
+      out_format: "%d/%m/%Y %H:%M:%S",
+      default_time: "07:00:00",
+      required: true,
+    }
   "Giờ kết thúc":
-    { target: finishExaminationDate, type: datetime, out_format: "%d/%m/%Y %H:%M:%S", default_time: "08:00:00" }
-  # "Bác sĩ":           { target: doctorName, type: str }   # optional per-row override of the default doctor
+    {
+      target: finishExaminationDate,
+      type: datetime,
+      out_format: "%d/%m/%Y %H:%M:%S",
+      default_time: "08:00:00",
+      required: true,
+    }
+
+  # --- exam meta (-> medicalRecordInfo) ---
+  "Mã hình thức khám": { target: typeOfExamination, type: int, required: true }
+  "Mã đối tượng khám": { target: reasonCode, type: int, required: true }
+  "Lý do khám": { target: reasonsMedicalexamination, type: str }
+  "Bệnh sử": { target: symptoms, type: str }
+
+  # --- organ/system descriptions (-> medicalRecordInfo) ---
+  "Da niêm mạc": { target: bodySkinDesc, type: str }
+  "Toàn thân khác": { target: bodyOtherDesc, type: str }
+  "Tim mạch": { target: heartDesc, type: str }
+  "Hô hấp": { target: respiratoryDesc, type: str }
+  "Tiêu hoá": { target: digestDesc, type: str }
+  "Thận, tiết niệu": { target: urologyDesc, type: str }
+  "Tâm thần - Thần kinh": { target: nerveDesc, type: str }
+  "Cơ xương khớp": { target: osteoarthritisDesc, type: str }
+  "Nội tiết": { target: endocrineDesc, type: str }
+  "Bệnh máu": { target: bloodDesc, type: str }
+  "Ngoại khoa": { target: surgeryDesc, type: str }
+  "Sản phụ khoa": { target: maternityDesc, type: str }
+  "Tai mũi họng": { target: earNoseThroatDesc, type: str }
+  "Răng hàm mặt": { target: toothDesc, type: str }
+  "Mắt": { target: eyeDesc, type: str }
+  "Da liễu": { target: dermatologyDesc, type: str }
+  "Dinh dưỡng": { target: nutritionDesc, type: str }
+  "Vận động": { target: motionDesc, type: str }
+  "Đánh giá phát triển thể chất": { target: physicalDesc, type: str }
+  "Cơ quan khác": { target: organsOtherDesc, type: str }
+
+  # --- diagnosis / treatment (-> medicalRecordInfo) ---
+  "Chẩn đoán": { target: diagnosesDischarge, type: str, required: true }
+  "Bệnh kèm theo": { target: diagnosesDischargeList, type: list }
+  "Bệnh theo dõi": { target: noteDisease, type: str }
+  "Tư vấn điều trị": { target: treatmentDirection, type: str }
+  "Mã kết quả khám": { target: treatmentResultId, type: int, required: true }
+  "Mã tình trạng ra viện":
+    { target: dischargeStatusId, type: int, required: true }
+
+  # --- doctor (-> medicalRecordInfo) ---
+  "Bác sĩ": { target: doctorName, type: str, required: true }
 
   # --- vitals (-> medicalPatientDetailInfo) ---
   "Mạch": { target: pulse, type: int }
@@ -64,5 +115,5 @@ defaults:
     treatmentResultId: 3
     dischargeStatusId: 1
     healthfacilitiesId: "27084"
-    doctorName: "Nguyễn Thị Hoa"
+    doctorName: "Nguyễn Thị Hà"
   medicalPatientDetailInfo: {}

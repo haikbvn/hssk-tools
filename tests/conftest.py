@@ -23,9 +23,46 @@ def sample_xlsx(tmp_path: Path) -> Path:
     wb = Workbook()
     ws = wb.active
     headers = [
+        # key + dates
         "Mã định danh",
         "Ngày khám",
         "Giờ kết thúc",
+        # exam meta
+        "Mã hình thức khám",
+        "Mã đối tượng khám",
+        "Lý do khám",
+        "Bệnh sử",
+        # organ descriptions
+        "Da niêm mạc",
+        "Toàn thân khác",
+        "Tim mạch",
+        "Hô hấp",
+        "Tiêu hoá",
+        "Thận, tiết niệu",
+        "Tâm thần - Thần kinh",
+        "Cơ xương khớp",
+        "Nội tiết",
+        "Bệnh máu",
+        "Ngoại khoa",
+        "Sản phụ khoa",
+        "Tai mũi họng",
+        "Răng hàm mặt",
+        "Mắt",
+        "Da liễu",
+        "Dinh dưỡng",
+        "Vận động",
+        "Đánh giá phát triển thể chất",
+        "Cơ quan khác",
+        # diagnosis / treatment
+        "Chẩn đoán",
+        "Bệnh kèm theo",
+        "Bệnh theo dõi",
+        "Tư vấn điều trị",
+        "Mã kết quả khám",
+        "Mã tình trạng ra viện",
+        # doctor
+        "Bác sĩ",
+        # vitals
         "Mạch",
         "Nhiệt độ",
         "HA tối đa",
@@ -44,9 +81,46 @@ def sample_xlsx(tmp_path: Path) -> Path:
     ws.append(headers)
     ws.append(
         [
+            # key + dates
             "2700020596A",
             dt.datetime(2026, 6, 17),
             dt.datetime(2026, 6, 17, 8, 56, 0),
+            # exam meta
+            100,
+            93,
+            "Khám sức khoẻ",
+            "Không",
+            # organ descriptions (all normal)
+            "Bình thường",  # bodySkinDesc
+            "Bình thường",  # bodyOtherDesc
+            "Bình thường",  # heartDesc
+            "Bình thường",  # respiratoryDesc
+            "Bình thường",  # digestDesc
+            "Bình thường",  # urologyDesc
+            "Bình thường",  # nerveDesc
+            "Bình thường",  # osteoarthritisDesc
+            "Bình thường",  # endocrineDesc
+            "Bình thường",  # bloodDesc
+            "Bình thường",  # surgeryDesc
+            "Bình thường",  # maternityDesc
+            "Bình thường",  # earNoseThroatDesc
+            "Bình thường",  # toothDesc
+            "Bình thường",  # eyeDesc
+            "Bình thường",  # dermatologyDesc
+            "Bình thường",  # nutritionDesc
+            "Bình thường",  # motionDesc
+            "Bình thường",  # physicalDesc
+            "Bình thường",  # organsOtherDesc
+            # diagnosis / treatment
+            "0000 - Bình thường",  # diagnosesDischarge
+            "0000 - Bình thường",  # diagnosesDischargeList
+            "Không",  # noteDisease
+            "Bình thường",  # treatmentDirection
+            3,  # treatmentResultId
+            1,  # dischargeStatusId
+            # doctor
+            "Nguyễn Thị Hoa",
+            # vitals
             80,
             36.8,
             110,
