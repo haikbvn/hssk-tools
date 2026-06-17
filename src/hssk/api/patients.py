@@ -1,13 +1,16 @@
-"""Patient search — resolve the internal ``patientId`` from a medical identifier code.
+"""Patient search — resolve the internal ``patientId`` from whatever identifier the Excel holds.
 
-The exact response shape of the internal API is undocumented, so the list extraction is defensive
-and the raw body can be logged on the first call. A returned record is only accepted when its
-``medicalIdentifierCode`` matches the query exactly — we never write to a guessed patient.
+The website's search broadcasts the typed value across several fields at once (name, medical code,
+citizen id, phone, insurance number) and matches if any one hits — so the Excel "identifier" may be
+a CCCD, an insurance number, a phone, etc. We mirror that request. The matched patient's *real*
+``medicalIdentifierCode`` (which usually differs from the searched value) is returned so the create
+payload can use it together with ``patientId``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from ..errors import MultiMatch, PatientNotFound
@@ -16,7 +19,33 @@ from .client import ApiClient
 
 SEARCH_PATH = "/api/v1/report/patient/search"
 
-_LIST_KEYS = ("content", "items", "records", "rows", "list", "data")
+# The value is sent in all of these (exactly as the website does).
+SEARCH_FIELDS = (
+    "fullname",
+    "medicalIdentifierCode",
+    "identification",
+    "homePhoneNumber",
+    "personalPhoneNumber",
+    "healthInsuranceNumber",
+)
+
+# Fields the search result echoes back that we can verify an exact match against.
+_ECHOED_ID_FIELDS = (
+    "medicalIdentifierCode",
+    "healthInsuranceNumber",
+    "personalPhoneNumber",
+    "householdCode",
+)
+
+_LIST_KEYS = ("items", "content", "records", "rows", "list", "data")
+
+
+@dataclass
+class ResolvedPatient:
+    patient_id: Any
+    medical_identifier_code: str | None
+    fullname: str | None
+    record: dict[str, Any]
 
 
 def _find_patient_list(data: Any) -> list[dict[str, Any]]:
@@ -28,13 +57,11 @@ def _find_patient_list(data: Any) -> list[dict[str, Any]]:
             val = data.get(key)
             if isinstance(val, list) and any(isinstance(x, dict) for x in val):
                 return [x for x in val if isinstance(x, dict)]
-        # recurse into nested containers (e.g. {"data": {"content": [...]}})
         for key in ("data", "result", "response", "body"):
             if key in data:
                 found = _find_patient_list(data[key])
                 if found:
                     return found
-        # last resort: any list-of-dicts with a patientId
         for val in data.values():
             if isinstance(val, list) and any(
                 isinstance(x, dict) and "patientId" in x for x in val
@@ -45,55 +72,62 @@ def _find_patient_list(data: Any) -> list[dict[str, Any]]:
 
 def search(
     client: ApiClient,
-    identifier: str,
+    query: str,
     search_spec: SearchSpec,
     *,
     on_raw: Callable[[Any], None] | None = None,
 ) -> list[dict[str, Any]]:
-    body = {
-        "medicalIdentifierCode": identifier,
-        "profileStatus": search_spec.profileStatus,
-        "page": search_spec.page,
-        "size": search_spec.size,
-    }
+    body: dict[str, Any] = {field: query for field in SEARCH_FIELDS}
+    body["profileStatus"] = search_spec.profileStatus
+    body["page"] = search_spec.page
+    body["size"] = search_spec.size
     data = client.post(SEARCH_PATH, body)
     if on_raw is not None:
         on_raw(data)
     return _find_patient_list(data)
 
 
-def resolve_patient_id(
+def _echoed_exact(record: dict[str, Any], query: str) -> bool:
+    q = query.strip()
+    return any(
+        record.get(f) is not None and str(record.get(f)).strip() == q
+        for f in _ECHOED_ID_FIELDS
+    )
+
+
+def resolve(
     client: ApiClient,
-    identifier: str,
+    query: str,
     search_spec: SearchSpec,
     *,
     on_raw: Callable[[Any], None] | None = None,
-) -> tuple[Any, dict[str, Any]]:
-    """Return ``(patientId, record)`` for the exact identifier match, or raise."""
-    candidates = search(client, identifier, search_spec, on_raw=on_raw)
-    wanted = str(identifier).strip()
-    exact = [
-        p
-        for p in candidates
-        if str(p.get("medicalIdentifierCode", "")).strip() == wanted
-    ]
-    if not exact:
-        raise PatientNotFound(f"no patient with medicalIdentifierCode {identifier!r}")
-    if len(exact) > 1:
+) -> ResolvedPatient:
+    """Return the resolved patient for ``query``, or raise PatientNotFound / MultiMatch."""
+    candidates = search(client, query, search_spec, on_raw=on_raw)
+    if not candidates:
+        raise PatientNotFound(f"no patient found for {query!r}")
+
+    # Prefer candidates that exactly match an echoed identifier field; otherwise fall back to the
+    # full set (e.g. a CCCD match, which the API doesn't echo back).
+    exact = [c for c in candidates if _echoed_exact(c, query)]
+    pool = exact or candidates
+
+    if len(pool) > 1:
         if search_spec.multi_match == "first":
-            chosen = exact[0]
+            chosen = pool[0]
         elif search_spec.multi_match == "error":
-            raise MultiMatch(
-                f"{len(exact)} patients match {identifier!r}", candidates=exact
-            )
+            raise MultiMatch(f"{len(pool)} patients match {query!r}", candidates=pool)
         else:  # skip
-            raise MultiMatch(
-                f"{len(exact)} patients match {identifier!r}; skipping", candidates=exact
-            )
+            raise MultiMatch(f"{len(pool)} patients match {query!r}; skipping", candidates=pool)
     else:
-        chosen = exact[0]
+        chosen = pool[0]
 
     pid = chosen.get("patientId") or chosen.get("id")
     if pid is None:
-        raise PatientNotFound(f"match for {identifier!r} has no patientId field")
-    return pid, chosen
+        raise PatientNotFound(f"match for {query!r} has no patientId field")
+    return ResolvedPatient(
+        patient_id=pid,
+        medical_identifier_code=chosen.get("medicalIdentifierCode"),
+        fullname=chosen.get("fullname") or chosen.get("fullName"),
+        record=chosen,
+    )

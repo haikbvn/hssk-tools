@@ -150,9 +150,10 @@ def run(
                 continue
 
             try:
-                pid, _rec = patients.resolve_patient_id(
+                resolved = patients.resolve(
                     client, identifier, mapping.search, on_raw=raw_logger
                 )
+                pid = resolved.patient_id
             except PatientNotFound as exc:
                 emit(RowOutcome(row_index, identifier, Status.NO_PATIENT,
                                 message=str(exc), warnings=coerced.warnings))
@@ -170,7 +171,11 @@ def run(
                 aborted, abort_reason = True, str(exc)
                 break
 
-            payload = builder.build(coerced, mapping, pid)
+            payload = builder.build(
+                coerced, mapping, pid,
+                medical_identifier_code=resolved.medical_identifier_code,
+            )
+            who = resolved.fullname or ""
 
             if dry_run:
                 payloads_dir.mkdir(parents=True, exist_ok=True)
@@ -178,7 +183,8 @@ def run(
                     json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
                 emit(RowOutcome(row_index, identifier, Status.DRY_RUN_OK, patient_id=pid,
-                                message="payload built (not sent)", warnings=coerced.warnings))
+                                message=f"payload built (not sent) — {who}".strip(" —"),
+                                warnings=coerced.warnings))
                 continue
 
             try:
@@ -198,7 +204,8 @@ def run(
 
             led.mark_done(key, rid)
             emit(RowOutcome(row_index, identifier, Status.CREATED, patient_id=pid,
-                            record_id=rid, message="created", warnings=coerced.warnings))
+                            record_id=rid, message=f"created — {who}".strip(" —"),
+                            warnings=coerced.warnings))
 
     cb.on_progress(total, total)
     summary = RunSummary(

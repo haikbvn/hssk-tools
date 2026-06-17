@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -92,13 +94,13 @@ def test_circuit_breaker_opens():
 
 
 @respx.mock
-def test_resolve_patient_exact_match():
+def test_resolve_patient_echoed_exact_match():
     respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
         return_value=httpx.Response(
             200,
             json={
                 "data": {
-                    "content": [
+                    "items": [
                         {"patientId": 1, "medicalIdentifierCode": "OTHER"},
                         {"patientId": 372954970, "medicalIdentifierCode": "2700020596A"},
                     ]
@@ -107,19 +109,51 @@ def test_resolve_patient_exact_match():
         )
     )
     with _client() as c:
-        pid, rec = patients.resolve_patient_id(c, "2700020596A", SearchSpec())
-    assert pid == 372954970
+        resolved = patients.resolve(c, "2700020596A", SearchSpec())
+    assert resolved.patient_id == 372954970
+    assert resolved.medical_identifier_code == "2700020596A"
 
 
 @respx.mock
-def test_resolve_patient_not_found():
+def test_resolve_by_cccd_single_result_uses_real_code():
+    # Searching a CCCD: the result's medicalIdentifierCode differs from the query, single match.
+    respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "items": [
+                        {
+                            "patientId": 366921346,
+                            "medicalIdentifierCode": "2720551044",
+                            "fullname": "VŨ THỊ LẠNG",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+    with _client() as c:
+        resolved = patients.resolve(c, "027148003240", SearchSpec())
+    assert resolved.patient_id == 366921346
+    assert resolved.medical_identifier_code == "2720551044"  # real code, not the searched CCCD
+    assert resolved.fullname == "VŨ THỊ LẠNG"
+
+
+@respx.mock
+def test_resolve_broadcasts_query_across_fields():
+    route = respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
+        return_value=httpx.Response(200, json={"data": {"items": []}})
+    )
     from hssk.errors import PatientNotFound
 
-    respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
-        return_value=httpx.Response(200, json={"data": {"content": []}})
-    )
     with _client() as c, pytest.raises(PatientNotFound):
-        patients.resolve_patient_id(c, "2700020596A", SearchSpec())
+        patients.resolve(c, "027148003240", SearchSpec())
+    sent = json.loads(route.calls.last.request.content)
+    for field in ("fullname", "medicalIdentifierCode", "identification",
+                  "personalPhoneNumber", "healthInsuranceNumber"):
+        assert sent[field] == "027148003240"
+    assert sent["profileStatus"] == "1"
 
 
 @respx.mock

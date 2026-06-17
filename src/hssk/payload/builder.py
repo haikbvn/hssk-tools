@@ -18,8 +18,18 @@ def validate_targets(mapping: MappingConfig) -> list[str]:
     ]
 
 
-def build(row: RowResult, mapping: MappingConfig, patient_id: Any) -> dict[str, Any]:
-    """Build the full health-examination create payload for one patient."""
+def build(
+    row: RowResult,
+    mapping: MappingConfig,
+    patient_id: Any,
+    *,
+    medical_identifier_code: str | None = None,
+) -> dict[str, Any]:
+    """Build the full health-examination create payload for one patient.
+
+    ``medical_identifier_code`` (the patient's real code, from the search result) overrides whatever
+    the Excel "identifier" column held, since the searched value may be a CCCD/phone/insurance no.
+    """
     payload = templates.default_payload(normal=mapping.defaults.normal_desc_value)
 
     # Layer constant defaults from the mapping on top of the canonical template.
@@ -42,4 +52,6 @@ def build(row: RowResult, mapping: MappingConfig, patient_id: Any) -> dict[str, 
         # unknown targets are ignored (validate_targets surfaces them up front)
 
     record["patientId"] = patient_id
+    if medical_identifier_code is not None:
+        record["medicalIdentifierCode"] = medical_identifier_code
     return payload
