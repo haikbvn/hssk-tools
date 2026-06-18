@@ -27,7 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from hssk.auth.token_store import load_token, mask
+from hssk.auth.profile import load_profile
+from hssk.auth.token_store import load_token
 from hssk.config import ensure_mapping_file
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
@@ -240,11 +241,13 @@ class MainWindow(QMainWindow):
             self._set_token_label("Token expired — please log in again", "#cf222e")
             return
         self._token = data.token
+        profile = load_profile()
+        identity = f"  —  {profile.identity_label()}" if profile else ""
         if rem is None:
-            self._set_token_label(f"Logged in ✓  ({mask(data.token)})", "#1a7f37")
+            self._set_token_label(f"Logged in ✓{identity}", "#1a7f37")
         else:
             self._set_token_label(
-                f"Logged in ✓  valid ~{rem // 60}m {rem % 60}s  ({mask(data.token)})", "#1a7f37"
+                f"Logged in ✓{identity}  (valid ~{rem // 60}m {rem % 60}s)", "#1a7f37"
             )
 
     def _set_token_label(self, text: str, color: str) -> None:

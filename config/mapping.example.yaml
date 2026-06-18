@@ -109,11 +109,12 @@ defaults:
     symptoms: "Không"
     treatmentDayNumber: "1"
     diagnosesDischarge: "0000 - Bình thường"
-    diagnosesDischargeList: ["0000 - Bình thường"]
+    diagnosesDischargeList: []
     noteDisease: "Không"
     treatmentDirection: "Bình thường"
     treatmentResultId: 3
     dischargeStatusId: 1
-    healthfacilitiesId: "27084"
-    doctorName: "Nguyễn Thị Hà"
+    # doctorName: leave blank to use the logged-in account's name; fill in to override.
+    # healthfacilitiesId is always locked to the logged-in account and cannot be overridden.
+    doctorName: ""
   medicalPatientDetailInfo: {}

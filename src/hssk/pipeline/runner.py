@@ -17,6 +17,7 @@ from typing import Any
 from .. import report as report_mod
 from ..api import exams, patients
 from ..api.client import ApiClient
+from ..auth.profile import load_profile
 from ..config import Settings, output_dir
 from ..config import settings as default_settings
 from ..errors import ApiError, AuthExpired, ConfigError, MultiMatch, PatientNotFound, RateLimited
@@ -92,6 +93,7 @@ def run(
 ) -> RunSummary:
     s = settings or default_settings()
     cb = callbacks or Callbacks()
+    profile = load_profile()
 
     bad_targets = builder.validate_targets(mapping)
     if bad_targets:
@@ -209,6 +211,7 @@ def run(
                 mapping,
                 pid,
                 medical_identifier_code=resolved.medical_identifier_code,
+                profile=profile,
             )
             who = resolved.fullname or ""
 

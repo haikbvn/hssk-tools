@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from hssk.auth.profile import load_profile
 from hssk.config import ensure_mapping_file, example_mapping_path
 from hssk.errors import ConfigError, HsskError
 from hssk.mapping import MappingConfig, load_mapping, save_record_defaults
@@ -145,15 +146,25 @@ class PreferencesDialog(QDialog):
         if mapping is None:
             return
 
-        # normal_desc_value comes first
+        profile = load_profile()
+
+        # Read-only facility ID row (locked to the logged-in account).
+        facility_text = (profile.identity_label() if profile else None) or "(chưa đăng nhập)"
+        facility_label = QLabel(facility_text)
+        facility_label.setStyleSheet("color: #6e7781;")
+        form.addRow(_LABELS.get("healthfacilitiesId", "Mã cơ sở y tế") + ":", facility_label)
+
+        # normal_desc_value comes first among editable fields
         nv = mapping.defaults.normal_desc_value
         w_nv = QLineEdit(str(nv))
         form.addRow(_LABELS.get("normal_desc_value", "normal_desc_value") + ":", w_nv)
         self._widgets["normal_desc_value"] = w_nv
 
-        # rest of medicalRecordInfo
+        # rest of medicalRecordInfo (skip healthfacilitiesId — read-only above)
         rec: dict[str, Any] = mapping.defaults.medicalRecordInfo
         for key, val in rec.items():
+            if key == "healthfacilitiesId":
+                continue
             label = _LABELS.get(key, key)
             widget: QWidget
             if isinstance(val, list):
@@ -170,7 +181,12 @@ class PreferencesDialog(QDialog):
                 widget.setRange(-1e9, 1e9)  # type: ignore[attr-defined]
                 widget.setValue(val)  # type: ignore[attr-defined]
             else:
-                widget = QLineEdit(str(val) if val is not None else "")
+                text = str(val) if val is not None else ""
+                if not text and profile and key == "doctorName" and profile.display_name:
+                    text = profile.display_name
+                widget = QLineEdit(text)
+            if profile and isinstance(widget, QLineEdit) and key == "doctorName":
+                widget.setPlaceholderText(f"(từ tài khoản: {profile.display_name})")
             form.addRow(label + ":", widget)
             self._widgets[key] = widget
 

@@ -86,8 +86,8 @@ def record_info_template(normal: str = NORMAL) -> dict[str, Any]:
             "treatmentDirection": normal,
             "treatmentResultId": 3,
             "dischargeStatusId": 1,
-            "healthfacilitiesId": "27084",
-            "doctorName": "Nguyễn Thị Hoa",
+            "healthfacilitiesId": None,
+            "doctorName": None,
         }
     )
     for f in MONEY_FIELDS:

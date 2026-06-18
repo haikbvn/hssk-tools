@@ -81,6 +81,10 @@ def token_path() -> Path:
     return secrets_dir() / "token.json"
 
 
+def profile_path() -> Path:
+    return secrets_dir() / "profile.json"
+
+
 def auth_profile_dir() -> Path:
     d = data_dir() / "browser-profile"
     d.mkdir(parents=True, exist_ok=True)
@@ -93,6 +97,12 @@ def ledger_path() -> Path:
 
 def output_dir() -> Path:
     d = data_dir() / "output"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def login_capture_dir() -> Path:
+    d = data_dir() / "login-capture"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
