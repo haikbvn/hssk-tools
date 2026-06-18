@@ -10,6 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from .errors import ConfigError
 
+try:
+    from ruamel.yaml import YAML as _RYAML  # type: ignore[import-untyped]
+
+    _ruamel_available = True
+except ImportError:
+    _ruamel_available = False
+
 ColumnType = Literal["str", "int", "float", "str_num", "datetime", "list"]
 
 
@@ -82,6 +89,11 @@ class MappingConfig(BaseModel):
                 f"identifier column {col!r} must map to target 'medicalIdentifierCode', "
                 f"got {spec.target!r}"
             )
+        if not spec.required:
+            raise ValueError(
+                f"identifier column {col!r} must have required: true — "
+                "a blank identifier cannot be searched"
+            )
         return self
 
     def target_by_column(self) -> dict[str, ColumnSpec]:
@@ -101,3 +113,61 @@ def load_mapping(path: str | Path) -> MappingConfig:
         return MappingConfig.model_validate(raw)
     except ValidationError as exc:
         raise ConfigError(f"Invalid mapping in {p}:\n{exc}") from exc
+
+
+def save_record_defaults(
+    path: str | Path,
+    *,
+    record_info: dict[str, Any],
+    normal_desc_value: str,
+) -> None:
+    """Write updated ``defaults`` values back into a mapping YAML, preserving comments.
+
+    Only the ``defaults.medicalRecordInfo`` keys and ``defaults.normal_desc_value`` are
+    touched.  Everything else (columns, search, computed, comments) is preserved.
+    After writing, the file is re-validated to surface any structural breakage early.
+
+    Raises ConfigError on YAML parse errors or Pydantic validation failures.
+    Raises RuntimeError if ruamel.yaml is not installed.
+    """
+    if not _ruamel_available:
+        raise RuntimeError(
+            "ruamel.yaml is required to save mapping defaults. "
+            "Install it with: pip install 'ruamel.yaml>=0.18'"
+        )
+
+    p = Path(path)
+    if not p.exists():
+        raise ConfigError(f"Mapping file not found: {p}")
+
+    ryaml = _RYAML()
+    ryaml.preserve_quotes = True
+
+    try:
+        data = ryaml.load(p)
+    except Exception as exc:
+        raise ConfigError(f"Could not parse YAML in {p}: {exc}") from exc
+
+    if data is None:
+        data = {}
+
+    if "defaults" not in data:
+        data["defaults"] = {}
+    defaults = data["defaults"]
+
+    defaults["normal_desc_value"] = normal_desc_value
+
+    if "medicalRecordInfo" not in defaults:
+        defaults["medicalRecordInfo"] = {}
+    rec = defaults["medicalRecordInfo"]
+    for k, v in record_info.items():
+        rec[k] = v
+
+    import io
+
+    buf = io.StringIO()
+    ryaml.dump(data, buf)
+    p.write_text(buf.getvalue(), encoding="utf-8")
+
+    # Re-validate so callers get a ConfigError instead of a broken run later.
+    load_mapping(p)

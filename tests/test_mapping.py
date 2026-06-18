@@ -35,6 +35,23 @@ def test_identifier_must_map_to_code(tmp_path: Path):
     assert "medicalIdentifierCode" in str(exc.value)
 
 
+def test_identifier_must_be_required(tmp_path: Path):
+    bad = tmp_path / "m.yaml"
+    bad.write_text(
+        textwrap.dedent(
+            """
+            identifier: { column: "ID" }
+            columns:
+              "ID": { target: medicalIdentifierCode, type: str, required: false }
+            """
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError) as exc:
+        load_mapping(bad)
+    assert "required" in str(exc.value)
+
+
 def test_missing_file():
     with pytest.raises(ConfigError):
         load_mapping("/no/such/mapping.yaml")
