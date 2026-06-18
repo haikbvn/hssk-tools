@@ -32,15 +32,14 @@ from hssk.auth.token_store import load_token
 from hssk.config import ensure_mapping_file
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
-from hssk.excel import reader
-from hssk.excel.coerce import coerce_row
 from hssk.mapping import load_mapping
+from hssk.payload import builder
 from hssk.pipeline.runner import RowOutcome, RunSummary, Status
 
 from .i18n import tr
 from .preferences_dialog import PreferencesDialog
 from .settings import UiSettings
-from .workers import LoginWorker, RunWorker
+from .workers import LoginWorker, RunWorker, ValidateWorker, ValidationProblem, ValidationSummary
 
 _STATUS_COLORS = {
     Status.CREATED: "#1a7f37",
@@ -82,6 +81,8 @@ class MainWindow(QMainWindow):
         # thread/worker handles (kept alive while running)
         self._login_thread: QThread | None = None
         self._login_worker: LoginWorker | None = None
+        self._validate_thread: QThread | None = None
+        self._validate_worker: ValidateWorker | None = None
         self._run_thread: QThread | None = None
         self._run_worker: RunWorker | None = None
 
@@ -394,32 +395,81 @@ class MainWindow(QMainWindow):
             return
         try:
             mapping = self._load_mapping()
-            rows = reader.read_rows(self._excel_path, mapping)
         except (ConfigError, HsskError) as exc:
             QMessageBox.critical(self, tr("dlg_validation"), str(exc))
             return
-        valid = invalid = warns = 0
-        lines: list[str] = []
-        for idx, raw in rows:
-            r = coerce_row(raw, mapping, idx)
-            if r.ok:
-                valid += 1
-            else:
-                invalid += 1
-                lines.append(tr("msg_row_prefix").format(idx=idx) + "; ".join(r.errors))
-            for w in r.warnings:
-                warns += 1
-                lines.append(tr("msg_row_prefix").format(idx=idx) + f"⚠ {w}")
-        summary = tr("msg_validation_summary").format(
-            valid=valid, invalid=invalid, warns=warns, total=len(rows)
+        bad_targets = builder.validate_targets(mapping)
+        if bad_targets:
+            QMessageBox.critical(
+                self,
+                tr("dlg_validation"),
+                f"Mapping uses unknown API field target(s): {bad_targets}",
+            )
+            return
+        self._reset_results(for_validation=True)
+        self._run_start = time.monotonic()
+        self._validate_thread = QThread()
+        self._validate_worker = ValidateWorker(self._excel_path, mapping)
+        self._validate_worker.moveToThread(self._validate_thread)
+        self._validate_thread.started.connect(self._validate_worker.run)
+        self._validate_worker.progress.connect(self._on_progress)
+        self._validate_worker.problem.connect(self._on_validate_problem)
+        self._validate_worker.finished.connect(self._validate_thread.quit)
+        self._validate_worker.failed.connect(self._validate_thread.quit)
+        self._validate_worker.finished.connect(self._on_validate_finished)
+        self._validate_worker.failed.connect(self._on_validate_failed)
+        self._validate_thread.finished.connect(self._validate_worker.deleteLater)
+        self._validate_thread.finished.connect(self._validate_thread.deleteLater)
+        self._validate_thread.finished.connect(self._on_validate_thread_finished)
+        self.validate_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self._validate_thread.start()
+
+    def _on_validate_problem(self, problem: ValidationProblem) -> None:
+        self._append_validation_row(
+            problem.row_index, problem.identifier, problem.has_errors, problem.message
         )
-        detail = "\n".join(lines[:200]) if lines else tr("msg_no_issues")
-        dlg = QMessageBox(self)
-        dlg.setIcon(QMessageBox.Icon.Information if invalid == 0 else QMessageBox.Icon.Warning)
-        dlg.setWindowTitle(tr("dlg_validation"))
-        dlg.setText(summary)
-        dlg.setDetailedText(detail)
-        dlg.exec()
+
+    def _on_validate_finished(self, summary: ValidationSummary) -> None:
+        if summary.invalid == 0 and summary.warns == 0:
+            self.status_label.setText(tr("msg_no_issues"))
+            self.counter_label.setStyleSheet("color:#1a7f37; font-weight:bold;")
+        else:
+            self.status_label.setText(
+                tr("msg_validation_summary").format(
+                    valid=summary.valid,
+                    invalid=summary.invalid,
+                    warns=summary.warns,
+                    total=summary.total,
+                )
+            )
+            self.counter_label.setStyleSheet("")
+        self.counter_label.setText(f"✓ {summary.valid}   ⚠ {summary.warns}   ✗ {summary.invalid}")
+
+    def _on_validate_failed(self, message: str) -> None:
+        self.status_label.setText(tr("lbl_error"))
+        QMessageBox.critical(self, tr("dlg_validation"), message)
+
+    def _on_validate_thread_finished(self) -> None:
+        self._validate_thread = None
+        self._validate_worker = None
+        self.validate_btn.setEnabled(self._excel_path is not None)
+        self.stop_btn.setEnabled(self._run_thread is not None)
+        self._update_start_enabled()
+
+    def _append_validation_row(
+        self, idx: int, identifier: str, has_errors: bool, message: str
+    ) -> None:
+        status_text = tr("val_status_invalid") if has_errors else tr("val_status_warning")
+        status_color = "#cf222e" if has_errors else "#bf8700"
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        cells = [str(idx), identifier, status_text, "", "", message]
+        for c, text in enumerate(cells):
+            item = QTableWidgetItem(text)
+            if c == 2:
+                item.setForeground(QColor(status_color))
+            self.table.setItem(row, c, item)
 
     # -- run ----------------------------------------------------------------------------
 
@@ -433,7 +483,9 @@ class MainWindow(QMainWindow):
 
     def _update_start_enabled(self) -> None:
         ready = self._excel_path is not None and self._token is not None
-        self.start_btn.setEnabled(ready and self._run_thread is None)
+        self.start_btn.setEnabled(
+            ready and self._run_thread is None and self._validate_thread is None
+        )
 
     def _start_run(self) -> None:
         if self._excel_path is None or self._token is None:
@@ -497,17 +549,23 @@ class MainWindow(QMainWindow):
     def _stop_run(self) -> None:
         if self._run_worker is not None:
             self._run_worker.cancel()
-            self.stop_btn.setEnabled(False)
+        if self._validate_worker is not None:
+            self._validate_worker.cancel()
+        self.stop_btn.setEnabled(False)
 
-    def _reset_results(self) -> None:
+    def _reset_results(self, for_validation: bool = False) -> None:
         self.table.setRowCount(0)
         self.progress.setValue(0)
         self._counts = {}
         self.counter_label.setText("—")
+        self.counter_label.setStyleSheet("")
         self.status_label.setText("")
         self.log_pane.clear()
         self.open_report_btn.setEnabled(False)
         self.open_results_btn.setEnabled(False)
+        # col indices: 0=row, 1=identifier, 2=status, 3=patient_id, 4=record_id, 5=message
+        self.table.setColumnHidden(3, for_validation)
+        self.table.setColumnHidden(4, for_validation)
 
     def _on_progress(self, done: int, total: int) -> None:
         self.progress.setMaximum(max(total, 1))
@@ -622,6 +680,7 @@ class MainWindow(QMainWindow):
         still_running = False
         for worker, thread in (
             (self._run_worker, self._run_thread),
+            (self._validate_worker, self._validate_thread),
             (self._login_worker, self._login_thread),
         ):
             if worker is not None:
