@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl
-from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -36,6 +36,7 @@ from hssk.excel.coerce import coerce_row
 from hssk.mapping import load_mapping
 from hssk.pipeline.runner import RowOutcome, RunSummary, Status
 
+from .preferences_dialog import PreferencesDialog
 from .settings import UiSettings
 from .workers import LoginWorker, RunWorker
 
@@ -88,6 +89,15 @@ class MainWindow(QMainWindow):
         root.addWidget(self._build_run_box())
         root.addWidget(self._build_results_box(), stretch=1)
         self.setCentralWidget(central)
+        self._build_menu()
+
+    def _build_menu(self) -> None:
+        settings_menu = self.menuBar().addMenu("Settings")
+        prefs_action = QAction("Settings…", self)
+        prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
+        prefs_action.setShortcut(QKeySequence.StandardKey.Preferences)
+        prefs_action.triggered.connect(self._show_preferences)
+        settings_menu.addAction(prefs_action)
 
     def _build_login_box(self) -> QGroupBox:
         box = QGroupBox("1 · Login")
@@ -206,7 +216,15 @@ class MainWindow(QMainWindow):
         if self._ui.last_file and Path(self._ui.last_file).exists():
             self._set_excel(Path(self._ui.last_file))
         self.delay_spin.setValue(self._ui.delay)
+        self.limit_spin.setValue(self._ui.limit)
         self.dryrun_check.setChecked(self._ui.dry_run)
+
+    def _show_preferences(self) -> None:
+        dlg = PreferencesDialog(self)
+        if dlg.exec() == PreferencesDialog.DialogCode.Accepted:
+            self.delay_spin.setValue(self._ui.delay)
+            self.limit_spin.setValue(self._ui.limit)
+            self.dryrun_check.setChecked(self._ui.dry_run)
 
     # -- login --------------------------------------------------------------------------
 
@@ -376,6 +394,7 @@ class MainWindow(QMainWindow):
 
         # persist prefs
         self._ui.delay = self.delay_spin.value()
+        self._ui.limit = self.limit_spin.value()
         self._ui.dry_run = dry_run
 
         settings = engine_settings().model_copy(update={"request_delay": self.delay_spin.value()})
@@ -543,6 +562,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # Never let the window (and its QThreads) be torn down while a worker is still running.
+        # If a thread doesn't stop within the timeout, refuse the close rather than risk SIGABRT.
+        still_running = False
         for worker, thread in (
             (self._run_worker, self._run_thread),
             (self._login_worker, self._login_thread),
@@ -551,5 +572,15 @@ class MainWindow(QMainWindow):
                 worker.cancel()
             if thread is not None and thread.isRunning():
                 thread.quit()
-                thread.wait(10000)
+                if not thread.wait(10000):
+                    still_running = True
+
+        if still_running:
+            event.ignore()
+            QMessageBox.warning(
+                self,
+                "Operation still stopping",
+                "An operation is still stopping — please wait a moment and try again.",
+            )
+            return
         event.accept()

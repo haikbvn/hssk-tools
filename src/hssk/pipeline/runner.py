@@ -135,7 +135,11 @@ def run(
                 aborted, abort_reason = True, "cancelled by user"
                 break
             cb.on_progress(i - 1, total)
-            coerced = coerce_row(raw, mapping, row_index)
+            try:
+                coerced = coerce_row(raw, mapping, row_index)
+            except Exception as exc:
+                emit(RowOutcome(row_index, None, Status.INVALID, message=f"coercion error: {exc}"))
+                continue
             identifier = coerced.identifier
             key = Ledger.make_key(identifier, coerced.exam_date)
 
@@ -163,7 +167,9 @@ def run(
                 )
                 continue
 
-            assert identifier is not None  # guaranteed: coerced.ok requires identifier set
+            if identifier is None:  # defense-in-depth: coerced.ok should guarantee this
+                emit(RowOutcome(row_index, None, Status.INVALID, message="identifier is blank"))
+                continue
             try:
                 resolved = patients.resolve(client, identifier, mapping.search, on_raw=raw_logger)
                 pid = resolved.patient_id

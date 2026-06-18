@@ -187,6 +187,30 @@ def test_no_patient(mapping, tmp_path):
     assert summary.counts.get(Status.NO_PATIENT) == 1
 
 
+def test_unexpected_coercion_error_yields_invalid_not_crash(mapping, tmp_path, monkeypatch):
+    """An exception from coerce_row must produce Status.INVALID, not abort the batch."""
+    from hssk.pipeline import runner as runner_mod
+
+    def _boom(raw, m, idx):
+        raise RuntimeError("simulated unexpected error")
+
+    monkeypatch.setattr(runner_mod, "coerce_row", _boom)
+
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    summary = runner.run(
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=True,
+        settings=s,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+    )
+    # Both rows become INVALID; the batch does not crash.
+    assert not summary.aborted
+    assert summary.counts.get(Status.INVALID, 0) == 2
+
+
 @respx.mock
 def test_dry_run_writes_payload_and_does_not_create(mapping, tmp_path):
     _mock_search(found=True)

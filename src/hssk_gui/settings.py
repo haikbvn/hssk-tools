@@ -35,3 +35,11 @@ class UiSettings:
     @dry_run.setter
     def dry_run(self, value: bool) -> None:
         self._s.setValue("dry_run", value)
+
+    @property
+    def limit(self) -> int:
+        return int(self._s.value("limit", 0, type=int))  # type: ignore[call-overload]
+
+    @limit.setter
+    def limit(self, value: int) -> None:
+        self._s.setValue("limit", value)
