@@ -23,14 +23,17 @@ def _resolve_mapping(path: str | None):
 
 def cmd_login(args: argparse.Namespace) -> int:
     from .auth.browser_login import capture_token
+    from .auth.profile import load_profile
+    from .auth.token_store import mask
 
     data = capture_token(on_status=lambda m: print(f"  {m}"))
     rem = data.seconds_remaining()
-    from .auth.token_store import mask
-
     print(f"✓ Token saved ({mask(data.token)}).")
     if rem is not None:
         print(f"  Valid for ~{rem // 60} min {rem % 60}s.")
+    profile = load_profile()
+    if profile is not None:
+        print(f"  Logged in as: {profile.identity_label()}")
     return 0
 
 

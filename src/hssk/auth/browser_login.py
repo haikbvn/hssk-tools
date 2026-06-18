@@ -19,6 +19,7 @@ from typing import Any
 from ..config import Settings, auth_profile_dir
 from ..config import settings as default_settings
 from ..errors import AuthExpired, HsskError
+from .profile import fetch_profile, save_profile
 from .token_store import TokenData, save_token
 
 _JWT_RE = re.compile(r"^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$")
@@ -126,4 +127,8 @@ def capture_token(
 
     data = save_token(captured["token"])
     status("Token captured.")
+    # Fetch and persist the operator profile (best-effort; never fails login).
+    profile = fetch_profile(captured["token"], s)
+    if profile is not None:
+        save_profile(profile)
     return data

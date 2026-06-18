@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..auth.profile import ProfileData
 from ..excel.coerce import RowResult
 from ..mapping import MappingConfig
 from . import templates
@@ -22,6 +23,7 @@ def build(
     patient_id: Any,
     *,
     medical_identifier_code: str | None = None,
+    profile: ProfileData | None = None,
 ) -> dict[str, Any]:
     """Build the full health-examination create payload for one patient.
 
@@ -56,5 +58,13 @@ def build(
     # Mirror diagnosesDischarge into the list field when the list was not explicitly provided.
     if "diagnosesDischarge" in row.values and "diagnosesDischargeList" not in row.values:
         record["diagnosesDischargeList"] = [record["diagnosesDischarge"]]
+
+    # healthfacilitiesId is always locked to the logged-in account's facility.
+    # doctorName uses the profile as last-resort fallback only.
+    if profile is not None:
+        if profile.healthfacilities_id:
+            record["healthfacilitiesId"] = profile.healthfacilities_id
+        if not record.get("doctorName") and profile.display_name:
+            record["doctorName"] = profile.display_name
 
     return payload

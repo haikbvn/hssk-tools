@@ -12,7 +12,7 @@ from hssk.mapping import load_mapping
 def test_example_mapping_loads(mapping):
     assert mapping.identifier.column == "Mã định danh"
     assert mapping.columns["Mã định danh"].target == "medicalIdentifierCode"
-    assert mapping.defaults.medicalRecordInfo["healthfacilitiesId"] == "27084"
+    assert "healthfacilitiesId" not in mapping.defaults.medicalRecordInfo
     assert mapping.search.multi_match == "skip"
     assert mapping.computed.bmi is not None
     assert mapping.computed.bmi.source == ["weight", "height"]
