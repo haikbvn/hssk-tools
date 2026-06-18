@@ -6,6 +6,7 @@ from typing import Any
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -26,6 +27,7 @@ from hssk.config import ensure_mapping_file, example_mapping_path
 from hssk.errors import ConfigError, HsskError
 from hssk.mapping import MappingConfig, load_mapping, save_record_defaults
 
+from .i18n import tr
 from .settings import UiSettings
 
 # Friendly Vietnamese labels for the common medicalRecordInfo defaults.
@@ -50,7 +52,7 @@ _LABELS: dict[str, str] = {
 class PreferencesDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Preferences")
+        self.setWindowTitle(tr("dlg_prefs_title"))
         self.setMinimumWidth(520)
 
         self._ui = UiSettings()
@@ -60,14 +62,14 @@ class PreferencesDialog(QDialog):
 
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
-        tabs.addTab(self._build_run_tab(), "Run defaults")
-        tabs.addTab(self._build_record_tab(), "Record defaults")
+        tabs.addTab(self._build_run_tab(), tr("tab_run_defaults"))
+        tabs.addTab(self._build_record_tab(), tr("tab_record_defaults"))
         layout.addWidget(tabs)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        self._restore_btn = QPushButton("Restore defaults")
+        self._restore_btn = QPushButton(tr("btn_restore_defaults"))
         self._restore_btn.clicked.connect(self._restore_record_defaults)
         buttons.addButton(self._restore_btn, QDialogButtonBox.ButtonRole.ResetRole)
         buttons.accepted.connect(self._accept)
@@ -78,7 +80,7 @@ class PreferencesDialog(QDialog):
 
     def _build_run_tab(self) -> QWidget:
         w = QWidget()
-        box = QGroupBox("Saved run defaults (applied on each launch)")
+        box = QGroupBox(tr("grp_run_defaults"))
         form = QFormLayout(box)
 
         self._delay_spin = QDoubleSpinBox()
@@ -86,17 +88,24 @@ class PreferencesDialog(QDialog):
         self._delay_spin.setSingleStep(0.5)
         self._delay_spin.setSuffix(" s")
         self._delay_spin.setValue(self._ui.delay)
-        form.addRow("Delay between rows:", self._delay_spin)
+        form.addRow(tr("lbl_delay_rows"), self._delay_spin)
 
         self._limit_spin = QSpinBox()
         self._limit_spin.setRange(0, 1_000_000)
-        self._limit_spin.setSpecialValueText("0 (all rows)")
+        self._limit_spin.setSpecialValueText(tr("spin_all_rows"))
         self._limit_spin.setValue(self._ui.limit)
-        form.addRow("Row limit:", self._limit_spin)
+        form.addRow(tr("lbl_row_limit"), self._limit_spin)
 
-        self._dryrun_check = QCheckBox("Dry-run by default (don't send)")
+        self._dryrun_check = QCheckBox(tr("chk_dryrun_default"))
         self._dryrun_check.setChecked(self._ui.dry_run)
         form.addRow("", self._dryrun_check)
+
+        self._lang_combo = QComboBox()
+        self._lang_combo.addItem("Tiếng Việt", "vi")
+        self._lang_combo.addItem("English", "en")
+        idx = self._lang_combo.findData(self._ui.language)
+        self._lang_combo.setCurrentIndex(max(idx, 0))
+        form.addRow(tr("lbl_language"), self._lang_combo)
 
         lay = QVBoxLayout(w)
         lay.addWidget(box)
@@ -107,14 +116,11 @@ class PreferencesDialog(QDialog):
         w = QWidget()
         lay = QVBoxLayout(w)
 
-        note = QLabel(
-            "These values are stamped on every uploaded record when the matching Excel "
-            "column is blank or absent. Per-row Excel values always take precedence."
-        )
+        note = QLabel(tr("note_record_defaults"))
         note.setWordWrap(True)
         lay.addWidget(note)
 
-        box = QGroupBox("medicalRecordInfo defaults")
+        box = QGroupBox(tr("grp_record_defaults"))
         form = QFormLayout(box)
         lay.addWidget(box)
         lay.addStretch(1)
@@ -134,11 +140,7 @@ class PreferencesDialog(QDialog):
             mapping: MappingConfig | None = load_mapping(mapping_path)
         except (ConfigError, HsskError) as exc:
             mapping = None
-            error_label = QLabel(
-                f"Cannot load mapping file: {exc}\n\n"
-                "Record defaults cannot be edited until the mapping is valid.\n"
-                "Click 'Restore defaults' to recover from the bundled example."
-            )
+            error_label = QLabel(tr("msg_mapping_error_prefs").format(exc=exc))
             error_label.setWordWrap(True)
             form.addRow(error_label)
 
@@ -223,14 +225,18 @@ class PreferencesDialog(QDialog):
         self._ui.limit = self._limit_spin.value()
         self._ui.dry_run = self._dryrun_check.isChecked()
 
+        # Save language selection; notify user if it changed.
+        new_lang: str = self._lang_combo.currentData()
+        if new_lang != self._ui.language:
+            self._ui.language = new_lang
+            QMessageBox.information(self, tr("dlg_prefs_title"), tr("msg_restart_language"))
+
         if self._mapping is None:
             # Active mapping is unreadable — inform the user and accept with run defaults only.
             QMessageBox.information(
                 self,
-                "Run defaults saved",
-                "Run defaults were saved.\n\n"
-                "Record defaults could not be saved because the mapping file is unreadable. "
-                "Click 'Restore defaults' to recover from the bundled example.",
+                tr("dlg_run_defaults_saved"),
+                tr("msg_run_defaults_saved"),
             )
             self.accept()
             return
@@ -249,7 +255,7 @@ class PreferencesDialog(QDialog):
                 normal_desc_value=normal_desc_value,
             )
         except (ConfigError, HsskError, RuntimeError) as exc:
-            QMessageBox.critical(self, "Save error", str(exc))
+            QMessageBox.critical(self, tr("dlg_save_error"), str(exc))
             return
 
         self.accept()

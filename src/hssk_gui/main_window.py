@@ -37,6 +37,7 @@ from hssk.excel.coerce import coerce_row
 from hssk.mapping import load_mapping
 from hssk.pipeline.runner import RowOutcome, RunSummary, Status
 
+from .i18n import tr
 from .preferences_dialog import PreferencesDialog
 from .settings import UiSettings
 from .workers import LoginWorker, RunWorker
@@ -52,7 +53,14 @@ _STATUS_COLORS = {
     Status.AUTH_EXPIRED: "#cf222e",
     Status.RATE_LIMITED: "#cf222e",
 }
-_TABLE_COLS = ["Row", "Identifier", "Status", "PatientId", "RecordId", "Message"]
+_TABLE_COL_KEYS = [
+    "col_row",
+    "col_identifier",
+    "col_status",
+    "col_patient_id",
+    "col_record_id",
+    "col_message",
+]
 
 
 class MainWindow(QMainWindow):
@@ -60,7 +68,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         from hssk import __version__
 
-        self.setWindowTitle(f"HSSK Tools v{__version__} — Health checkup uploader")
+        self.setWindowTitle(tr("window_title").format(version=__version__))
         self.resize(960, 720)
 
         self._ui = UiSettings()
@@ -95,52 +103,72 @@ class MainWindow(QMainWindow):
         self._build_menu()
 
     def _build_menu(self) -> None:
-        settings_menu = self.menuBar().addMenu("Settings")
-        prefs_action = QAction("Settings…", self)
+        settings_menu = self.menuBar().addMenu(tr("menu_settings"))
+        prefs_action = QAction(tr("menu_settings_action"), self)
         prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
         prefs_action.setShortcut(QKeySequence.StandardKey.Preferences)
         prefs_action.triggered.connect(self._show_preferences)
         settings_menu.addAction(prefs_action)
 
-        help_menu = self.menuBar().addMenu("Help")
-        about_action = QAction("About HSSK Tools", self)
+        help_menu = self.menuBar().addMenu(tr("menu_help"))
+
+        terms_action = QAction(tr("menu_terms"), self)
+        terms_action.setMenuRole(QAction.MenuRole.NoRole)
+        terms_action.triggered.connect(lambda: self._show_legal(0))
+        help_menu.addAction(terms_action)
+
+        privacy_action = QAction(tr("menu_privacy"), self)
+        privacy_action.setMenuRole(QAction.MenuRole.NoRole)
+        privacy_action.triggered.connect(lambda: self._show_legal(1))
+        help_menu.addAction(privacy_action)
+
+        security_action = QAction(tr("menu_security"), self)
+        security_action.setMenuRole(QAction.MenuRole.NoRole)
+        security_action.triggered.connect(lambda: self._show_legal(2))
+        help_menu.addAction(security_action)
+
+        help_menu.addSeparator()
+
+        about_action = QAction(tr("menu_about"), self)
         about_action.setMenuRole(QAction.MenuRole.AboutRole)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+    def _show_legal(self, tab: int) -> None:
+        from .legal_dialog import LegalDialog
+
+        LegalDialog(self, tab=tab).exec()
 
     def _show_about(self) -> None:
         from hssk import __version__
 
         QMessageBox.about(
             self,
-            "About HSSK Tools",
-            f"<b>HSSK Tools</b> v{__version__}<br><br>"
-            "Bulk-pushes health-checkup data from Excel into "
-            "<a href='https://hososuckhoe.com.vn'>hososuckhoe.com.vn</a>.<br><br>"
-            f"Bundle ID: <code>vn.hososuckhoe.hssktools</code>",
+            tr("about_title"),
+            tr("about_body").format(version=__version__),
         )
 
     def _build_login_box(self) -> QGroupBox:
-        box = QGroupBox("1 · Login")
+        box = QGroupBox(tr("group_login"))
         lay = QHBoxLayout(box)
-        self.login_btn = QPushButton("Open website && log in")
+        self.login_btn = QPushButton(tr("btn_login"))
         self.login_btn.clicked.connect(self._do_login)
-        self.token_label = QLabel("Not logged in")
+        self.token_label = QLabel(tr("lbl_not_logged_in"))
         lay.addWidget(self.login_btn)
         lay.addWidget(self.token_label, stretch=1)
         return box
 
     def _build_data_box(self) -> QGroupBox:
-        box = QGroupBox("2 · Data")
+        box = QGroupBox(tr("group_data"))
         lay = QHBoxLayout(box)
-        self.choose_btn = QPushButton("Choose Excel…")
+        self.choose_btn = QPushButton(tr("btn_choose_excel"))
         self.choose_btn.clicked.connect(self._choose_excel)
-        self.file_label = QLabel("No file selected")
-        self.template_btn = QPushButton("Template…")
+        self.file_label = QLabel(tr("lbl_no_file"))
+        self.template_btn = QPushButton(tr("btn_template"))
         self.template_btn.clicked.connect(self._make_template)
-        self.mapping_btn = QPushButton("Open mapping")
+        self.mapping_btn = QPushButton(tr("btn_open_mapping"))
         self.mapping_btn.clicked.connect(self._open_mapping)
-        self.validate_btn = QPushButton("Validate")
+        self.validate_btn = QPushButton(tr("btn_validate"))
         self.validate_btn.clicked.connect(self._validate)
         lay.addWidget(self.choose_btn)
         lay.addWidget(self.file_label, stretch=1)
@@ -150,39 +178,39 @@ class MainWindow(QMainWindow):
         return box
 
     def _build_run_box(self) -> QGroupBox:
-        box = QGroupBox("3 · Run")
+        box = QGroupBox(tr("group_run"))
         outer = QVBoxLayout(box)
 
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("Delay (s):"))
+        controls.addWidget(QLabel(tr("lbl_delay")))
         self.delay_spin = QDoubleSpinBox()
         self.delay_spin.setRange(0.2, 10.0)
         self.delay_spin.setSingleStep(0.5)
         self.delay_spin.setValue(1.0)
         controls.addWidget(self.delay_spin)
 
-        controls.addWidget(QLabel("Limit (0 = all):"))
+        controls.addWidget(QLabel(tr("lbl_limit")))
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(0, 1_000_000)
         self.limit_spin.setValue(0)
         controls.addWidget(self.limit_spin)
 
-        self.dryrun_check = QCheckBox("Dry-run (don't send)")
+        self.dryrun_check = QCheckBox(tr("chk_dryrun"))
         self.dryrun_check.setChecked(True)
         self.dryrun_check.stateChanged.connect(self._on_dryrun_toggled)
         controls.addWidget(self.dryrun_check)
         controls.addStretch(1)
 
-        self.start_btn = QPushButton("Start dry-run")
+        self.start_btn = QPushButton(tr("btn_start_dryrun"))
         self.start_btn.clicked.connect(self._start_run)
-        self.stop_btn = QPushButton("Stop")
+        self.stop_btn = QPushButton(tr("btn_stop"))
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self._stop_run)
         controls.addWidget(self.start_btn)
         controls.addWidget(self.stop_btn)
         outer.addLayout(controls)
 
-        self.banner = QLabel("⚠️  PRODUCTION — this sends LIVE medical records")
+        self.banner = QLabel(tr("banner_production"))
         self.banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.banner.setStyleSheet(
             "background:#cf222e; color:white; font-weight:bold; padding:4px; border-radius:4px;"
@@ -192,7 +220,7 @@ class MainWindow(QMainWindow):
         return box
 
     def _build_results_box(self) -> QGroupBox:
-        box = QGroupBox("Results")
+        box = QGroupBox(tr("group_results"))
         lay = QVBoxLayout(box)
 
         prog_row = QHBoxLayout()
@@ -207,24 +235,24 @@ class MainWindow(QMainWindow):
         self.log_pane = QPlainTextEdit()
         self.log_pane.setReadOnly(True)
         self.log_pane.setMaximumHeight(80)
-        self.log_pane.setPlaceholderText("Engine log…")
+        self.log_pane.setPlaceholderText(tr("log_placeholder"))
         lay.addWidget(self.log_pane)
 
-        self.table = QTableWidget(0, len(_TABLE_COLS))
-        self.table.setHorizontalHeaderLabels(_TABLE_COLS)
+        self.table = QTableWidget(0, len(_TABLE_COL_KEYS))
+        self.table.setHorizontalHeaderLabels([tr(k) for k in _TABLE_COL_KEYS])
         self.table.horizontalHeader().setSectionResizeMode(
-            len(_TABLE_COLS) - 1, QHeaderView.ResizeMode.Stretch
+            len(_TABLE_COL_KEYS) - 1, QHeaderView.ResizeMode.Stretch
         )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         lay.addWidget(self.table, stretch=1)
 
         bottom = QHBoxLayout()
         bottom.addStretch(1)
-        self.open_results_btn = QPushButton("Open results spreadsheet")
+        self.open_results_btn = QPushButton(tr("btn_open_results"))
         self.open_results_btn.setEnabled(False)
         self.open_results_btn.clicked.connect(self._open_results)
         bottom.addWidget(self.open_results_btn)
-        self.open_report_btn = QPushButton("Open report folder")
+        self.open_report_btn = QPushButton(tr("btn_open_report"))
         self.open_report_btn.setEnabled(False)
         self.open_report_btn.clicked.connect(self._open_report)
         bottom.addWidget(self.open_report_btn)
@@ -253,21 +281,22 @@ class MainWindow(QMainWindow):
         data = load_token()
         if data is None:
             self._token = None
-            self._set_token_label("Not logged in", "#cf222e")
+            self._set_token_label(tr("lbl_not_logged_in"), "#cf222e")
             return
         rem = data.seconds_remaining()
         if not data.is_valid():
             self._token = None
-            self._set_token_label("Token expired — please log in again", "#cf222e")
+            self._set_token_label(tr("lbl_token_expired"), "#cf222e")
             return
         self._token = data.token
         profile = load_profile()
         identity = f"  —  {profile.identity_label()}" if profile else ""
         if rem is None:
-            self._set_token_label(f"Logged in ✓{identity}", "#1a7f37")
+            self._set_token_label(tr("lbl_logged_in").format(identity=identity), "#1a7f37")
         else:
             self._set_token_label(
-                f"Logged in ✓{identity}  (valid ~{rem // 60}m {rem % 60}s)", "#1a7f37"
+                tr("lbl_logged_in_ttl").format(identity=identity, m=rem // 60, s=rem % 60),
+                "#1a7f37",
             )
 
     def _set_token_label(self, text: str, color: str) -> None:
@@ -276,7 +305,7 @@ class MainWindow(QMainWindow):
 
     def _do_login(self) -> None:
         self.login_btn.setEnabled(False)
-        self._set_token_label("Opening browser… log in in the window that appears.", "#0969da")
+        self._set_token_label(tr("lbl_opening_browser"), "#0969da")
         self._login_thread = QThread()
         self._login_worker = LoginWorker()
         self._login_worker.moveToThread(self._login_thread)
@@ -301,7 +330,7 @@ class MainWindow(QMainWindow):
     def _on_login_failed(self, message: str) -> None:
         self.login_btn.setEnabled(True)
         self._refresh_token_status()
-        QMessageBox.warning(self, "Login failed", message)
+        QMessageBox.warning(self, tr("dlg_login_failed"), message)
 
     def _on_login_thread_finished(self) -> None:
         self._login_thread = None
@@ -311,7 +340,10 @@ class MainWindow(QMainWindow):
 
     def _choose_excel(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Choose Excel file", self._ui.last_file or "", "Excel files (*.xlsx *.xlsm)"
+            self,
+            tr("dlg_choose_excel_title"),
+            self._ui.last_file or "",
+            tr("filter_excel_multi"),
         )
         if path:
             self._set_excel(Path(path))
@@ -329,7 +361,10 @@ class MainWindow(QMainWindow):
         if self._ui.last_file:
             default = str(Path(self._ui.last_file).with_name("hssk_template.xlsx"))
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Excel template", default, "Excel files (*.xlsx)"
+            self,
+            tr("dlg_save_template_title"),
+            default,
+            tr("filter_excel_xlsx"),
         )
         if not path:
             return
@@ -338,9 +373,13 @@ class MainWindow(QMainWindow):
         try:
             out = make_template(self._load_mapping(), path)
         except (ConfigError, HsskError) as exc:
-            QMessageBox.critical(self, "Template error", str(exc))
+            QMessageBox.critical(self, tr("dlg_template_error"), str(exc))
             return
-        QMessageBox.information(self, "Template created", f"Saved to:\n{out}")
+        QMessageBox.information(
+            self,
+            tr("dlg_template_created"),
+            tr("msg_saved_to").format(path=out),
+        )
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(out)))
 
     def _open_mapping(self) -> None:
@@ -357,7 +396,7 @@ class MainWindow(QMainWindow):
             mapping = self._load_mapping()
             rows = reader.read_rows(self._excel_path, mapping)
         except (ConfigError, HsskError) as exc:
-            QMessageBox.critical(self, "Validation error", str(exc))
+            QMessageBox.critical(self, tr("dlg_validation"), str(exc))
             return
         valid = invalid = warns = 0
         lines: list[str] = []
@@ -367,15 +406,17 @@ class MainWindow(QMainWindow):
                 valid += 1
             else:
                 invalid += 1
-                lines.append(f"row {idx}: {'; '.join(r.errors)}")
+                lines.append(tr("msg_row_prefix").format(idx=idx) + "; ".join(r.errors))
             for w in r.warnings:
                 warns += 1
-                lines.append(f"row {idx}: ⚠ {w}")
-        summary = f"{valid} valid, {invalid} invalid, {warns} warnings ({len(rows)} rows)."
-        detail = "\n".join(lines[:200]) if lines else "No issues found."
+                lines.append(tr("msg_row_prefix").format(idx=idx) + f"⚠ {w}")
+        summary = tr("msg_validation_summary").format(
+            valid=valid, invalid=invalid, warns=warns, total=len(rows)
+        )
+        detail = "\n".join(lines[:200]) if lines else tr("msg_no_issues")
         dlg = QMessageBox(self)
         dlg.setIcon(QMessageBox.Icon.Information if invalid == 0 else QMessageBox.Icon.Warning)
-        dlg.setWindowTitle("Validation")
+        dlg.setWindowTitle(tr("dlg_validation"))
         dlg.setText(summary)
         dlg.setDetailedText(detail)
         dlg.exec()
@@ -385,7 +426,7 @@ class MainWindow(QMainWindow):
     def _on_dryrun_toggled(self) -> None:
         dry = self.dryrun_check.isChecked()
         self.banner.setVisible(not dry)
-        self.start_btn.setText("Start dry-run" if dry else "PUSH live records")
+        self.start_btn.setText(tr("btn_start_dryrun") if dry else tr("btn_start_live"))
         self.start_btn.setStyleSheet(
             "" if dry else "background:#cf222e; color:white; font-weight:bold;"
         )
@@ -401,8 +442,8 @@ class MainWindow(QMainWindow):
         if not dry_run:
             confirm = QMessageBox.question(
                 self,
-                "Confirm PRODUCTION push",
-                "This will create LIVE medical records on hososuckhoe.com.vn.\n\nProceed?",
+                tr("dlg_confirm_push"),
+                tr("msg_confirm_push"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -412,7 +453,7 @@ class MainWindow(QMainWindow):
         try:
             mapping = self._load_mapping()
         except (ConfigError, HsskError) as exc:
-            QMessageBox.critical(self, "Mapping error", str(exc))
+            QMessageBox.critical(self, tr("dlg_mapping_error"), str(exc))
             return
 
         # persist prefs
@@ -472,17 +513,20 @@ class MainWindow(QMainWindow):
         self.progress.setMaximum(max(total, 1))
         self.progress.setValue(done)
         if done == 0:
-            self.status_label.setText(f"Starting… ({total} rows)")
+            self.status_label.setText(tr("prog_starting").format(total=total))
         elif done >= total:
-            self.status_label.setText(f"All {total} rows processed")
+            self.status_label.setText(tr("prog_all_done").format(total=total))
         else:
             elapsed = time.monotonic() - self._run_start
             if elapsed > 0:
                 rem = int((elapsed / done) * (total - done))
-                eta = f"~{rem // 60}m {rem % 60}s left" if rem >= 60 else f"~{rem}s left"
-                self.status_label.setText(f"Row {done} of {total}   {eta}")
+                if rem >= 60:
+                    eta = tr("eta_min_sec").format(m=rem // 60, s=rem % 60)
+                else:
+                    eta = tr("eta_sec").format(s=rem)
+                self.status_label.setText(tr("prog_row_of").format(done=done, total=total, eta=eta))
             else:
-                self.status_label.setText(f"Row {done} of {total}")
+                self.status_label.setText(tr("prog_row_of_no_eta").format(done=done, total=total))
 
     def _on_row(self, outcome: RowOutcome) -> None:
         self._counts[outcome.status] = self._counts.get(outcome.status, 0) + 1
@@ -535,38 +579,27 @@ class MainWindow(QMainWindow):
 
         if summary.aborted:
             if summary.counts.get(Status.AUTH_EXPIRED, 0):
-                parts.append(
-                    "Your login token expired.\n\n"
-                    "Click 'Open website & log in', then press Start again — "
-                    "rows already sent will be skipped automatically."
-                )
-                self.status_label.setText("Aborted — token expired.")
+                parts.append(tr("msg_token_expired_abort"))
+                self.status_label.setText(tr("lbl_aborted_token"))
             elif summary.counts.get(Status.RATE_LIMITED, 0):
-                parts.append(
-                    "The server is busy or temporarily unreachable.\n\n"
-                    "Wait a few minutes and press Start again — "
-                    "rows already sent will be skipped automatically."
-                )
-                self.status_label.setText("Aborted — server error.")
+                parts.append(tr("msg_rate_limited_abort"))
+                self.status_label.setText(tr("lbl_aborted_server"))
             else:
-                parts.append("Run cancelled.")
-                self.status_label.setText("Cancelled.")
-            parts.append(f"Processed {processed} of {summary.total} rows before stopping.")
+                parts.append(tr("msg_run_cancelled"))
+                self.status_label.setText(tr("lbl_cancelled"))
+            parts.append(tr("msg_processed_of").format(done=processed, total=summary.total))
         else:
-            parts.append(f"Done — {processed} rows processed.")
-            self.status_label.setText(f"Finished ({processed} rows).")
+            parts.append(tr("msg_done").format(done=processed))
+            self.status_label.setText(tr("lbl_finished").format(done=processed))
 
         if skipped > 0:
-            parts.append(
-                f"\n{skipped} already-sent row(s) were skipped — safe to re-run, "
-                "previously sent rows are always skipped."
-            )
-        parts.append(f"\nReport: {summary.run_dir}")
-        QMessageBox.information(self, "Run complete", "\n".join(parts))
+            parts.append(tr("msg_skipped_rows").format(skipped=skipped))
+        parts.append(tr("msg_report_path").format(path=summary.run_dir))
+        QMessageBox.information(self, tr("dlg_run_complete"), "\n".join(parts))
 
     def _on_run_failed(self, message: str) -> None:
-        self.status_label.setText("Error.")
-        QMessageBox.critical(self, "Run failed", message)
+        self.status_label.setText(tr("lbl_error"))
+        QMessageBox.critical(self, tr("dlg_run_failed"), message)
 
     def _on_run_thread_finished(self) -> None:
         # Thread has fully stopped — now it is safe to drop references and re-enable Start.
@@ -602,8 +635,8 @@ class MainWindow(QMainWindow):
             event.ignore()
             QMessageBox.warning(
                 self,
-                "Operation still stopping",
-                "An operation is still stopping — please wait a moment and try again.",
+                tr("dlg_still_stopping"),
+                tr("msg_still_stopping"),
             )
             return
         event.accept()

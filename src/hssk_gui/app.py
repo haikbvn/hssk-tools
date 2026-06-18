@@ -4,11 +4,26 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog
 
 from hssk import __version__
 
+from .i18n import set_language
 from .main_window import MainWindow
+from .settings import UiSettings
+
+
+def _ensure_terms_accepted() -> bool:
+    s = UiSettings()
+    if s.terms_accepted:
+        return True
+    from .legal_dialog import LegalDialog
+
+    dlg = LegalDialog(consent=True)
+    if dlg.exec() == QDialog.DialogCode.Accepted:
+        s.terms_accepted = True
+        return True
+    return False
 
 
 def main() -> int:
@@ -16,6 +31,9 @@ def main() -> int:
     app.setApplicationName("HSSK Tools")
     app.setOrganizationName("hssk-tools")
     app.setApplicationVersion(__version__)
+    set_language(UiSettings().language)
+    if not _ensure_terms_accepted():
+        return 0
     window = MainWindow()
     window.show()
     return app.exec()

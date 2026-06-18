@@ -43,3 +43,19 @@ class UiSettings:
     @limit.setter
     def limit(self, value: int) -> None:
         self._s.setValue("limit", value)
+
+    @property
+    def terms_accepted(self) -> bool:
+        return bool(self._s.value("terms_accepted", False, type=bool))
+
+    @terms_accepted.setter
+    def terms_accepted(self, value: bool) -> None:
+        self._s.setValue("terms_accepted", value)
+
+    @property
+    def language(self) -> str:
+        return str(self._s.value("language", "vi", type=str))
+
+    @language.setter
+    def language(self, value: str) -> None:
+        self._s.setValue("language", value)
