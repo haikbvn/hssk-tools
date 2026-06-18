@@ -11,6 +11,18 @@ record. **Dry-run is the default** and the app is deliberately throttled — see
 > Use only with permission. The app makes strictly sequential, throttled, backed-off requests to
 > avoid overloading the server.
 
+## Download
+
+Pre-built binaries for Windows and macOS are attached to each
+[GitHub Release](../../releases/latest). Download the `.tgz` for your platform and extract it.
+
+**macOS** — the app is not code-signed. Right-click → Open, then click Open; or from a terminal:
+```sh
+xattr -dr com.apple.quarantine "HSSK Tools.app"
+```
+
+**Windows** — the `.exe` is not code-signed. When SmartScreen appears, click "More info" → "Run anyway".
+
 ## Requirements
 
 - **Python 3.12** (3.11/3.13 also work; the dev Mac's system 3.14 is too new for some wheels).

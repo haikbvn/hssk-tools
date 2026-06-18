@@ -58,7 +58,9 @@ _TABLE_COLS = ["Row", "Identifier", "Status", "PatientId", "RecordId", "Message"
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("HSSK Tools — Health checkup uploader")
+        from hssk import __version__
+
+        self.setWindowTitle(f"HSSK Tools v{__version__} — Health checkup uploader")
         self.resize(960, 720)
 
         self._ui = UiSettings()
@@ -99,6 +101,24 @@ class MainWindow(QMainWindow):
         prefs_action.setShortcut(QKeySequence.StandardKey.Preferences)
         prefs_action.triggered.connect(self._show_preferences)
         settings_menu.addAction(prefs_action)
+
+        help_menu = self.menuBar().addMenu("Help")
+        about_action = QAction("About HSSK Tools", self)
+        about_action.setMenuRole(QAction.MenuRole.AboutRole)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+
+    def _show_about(self) -> None:
+        from hssk import __version__
+
+        QMessageBox.about(
+            self,
+            "About HSSK Tools",
+            f"<b>HSSK Tools</b> v{__version__}<br><br>"
+            "Bulk-pushes health-checkup data from Excel into "
+            "<a href='https://hososuckhoe.com.vn'>hososuckhoe.com.vn</a>.<br><br>"
+            f"Bundle ID: <code>vn.hososuckhoe.hssktools</code>",
+        )
 
     def _build_login_box(self) -> QGroupBox:
         box = QGroupBox("1 · Login")
