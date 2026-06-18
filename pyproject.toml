@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hssk-tools"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Push nationwide health-checkup data from Excel into hososuckhoe.com.vn"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -39,6 +39,9 @@ hssk = "hssk.cli:main"
 
 [project.gui-scripts]
 hssk-gui = "hssk_gui.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "hssk.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -62,6 +62,8 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+_icon = str(ROOT / "packaging" / "assets" / ("icon.icns" if sys.platform == "darwin" else "icon.ico"))
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -70,6 +72,7 @@ exe = EXE(
     name="hssk-gui",
     console=False,
     disable_windowed_traceback=False,
+    icon=_icon,
 )
 coll = COLLECT(exe, a.binaries, a.zipfiles, a.datas, name="hssk-gui")
 
@@ -77,7 +80,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="HSSK Tools.app",
-        icon=None,
+        icon=_icon,
         bundle_identifier="vn.hososuckhoe.hssktools",
     )
     _ms_dest = Path(DISTPATH) / "HSSK Tools.app" / "Contents" / "Resources" / "ms-playwright"
