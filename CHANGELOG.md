@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.1.0 — 2026-06-18
+
+### New features
+- **Vietnamese UI** — the GUI launches in Vietnamese (Tiếng Việt) by default, the native language
+  of clinic-staff operators. A language selector in Preferences lets users switch to English; the
+  change takes effect on the next launch. Legal dialogs (Terms, Privacy, Security) also ship full
+  Vietnamese translations.
+- **Validate tab overhaul** — validation results now populate the Results table instead of a
+  blocking `QMessageBox`, so there is no 200-line truncation and errors are scannable row-by-row.
+  Only problem rows (errors or warnings) appear; PatientId / RecordId columns are hidden during
+  validation and restored when a run starts. Validation now runs on a `QThread` (same lifecycle as
+  the run worker) so the UI stays responsive, the progress bar fills row-by-row with a live ETA,
+  and Stop cancels mid-way. Mapping-target validation (`builder.validate_targets`) runs upfront —
+  broken mappings are caught before any row is touched.
+
+---
+
 ## v1.0.0 — 2026-06-18
 
 First public release.
