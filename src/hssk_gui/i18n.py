@@ -112,7 +112,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "vi": "{valid} hợp lệ, {invalid} không hợp lệ, {warns} cảnh báo ({total} hàng).",
     },
     "msg_no_issues": {"en": "No issues found.", "vi": "Không có lỗi."},
-    "msg_row_prefix": {"en": "row {idx}: ", "vi": "hàng {idx}: "},
+    "val_status_invalid": {"en": "INVALID", "vi": "Không hợp lệ"},
+    "val_status_warning": {"en": "WARNING", "vi": "Cảnh báo"},
     # production confirm
     "dlg_confirm_push": {
         "en": "Confirm PRODUCTION push",
