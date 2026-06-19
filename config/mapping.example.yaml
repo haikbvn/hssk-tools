@@ -15,6 +15,8 @@ identifier:
 columns:
   # --- key + dates (-> medicalRecordInfo) ---
   "Mã định danh": { target: medicalIdentifierCode, type: str, required: true }
+  # For `hssk update` only: uncomment the line below (and add the matching column to your Excel).
+  # "Mã hồ sơ": { target: medicalRecordId, type: int, required: true }
   "Ngày khám":
     {
       target: examinationDate,

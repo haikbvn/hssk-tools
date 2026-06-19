@@ -59,3 +59,11 @@ class UiSettings:
     @language.setter
     def language(self, value: str) -> None:
         self._s.setValue("language", value)
+
+    @property
+    def update_mode(self) -> bool:
+        return bool(self._s.value("update_mode", False, type=bool))
+
+    @update_mode.setter
+    def update_mode(self, value: bool) -> None:
+        self._s.setValue("update_mode", value)
