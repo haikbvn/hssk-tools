@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, QThread, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QColor, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QGroupBox,
@@ -43,6 +44,7 @@ from .workers import LoginWorker, RunWorker, ValidateWorker, ValidationProblem, 
 
 _STATUS_COLORS = {
     Status.CREATED: "#1a7f37",
+    Status.UPDATED: "#1a7f37",
     Status.DRY_RUN_OK: "#0969da",
     Status.SKIPPED_ALREADY: "#6e7781",
     Status.INVALID: "#bf8700",
@@ -183,6 +185,14 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(box)
 
         controls = QHBoxLayout()
+        controls.addWidget(QLabel(tr("lbl_mode")))
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem(tr("mode_create"))
+        self.mode_combo.addItem(tr("mode_update"))
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        controls.addWidget(self.mode_combo)
+        controls.addSpacing(12)
+
         controls.addWidget(QLabel(tr("lbl_delay")))
         self.delay_spin = QDoubleSpinBox()
         self.delay_spin.setRange(0.2, 10.0)
@@ -267,7 +277,9 @@ class MainWindow(QMainWindow):
             self._set_excel(Path(self._ui.last_file))
         self.delay_spin.setValue(self._ui.delay)
         self.limit_spin.setValue(self._ui.limit)
+        self.mode_combo.setCurrentIndex(1 if self._ui.update_mode else 0)
         self.dryrun_check.setChecked(self._ui.dry_run)
+        self._refresh_run_controls()
 
     def _show_preferences(self) -> None:
         dlg = PreferencesDialog(self)
@@ -473,29 +485,46 @@ class MainWindow(QMainWindow):
 
     # -- run ----------------------------------------------------------------------------
 
-    def _on_dryrun_toggled(self) -> None:
+    def _refresh_run_controls(self) -> None:
         dry = self.dryrun_check.isChecked()
+        update_mode = self.mode_combo.currentIndex() == 1
         self.banner.setVisible(not dry)
-        self.start_btn.setText(tr("btn_start_dryrun") if dry else tr("btn_start_live"))
-        self.start_btn.setStyleSheet(
-            "" if dry else "background:#cf222e; color:white; font-weight:bold;"
-        )
+        if not dry:
+            self.banner.setText(
+                tr("banner_production_update") if update_mode else tr("banner_production")
+            )
+        if dry:
+            self.start_btn.setText(tr("btn_start_dryrun"))
+            self.start_btn.setStyleSheet("")
+        elif update_mode:
+            self.start_btn.setText(tr("btn_start_update_live"))
+            self.start_btn.setStyleSheet("background:#cf222e; color:white; font-weight:bold;")
+        else:
+            self.start_btn.setText(tr("btn_start_live"))
+            self.start_btn.setStyleSheet("background:#cf222e; color:white; font-weight:bold;")
+
+    def _on_dryrun_toggled(self) -> None:
+        self._refresh_run_controls()
+
+    def _on_mode_changed(self) -> None:
+        self._refresh_run_controls()
 
     def _update_start_enabled(self) -> None:
         ready = self._excel_path is not None and self._token is not None
-        self.start_btn.setEnabled(
-            ready and self._run_thread is None and self._validate_thread is None
-        )
+        idle = self._run_thread is None and self._validate_thread is None
+        self.start_btn.setEnabled(ready and idle)
+        self.mode_combo.setEnabled(idle)
 
     def _start_run(self) -> None:
         if self._excel_path is None or self._token is None:
             return
         dry_run = self.dryrun_check.isChecked()
+        update_mode = self.mode_combo.currentIndex() == 1
         if not dry_run:
             confirm = QMessageBox.question(
                 self,
                 tr("dlg_confirm_push"),
-                tr("msg_confirm_push"),
+                tr("msg_confirm_push_update") if update_mode else tr("msg_confirm_push"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -508,10 +537,21 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, tr("dlg_mapping_error"), str(exc))
             return
 
+        if update_mode and not any(
+            spec.target == "medicalRecordId" and spec.required for spec in mapping.columns.values()
+        ):
+            QMessageBox.critical(
+                self,
+                tr("dlg_update_needs_record_id"),
+                tr("msg_update_needs_record_id"),
+            )
+            return
+
         # persist prefs
         self._ui.delay = self.delay_spin.value()
         self._ui.limit = self.limit_spin.value()
         self._ui.dry_run = dry_run
+        self._ui.update_mode = update_mode
 
         settings = engine_settings().model_copy(update={"request_delay": self.delay_spin.value()})
         limit = self.limit_spin.value() or None
@@ -526,6 +566,7 @@ class MainWindow(QMainWindow):
             dry_run=dry_run,
             limit=limit,
             settings=settings,
+            update_mode=update_mode,
         )
         self._run_worker.moveToThread(self._run_thread)
         self._run_thread.started.connect(self._run_worker.run)
@@ -607,7 +648,11 @@ class MainWindow(QMainWindow):
         self._update_counter_label()
 
     def _update_counter_label(self) -> None:
-        created = self._counts.get(Status.CREATED, 0) + self._counts.get(Status.DRY_RUN_OK, 0)
+        created = (
+            self._counts.get(Status.CREATED, 0)
+            + self._counts.get(Status.UPDATED, 0)
+            + self._counts.get(Status.DRY_RUN_OK, 0)
+        )
         skipped = self._counts.get(Status.SKIPPED_ALREADY, 0)
         failed = sum(
             self._counts.get(s, 0)

@@ -114,6 +114,15 @@ _STRINGS: dict[str, dict[str, str]] = {
     "msg_no_issues": {"en": "No issues found.", "vi": "Không có lỗi."},
     "val_status_invalid": {"en": "INVALID", "vi": "Không hợp lệ"},
     "val_status_warning": {"en": "WARNING", "vi": "Cảnh báo"},
+    # mode combo (run box)
+    "lbl_mode": {"en": "Mode:", "vi": "Chế độ:"},
+    "mode_create": {"en": "Create", "vi": "Tạo mới"},
+    "mode_update": {"en": "Update", "vi": "Cập nhật"},
+    "btn_start_update_live": {"en": "UPDATE live records", "vi": "CẬP NHẬT DỮ LIỆU THẬT"},
+    "banner_production_update": {
+        "en": "⚠️  PRODUCTION — this UPDATES LIVE medical records",
+        "vi": "⚠️  PRODUCTION — đang CẬP NHẬT hồ sơ y tế THẬT",
+    },
     # production confirm
     "dlg_confirm_push": {
         "en": "Confirm PRODUCTION push",
@@ -122,6 +131,28 @@ _STRINGS: dict[str, dict[str, str]] = {
     "msg_confirm_push": {
         "en": "This will create LIVE medical records on hososuckhoe.com.vn.\n\nProceed?",
         "vi": "Thao tác này sẽ tạo hồ sơ y tế THẬT trên hososuckhoe.com.vn.\n\nTiếp tục?",
+    },
+    "msg_confirm_push_update": {
+        "en": "This will UPDATE LIVE medical records on hososuckhoe.com.vn.\n\nProceed?",
+        "vi": "Thao tác này sẽ CẬP NHẬT hồ sơ y tế THẬT trên hososuckhoe.com.vn.\n\nTiếp tục?",
+    },
+    "dlg_update_needs_record_id": {
+        "en": "Update mode — mapping error",
+        "vi": "Chế độ cập nhật — lỗi mapping",
+    },
+    "msg_update_needs_record_id": {
+        "en": (
+            "Update mode requires a mapping column with:\n"
+            "  target: medicalRecordId\n"
+            "  required: true\n\n"
+            "Add it to your mapping.yaml (see mapping.example.yaml for an example)."
+        ),
+        "vi": (
+            "Chế độ cập nhật yêu cầu một cột mapping với:\n"
+            "  target: medicalRecordId\n"
+            "  required: true\n\n"
+            "Thêm vào file mapping.yaml của bạn (xem mapping.example.yaml để biết ví dụ)."
+        ),
     },
     "dlg_mapping_error": {"en": "Mapping error", "vi": "Lỗi mapping"},
     # progress

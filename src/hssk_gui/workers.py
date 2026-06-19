@@ -113,6 +113,7 @@ class RunWorker(QObject):
         dry_run: bool,
         limit: int | None,
         settings: Settings,
+        update_mode: bool = False,
     ) -> None:
         super().__init__()
         self._input = input_path
@@ -121,6 +122,7 @@ class RunWorker(QObject):
         self._dry_run = dry_run
         self._limit = limit
         self._settings = settings
+        self._update_mode = update_mode
         self._cancel = False
 
     def cancel(self) -> None:
@@ -134,7 +136,8 @@ class RunWorker(QObject):
                 on_row=lambda o: self.row.emit(o),
                 on_log=lambda m: self.log.emit(m),
             )
-            summary = runner.run(
+            engine_fn = runner.run_update if self._update_mode else runner.run
+            summary = engine_fn(
                 self._input,
                 self._mapping,
                 token=self._token,
