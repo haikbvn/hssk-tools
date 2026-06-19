@@ -8,7 +8,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     # window / groups
     "window_title": {
         "en": "HSSK Tools v{version} — Health checkup uploader",
-        "vi": "HSSK Tools v{version} — Tải lên dữ liệu khám sức khoế",
+        "vi": "HSSK Tools v{version} — Tải lên dữ liệu khám sức khoẻ",
     },
     "group_login": {"en": "1 · Login", "vi": "1 · Đăng nhập"},
     "group_data": {"en": "2 · Data", "vi": "2 · Dữ liệu"},
@@ -83,7 +83,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         ),
         "vi": (
             "<b>HSSK Tools</b> v{version}<br><br>"
-            "Đẩy hàng loạt dữ liệu khám sức khoế từ Excel lên "
+            "Đẩy hàng loạt dữ liệu khám sức khoẻ từ Excel lên "
             "<a href='https://hososuckhoe.com.vn'>hososuckhoe.com.vn</a>.<br><br>"
             "Bundle ID: <code>vn.hososuckhoe.hssktools</code>"
         ),
@@ -236,7 +236,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "msg_still_stopping": {
         "en": "An operation is still stopping — please wait a moment and try again.",
-        "vi": "Một thao tác đang dừng — vui lòng chờ một lút và thử lại.",
+        "vi": "Một thao tác đang dừng — vui lòng chờ một lúc và thử lại.",
     },
     # preferences dialog
     "dlg_prefs_title": {"en": "Preferences", "vi": "Cài đặt"},
@@ -313,6 +313,26 @@ _STRINGS: dict[str, dict[str, str]] = {
     "tab_security": {"en": "Security", "vi": "Bảo mật"},
     "btn_accept": {"en": "Accept", "vi": "Chấp nhận"},
     "btn_decline": {"en": "Decline", "vi": "Từ chối"},
+    # preferences — record default field labels
+    "rec_normal_desc_value": {"en": "Normal description", "vi": "Mô tả bình thường"},
+    "rec_doctorName": {"en": "Doctor (default)", "vi": "Bác sĩ (mặc định)"},
+    "rec_healthfacilitiesId": {"en": "Health facility ID", "vi": "Mã cơ sở y tế"},
+    "rec_typeOfExamination": {"en": "Examination type code", "vi": "Mã hình thức khám"},
+    "rec_reasonCode": {"en": "Examinee category code", "vi": "Mã đối tượng khám"},
+    "rec_reasonsMedicalexamination": {"en": "Reason for examination", "vi": "Lý do khám"},
+    "rec_symptoms": {"en": "Default medical history", "vi": "Bệnh sử mặc định"},
+    "rec_treatmentDayNumber": {"en": "Treatment days", "vi": "Số ngày điều trị"},
+    "rec_diagnosesDischarge": {"en": "Default conclusion", "vi": "Kết luận mặc định"},
+    "rec_diagnosesDischargeList": {
+        "en": "Comorbidities list (comma-separated)",
+        "vi": "Danh sách bệnh kèm (cách nhau bởi dấu phẩy)",
+    },
+    "rec_noteDisease": {"en": "Default monitored condition", "vi": "Bệnh theo dõi mặc định"},
+    "rec_treatmentDirection": {"en": "Default treatment advice", "vi": "Tư vấn điều trị mặc định"},
+    "rec_treatmentResultId": {"en": "Examination result code", "vi": "Mã kết quả khám"},
+    "rec_dischargeStatusId": {"en": "Discharge status code", "vi": "Mã tình trạng ra viện"},
+    "ph_not_logged_in": {"en": "(not logged in)", "vi": "(chưa đăng nhập)"},
+    "ph_from_account": {"en": "(from account: {name})", "vi": "(từ tài khoản: {name})"},
 }
 
 
