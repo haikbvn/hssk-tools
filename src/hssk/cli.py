@@ -112,6 +112,46 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0 if not summary.aborted else 2
 
 
+def cmd_update(args: argparse.Namespace) -> int:
+    from .auth.token_store import load_valid_token
+
+    token = load_valid_token()
+    mapping = _resolve_mapping(args.mapping)
+    dry_run = not args.commit
+
+    s = settings()
+    if args.delay is not None:
+        s = s.model_copy(update={"request_delay": args.delay})
+
+    if not dry_run and not args.yes:
+        print("⚠️  PRODUCTION — this will update LIVE medical records.")
+        if input("   Type YES to proceed: ").strip() != "YES":
+            print("Aborted.")
+            return 1
+
+    def on_row(o: runner.RowOutcome) -> None:
+        print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
+
+    cb = runner.Callbacks(on_row=on_row, on_log=lambda m: print(f"  · {m}"))
+    summary = runner.run_update(
+        args.input,
+        mapping,
+        token=token,
+        dry_run=dry_run,
+        limit=args.limit,
+        settings=s,
+        callbacks=cb,
+    )
+
+    print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")
+    for status, count in sorted(summary.counts.items(), key=lambda kv: kv[0].value):
+        print(f"  {status.value:<16} {count}")
+    if summary.aborted:
+        print(f"⚠️  Aborted: {summary.abort_reason}")
+    print(f"Report: {summary.run_dir}")
+    return 0 if not summary.aborted else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="hssk", description="Push health-checkup data to hososuckhoe")
     sub = p.add_subparsers(dest="command", required=True)
@@ -140,6 +180,19 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--reset-ledger", action="store_true", help="Clear the processed-rows ledger")
     r.add_argument("--yes", action="store_true", help="Skip the production confirmation prompt")
     r.set_defaults(func=cmd_run)
+
+    u = sub.add_parser(
+        "update",
+        help="Update existing records (dry-run by default); mapping must define medicalRecordId",
+    )
+    u.add_argument("-i", "--input", required=True, help="Excel file path")
+    u.add_argument("-m", "--mapping", help="Mapping YAML path (defaults to user config)")
+    u.add_argument("--commit", action="store_true", help="Actually send (default is dry-run)")
+    u.add_argument("--limit", type=int, help="Process at most N rows")
+    u.add_argument("--delay", type=float, help="Min seconds between requests")
+    u.add_argument("--yes", action="store_true", help="Skip the production confirmation prompt")
+    u.set_defaults(func=cmd_update)
+
     return p
 
 
