@@ -187,6 +187,27 @@ def test_no_patient(mapping, tmp_path):
     assert summary.counts.get(Status.NO_PATIENT) == 1
 
 
+@respx.mock
+def test_api_error_during_search_is_recorded_not_aborted(mapping, tmp_path):
+    """A non-retryable 4xx from the search endpoint becomes FAILED, not a batch crash."""
+    respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
+        return_value=httpx.Response(400, json={"message": "bad request"})
+    )
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    summary = runner.run(
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=False,
+        settings=s,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+    )
+    assert not summary.aborted
+    assert summary.counts.get(Status.FAILED) == 1
+    assert summary.counts.get(Status.INVALID) == 1  # the blank-identifier row
+
+
 def test_unexpected_coercion_error_yields_invalid_not_crash(mapping, tmp_path, monkeypatch):
     """An exception from coerce_row must produce Status.INVALID, not abort the batch."""
     from hssk.pipeline import runner as runner_mod

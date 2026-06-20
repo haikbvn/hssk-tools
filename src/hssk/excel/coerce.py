@@ -9,6 +9,7 @@ exception that kills the batch.
 from __future__ import annotations
 
 import datetime as dt
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -64,14 +65,18 @@ def _parse_number(value: Any) -> float:
     if isinstance(value, bool):
         raise ValueError("boolean is not a number")
     if isinstance(value, (int, float)):
-        return float(value)
-    s = str(value).strip().replace(" ", "")
-    if "," in s and "." in s:
-        # assume '.' thousands, ',' decimal -> "1.234,5" => "1234.5"
-        s = s.replace(".", "").replace(",", ".")
-    elif "," in s:
-        s = s.replace(",", ".")
-    return float(s)
+        result = float(value)
+    else:
+        s = str(value).strip().replace(" ", "")
+        if "," in s and "." in s:
+            # assume '.' thousands, ',' decimal -> "1.234,5" => "1234.5"
+            s = s.replace(".", "").replace(",", ".")
+        elif "," in s:
+            s = s.replace(",", ".")
+        result = float(s)
+    if not math.isfinite(result):
+        raise ValueError("not a finite number")
+    return result
 
 
 def _format_number_str(value: Any) -> str:
@@ -88,7 +93,10 @@ def _to_datetime(value: Any) -> dt.datetime:
     if isinstance(value, dt.date):
         return dt.datetime(value.year, value.month, value.day)
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return _EXCEL_EPOCH + dt.timedelta(days=float(value))
+        days = float(value)
+        if not math.isfinite(days):
+            raise ValueError("not a finite date serial")
+        return _EXCEL_EPOCH + dt.timedelta(days=days)
     return date_parser.parse(str(value).strip(), dayfirst=True)
 
 
@@ -125,7 +133,7 @@ def coerce_row(raw: dict[str, Any], mapping: MappingConfig, row_index: int) -> R
             continue
         try:
             coerced = _coerce_one(value, spec)
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, OverflowError) as exc:
             result.errors.append(f"{column!r}: cannot parse {value!r} as {spec.type} ({exc})")
             continue
         result.values[spec.target] = coerced
@@ -166,6 +174,8 @@ def _compute_bmi(mapping: MappingConfig, result: RowResult) -> None:
         if height_m <= 0:
             return
         bmi = round(weight_kg / (height_m * height_m), cfg.round)
+        if not math.isfinite(bmi):
+            return
     except (ValueError, TypeError, ZeroDivisionError):
         return
     result.values["bmi"] = _format_number_str(bmi)

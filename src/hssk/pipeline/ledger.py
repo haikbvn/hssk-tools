@@ -7,6 +7,7 @@ create, so a crash mid-batch never loses progress or double-sends on the next ru
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,13 @@ class Ledger:
 
     @staticmethod
     def make_key(identifier: str | None, exam_date: str | None) -> str:
-        return f"{identifier}|{exam_date}"
+        # Escape the separator so a value containing '|' can't collide across the boundary.
+        # Ordinary data (an id + a formatted date, no '|' or '\') is byte-identical to the old
+        # "id|date" format, so existing ledgers keep matching after this change.
+        def esc(v: str | None) -> str:
+            return str(v).replace("\\", "\\\\").replace("|", "\\|")
+
+        return f"{esc(identifier)}|{esc(exam_date)}"
 
     @classmethod
     def load(cls, path: Path | None = None) -> Ledger:
@@ -57,6 +64,8 @@ class Ledger:
                 )
                 + "\n"
             )
+            f.flush()
+            os.fsync(f.fileno())
 
     def reset(self) -> None:
         self._done.clear()

@@ -81,6 +81,17 @@ def test_reset_on_empty_ledger_is_safe(tmp_path):
     led.reset()  # should not raise
 
 
+def test_make_key_is_backward_compatible_for_ordinary_values():
+    # Ordinary ids/dates contain no '|' or '\', so the key must equal the original "id|date"
+    # format — otherwise existing ledgers would stop matching and re-send processed rows.
+    assert Ledger.make_key("MIC001", "01/01/2024 00:00:00") == "MIC001|01/01/2024 00:00:00"
+
+
+def test_make_key_avoids_separator_collision():
+    # A '|' inside a value must not collide across the id/date boundary.
+    assert Ledger.make_key("ABC|DEF", "2024") != Ledger.make_key("ABC", "DEF|2024")
+
+
 def test_jsonl_format_is_correct(tmp_path):
     path = tmp_path / "ledger.jsonl"
     led = Ledger.load(path)

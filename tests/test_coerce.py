@@ -109,3 +109,20 @@ def test_list_blank_is_skipped(mapping):
     res = coerce_row(raw, mapping, row_index=6)
     assert res.ok
     assert "diagnosesDischargeList" not in res.values
+
+
+def test_non_finite_value_is_per_cell_error(mapping):
+    """A non-finite numeric cell ('inf') becomes a precise per-cell error, never a crash."""
+    raw = {"Mã định danh": "X", "Cân nặng": "inf", **_REQ}
+    res = coerce_row(raw, mapping, row_index=7)
+    assert not res.ok
+    assert any("Cân nặng" in e for e in res.errors)
+    assert "bmi" not in res.values
+
+
+def test_overflow_to_infinity_is_per_cell_error(mapping):
+    """A value that overflows float to infinity ('1e400') is handled like any bad cell."""
+    raw = {"Mã định danh": "X", "Cân nặng": "1e400", **_REQ}
+    res = coerce_row(raw, mapping, row_index=8)
+    assert not res.ok
+    assert any("Cân nặng" in e for e in res.errors)
