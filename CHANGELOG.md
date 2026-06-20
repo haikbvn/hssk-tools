@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.1.1 — 2026-06-20
+
+### Fixes
+- **Login loop fixed** — with a persistent browser profile, an expired JWT left in `localStorage`
+  from a previous session was captured immediately at login, causing the browser to close in under
+  a second and the same expired token to be saved in a loop. Both token-capture paths now validate
+  the `exp` claim before accepting a token; the browser stays open until a genuine fresh login
+  provides a valid one. A still-valid remembered session is still captured instantly.
+- **Bundle size 929 MB → 573 MB** — the build spec previously copied every `chromium-*` directory
+  found in the Playwright cache, including stale revisions left by older Playwright installs. It
+  now reads the pinned revision from the bundled Playwright's own `browsers.json` and copies only
+  that exact directory.
+- **CI `--no-shell` flag order** — corrected `playwright install --no-shell chromium` (flag must
+  precede the positional browser name); the previous order silently ignored the flag and downloaded
+  the headless shell unnecessarily.
+
+---
+
 ## v1.1.0 — 2026-06-18
 
 ### New features
