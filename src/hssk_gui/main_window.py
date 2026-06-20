@@ -92,10 +92,11 @@ _MSG_HEADS = [  # "<head>" or "<head> — <name>"
     ("payload built (not sent)", "msg_row_dryrun"),
 ]
 
+
 def _tr_coerce_msg(msg: str) -> str:
     """Translate a single coerce error/warning line from the engine (no ⚠ prefix)."""
     if msg.startswith("missing required column "):
-        return tr("msg_coerce_missing_col") + msg[len("missing required column "):]
+        return tr("msg_coerce_missing_col") + msg[len("missing required column ") :]
     if ": cannot parse " in msg:
         # "'COL': cannot parse 'VAL' as TYPE (detail)" — translate the two fixed phrases
         msg = msg.replace(": cannot parse ", tr("msg_coerce_cannot_parse"), 1)
@@ -134,13 +135,14 @@ def _tr_message(message: str) -> str:
             return f"{tr(key)} — {message[len(head) + 3 :]}"
     # "coercion error: <coerce detail>" — translate prefix and coerce detail
     if message.startswith("coercion error: "):
-        return tr("msg_row_coercion") + _tr_coerce_msg(message[len("coercion error: "):])
+        return tr("msg_row_coercion") + _tr_coerce_msg(message[len("coercion error: ") :])
     # "fetch detail: <diagnostic tail>" — translate prefix, diagnostic passes through
     if message.startswith("fetch detail: "):
-        return tr("msg_row_fetch") + message[len("fetch detail: "):]
+        return tr("msg_row_fetch") + message[len("fetch detail: ") :]
     # Bare/compound coerce errors (runner joins coerced.errors with "; " — no prefix).
-    # _tr_coerce_msgs passes through anything it doesn't recognize, so raw API/exception
-    # text is unaffected.
+    # _tr_coerce_msgs only substitutes a few distinctive fixed phrases, so raw API/exception
+    # text is left intact in practice (a server string containing e.g. " is before " could
+    # in theory be partially rewritten, but those phrases are specific enough to be safe).
     return _tr_coerce_msgs(message)
 
 
@@ -544,6 +546,10 @@ class MainWindow(QMainWindow):
                 tr("msg_bad_targets").format(targets=bad_targets),
             )
             return
+        # Re-validating: the old verdict is stale (file may have changed on disk). Drop it
+        # so a stopped/failed pass leaves the file marked unvalidated.
+        self._validated_path = None
+        self._validated_invalid = 0
         self._reset_results(for_validation=True)
         self._run_start = time.monotonic()
         self._validate_thread = QThread()
@@ -583,10 +589,12 @@ class MainWindow(QMainWindow):
             )
             self.counter_label.setStyleSheet("")
         self.counter_label.setText(f"✓ {summary.valid}   ⚠ {summary.warns}   ✗ {summary.invalid}")
-        # Remember that this file was validated, and whether it had errors, so the push
-        # confirm can tell "never validated" apart from "validated but has bad rows".
-        self._validated_path = self._excel_path
-        self._validated_invalid = summary.invalid
+        # Only a pass that checked every row counts as validated. A stopped pass reports
+        # partial counts (invalid may be 0 simply because the bad rows weren't reached),
+        # so leave the file unvalidated to keep the "not validated yet" nudge honest.
+        if not summary.cancelled:
+            self._validated_path = self._excel_path
+            self._validated_invalid = summary.invalid
 
     def _on_validate_failed(self, message: str) -> None:
         self.status_label.setText(tr("lbl_error"))
