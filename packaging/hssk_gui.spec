@@ -40,10 +40,26 @@ def _default_browsers_path():
 
 _env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
 _browsers = Path(_env) if _env else _default_browsers_path()
-if not (_browsers.is_dir() and any(_browsers.glob("chromium-*"))):
+
+# Playwright pins ONE exact Chromium build per version (driver/package/browsers.json) and looks for
+# ms-playwright/chromium-<revision>/ at runtime. Bundle that precise revision, read from the same
+# Playwright package that gets frozen into the app — NOT "whatever chromium-* is present" (a stale
+# newer revision left in the cache by a later Playwright would otherwise be picked and the frozen app
+# would crash with "Executable doesn't exist at .../chromium-<rev>/...").
+import json as _json  # noqa: E402
+import playwright as _playwright  # noqa: E402
+
+_browsers_json = Path(_playwright.__file__).parent / "driver" / "package" / "browsers.json"
+_chromium_rev = next(
+    b["revision"]
+    for b in _json.loads(_browsers_json.read_text())["browsers"]
+    if b["name"] == "chromium"
+)
+_chromium_src = _browsers / f"chromium-{_chromium_rev}"
+if not _chromium_src.is_dir():
     raise SystemExit(
-        f"No Playwright Chromium found at {_browsers}. Run `playwright install chromium` "
-        "(or set PLAYWRIGHT_BROWSERS_PATH) before building, or the app will ship without a browser."
+        f"Playwright expects chromium-{_chromium_rev}, not found at {_chromium_src}. "
+        "Run `playwright install chromium` (or set PLAYWRIGHT_BROWSERS_PATH) before building."
     )
 
 # App resources
@@ -87,19 +103,13 @@ if sys.platform == "darwin":
 else:
     _ms_dest = Path(DISTPATH) / "hssk-gui" / "ms-playwright"
 
-# Copy only the headed Chromium into the finished app (skip headless shell, firefox, webkit, ffmpeg).
-# Preserving symlinks is required so the nested .app/.framework bundles stay valid; done post-build
-# rather than via Analysis to avoid symlink flattening and the ad-hoc codesign rejection.
+# Copy exactly the pinned Chromium revision (resolved above from the bundled Playwright) into the
+# finished app — skips the headless shell, firefox, webkit, ffmpeg, and any stale revisions in the
+# cache. Preserving symlinks keeps the nested .app/.framework bundles valid; done post-build rather
+# than via Analysis to avoid symlink flattening and the ad-hoc codesign rejection.
 # runtime_hook_playwright.py then points PLAYWRIGHT_BROWSERS_PATH at this directory.
-_COPY_PREFIXES = ("chromium-",)
-_SKIP_SUBSTRINGS = ("headless_shell",)
 _ms_dest.mkdir(parents=True, exist_ok=True)
-for child in _browsers.iterdir():
-    if not any(child.name.startswith(p) for p in _COPY_PREFIXES):
-        continue
-    if any(s in child.name for s in _SKIP_SUBSTRINGS):
-        continue
-    shutil.copytree(child, _ms_dest / child.name, symlinks=True, dirs_exist_ok=True)
+shutil.copytree(_chromium_src, _ms_dest / _chromium_src.name, symlinks=True, dirs_exist_ok=True)
 
 # Prune Qt frameworks bundled by PyInstaller's PySide6 hook but never used by this pure-QtWidgets
 # app. The denylist is deliberately conservative: it EXCLUDES frameworks that a startup-loaded

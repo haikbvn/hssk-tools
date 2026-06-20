@@ -20,12 +20,18 @@ from ..config import Settings, auth_profile_dir
 from ..config import settings as default_settings
 from ..errors import AuthExpired, HsskError
 from .profile import fetch_profile, save_profile
-from .token_store import TokenData, save_token
+from .token_store import TokenData, decode_exp, save_token
 
 _JWT_RE = re.compile(r"^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$")
 
 StatusFn = Callable[[str], None]
 CancelFn = Callable[[], bool]
+
+
+def _token_unexpired(token: str, skew: int = 120) -> bool:
+    """Return True if token's exp is in the future (with skew), or if exp is undecodable."""
+    exp = decode_exp(token)
+    return exp is None or exp > time.time() + skew
 
 
 def _walk_strings(obj: Any) -> list[str]:
@@ -53,10 +59,12 @@ def _scan_local_storage(page: Any) -> str | None:
         if not isinstance(value, str):
             continue
         if _JWT_RE.match(value):
-            return value
+            if _token_unexpired(value):
+                return value
+            continue
         try:
             for candidate in _walk_strings(json.loads(value)):
-                if _JWT_RE.match(candidate):
+                if _JWT_RE.match(candidate) and _token_unexpired(candidate):
                     return candidate
         except (ValueError, TypeError):
             continue
@@ -85,7 +93,9 @@ def capture_token(
             if s.api_host in req.url:
                 auth = req.headers.get("authorization")
                 if auth and auth.lower().startswith("bearer "):
-                    captured["token"] = auth.split(" ", 1)[1]
+                    tok = auth.split(" ", 1)[1]
+                    if _token_unexpired(tok):
+                        captured["token"] = tok
         except Exception:
             pass
 
