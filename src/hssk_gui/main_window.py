@@ -5,8 +5,16 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QUrl
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QDesktopServices, QKeySequence
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QColor,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDropEvent,
+    QKeySequence,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from hssk.auth.profile import load_profile
-from hssk.auth.token_store import load_token
+from hssk.auth.token_store import TokenData, load_token
 from hssk.config import ensure_mapping_file
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
@@ -63,17 +71,101 @@ _TABLE_COL_KEYS = [
 ]
 
 
+def _tr_status(status: Status) -> str:
+    """Localized label for a run-result Status (falls back to the raw enum value)."""
+    key = f"status_{status.value}"
+    text = tr(key)
+    return status.value if text == key else text
+
+
+# Engine-authored row messages from hssk/pipeline/runner.py. Anything not matched here
+# (raw API/exception text, per-cell coercion detail) is shown as-is — it is server or
+# diagnostic content we don't control. Keep these prefixes in sync with the runner.
+_MSG_EXACT = {
+    "already processed": "msg_row_already",
+    "identifier is blank": "msg_row_id_blank",
+    "medicalRecordId is blank": "msg_row_recordid_blank",
+}
+_MSG_HEADS = [  # "<head>" or "<head> — <name>"
+    ("created", "msg_row_created"),
+    ("updated", "msg_row_updated"),
+    ("payload built (not sent)", "msg_row_dryrun"),
+]
+
+
+def _tr_coerce_msg(msg: str) -> str:
+    """Translate a single coerce error/warning line from the engine (no ⚠ prefix)."""
+    if msg.startswith("missing required column "):
+        return tr("msg_coerce_missing_col") + msg[len("missing required column ") :]
+    if ": cannot parse " in msg:
+        # "'COL': cannot parse 'VAL' as TYPE (detail)" — translate the two fixed phrases
+        msg = msg.replace(": cannot parse ", tr("msg_coerce_cannot_parse"), 1)
+        msg = msg.replace(" as ", tr("msg_coerce_as_type"), 1)
+        return msg
+    if " outside expected range " in msg:
+        return msg.replace(" outside expected range ", tr("msg_coerce_range"), 1)
+    if " is before " in msg:
+        return msg.replace(" is before ", tr("msg_coerce_date_before"), 1)
+    return msg
+
+
+def _tr_coerce_msgs(compound: str) -> str:
+    """Translate a semicolon-joined string of coerce errors/warnings (validation path)."""
+    parts = compound.split("; ")
+    result = []
+    for part in parts:
+        if part.startswith("⚠ "):
+            result.append("⚠ " + _tr_coerce_msg(part[2:]))
+        else:
+            result.append(_tr_coerce_msg(part))
+    return "; ".join(result)
+
+
+def _tr_message(message: str) -> str:
+    """Localize engine-authored row messages; pass diagnostic detail through unchanged."""
+    if not message:
+        return ""
+    exact = _MSG_EXACT.get(message)
+    if exact is not None:
+        return tr(exact)
+    for head, key in _MSG_HEADS:
+        if message == head:
+            return tr(key)
+        if message.startswith(f"{head} — "):
+            return f"{tr(key)} — {message[len(head) + 3 :]}"
+    # "coercion error: <coerce detail>" — translate prefix and coerce detail
+    if message.startswith("coercion error: "):
+        return tr("msg_row_coercion") + _tr_coerce_msg(message[len("coercion error: ") :])
+    # "fetch detail: <diagnostic tail>" — translate prefix, diagnostic passes through
+    if message.startswith("fetch detail: "):
+        return tr("msg_row_fetch") + message[len("fetch detail: ") :]
+    # Bare/compound coerce errors (runner joins coerced.errors with "; " — no prefix).
+    # _tr_coerce_msgs only substitutes a few distinctive fixed phrases, so raw API/exception
+    # text is left intact in practice (a server string containing e.g. " is before " could
+    # in theory be partially rewritten, but those phrases are specific enough to be safe).
+    return _tr_coerce_msgs(message)
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         from hssk import __version__
 
         self.setWindowTitle(tr("window_title").format(version=__version__))
-        self.resize(960, 720)
 
         self._ui = UiSettings()
+        geo = self._ui.geometry
+        if not geo.isEmpty():
+            self.restoreGeometry(geo)
+        else:
+            self.resize(960, 720)
         self._token: str | None = None
+        self._token_data: TokenData | None = None
+        self._token_identity = ""
+        self._token_low_warned = False
         self._excel_path: Path | None = None
+        self._validated_path: Path | None = None  # last file a validation pass completed on
+        self._validated_invalid = 0  # invalid-row count from that pass
         self._last_run_dir: Path | None = None
         self._last_results_file: Path | None = None
         self._run_start: float = 0.0
@@ -88,9 +180,15 @@ class MainWindow(QMainWindow):
         self._run_worker: RunWorker | None = None
 
         self._build_ui()
+        self.setAcceptDrops(True)
         self._restore_prefs()
         self._refresh_token_status()
         self._update_start_enabled()
+
+        self._token_timer = QTimer(self)
+        self._token_timer.setInterval(1000)
+        self._token_timer.timeout.connect(self._tick_token)
+        self._token_timer.start()
 
     # -- UI construction ----------------------------------------------------------------
 
@@ -290,26 +388,53 @@ class MainWindow(QMainWindow):
     # -- login --------------------------------------------------------------------------
 
     def _refresh_token_status(self) -> None:
-        data = load_token()
+        # Disk reads happen here only (login / run-finished); the per-second tick reuses
+        # the cached TokenData so it never touches disk.
+        self._token_data = load_token()
+        self._token_low_warned = False
+        if self._token_data is not None and self._token_data.is_valid():
+            profile = load_profile()
+            self._token_identity = f"  —  {profile.identity_label()}" if profile else ""
+        else:
+            self._token_identity = ""
+        self._render_token_label()
+
+    def _render_token_label(self) -> None:
+        data = self._token_data
         if data is None:
             self._token = None
             self._set_token_label(tr("lbl_not_logged_in"), "#cf222e")
             return
-        rem = data.seconds_remaining()
         if not data.is_valid():
             self._token = None
             self._set_token_label(tr("lbl_token_expired"), "#cf222e")
             return
         self._token = data.token
-        profile = load_profile()
-        identity = f"  —  {profile.identity_label()}" if profile else ""
+        rem = data.seconds_remaining()
+        identity = self._token_identity
         if rem is None:
             self._set_token_label(tr("lbl_logged_in").format(identity=identity), "#1a7f37")
         else:
-            self._set_token_label(
-                tr("lbl_logged_in_ttl").format(identity=identity, m=rem // 60, s=rem % 60),
-                "#1a7f37",
-            )
+            color = "#bf8700" if rem < 300 else "#1a7f37"
+            text = tr("lbl_logged_in_ttl").format(identity=identity, m=rem // 60, s=rem % 60)
+            self._set_token_label(text, color)
+
+    def _tick_token(self) -> None:
+        data = self._token_data
+        if data is None:
+            return
+        if not data.is_valid():
+            was_logged_in = self._token is not None
+            self._render_token_label()  # flips to "expired" and clears self._token
+            if was_logged_in:
+                self._on_log(tr("log_token_expired"))
+                self._update_start_enabled()
+            return
+        rem = data.seconds_remaining()
+        if rem is not None and rem < 300 and not self._token_low_warned:
+            self._token_low_warned = True
+            self._on_log(tr("log_token_low"))
+        self._render_token_label()
 
     def _set_token_label(self, text: str, color: str) -> None:
         self.token_label.setText(text)
@@ -362,6 +487,8 @@ class MainWindow(QMainWindow):
 
     def _set_excel(self, path: Path) -> None:
         self._excel_path = path
+        self._validated_path = None  # a newly chosen file is unvalidated
+        self._validated_invalid = 0
         self.file_label.setText(str(path))
         self._ui.last_file = str(path)
         self._update_start_enabled()
@@ -416,9 +543,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 tr("dlg_validation"),
-                f"Mapping uses unknown API field target(s): {bad_targets}",
+                tr("msg_bad_targets").format(targets=bad_targets),
             )
             return
+        # Re-validating: the old verdict is stale (file may have changed on disk). Drop it
+        # so a stopped/failed pass leaves the file marked unvalidated.
+        self._validated_path = None
+        self._validated_invalid = 0
         self._reset_results(for_validation=True)
         self._run_start = time.monotonic()
         self._validate_thread = QThread()
@@ -458,6 +589,12 @@ class MainWindow(QMainWindow):
             )
             self.counter_label.setStyleSheet("")
         self.counter_label.setText(f"✓ {summary.valid}   ⚠ {summary.warns}   ✗ {summary.invalid}")
+        # Only a pass that checked every row counts as validated. A stopped pass reports
+        # partial counts (invalid may be 0 simply because the bad rows weren't reached),
+        # so leave the file unvalidated to keep the "not validated yet" nudge honest.
+        if not summary.cancelled:
+            self._validated_path = self._excel_path
+            self._validated_invalid = summary.invalid
 
     def _on_validate_failed(self, message: str) -> None:
         self.status_label.setText(tr("lbl_error"))
@@ -477,7 +614,7 @@ class MainWindow(QMainWindow):
         status_color = "#cf222e" if has_errors else "#bf8700"
         row = self.table.rowCount()
         self.table.insertRow(row)
-        cells = [str(idx), identifier, status_text, "", "", message]
+        cells = [str(idx), identifier, status_text, "", "", _tr_coerce_msgs(message)]
         for c, text in enumerate(cells):
             item = QTableWidgetItem(text)
             if c == 2:
@@ -515,6 +652,20 @@ class MainWindow(QMainWindow):
         idle = self._run_thread is None and self._validate_thread is None
         self.start_btn.setEnabled(ready and idle)
         self.mode_combo.setEnabled(idle)
+        self.start_btn.setToolTip(self._start_disabled_reason(ready, idle))
+
+    def _start_disabled_reason(self, ready: bool, idle: bool) -> str:
+        if not idle:
+            return tr("tip_start_busy")
+        need_login = self._token is None
+        need_file = self._excel_path is None
+        if need_login and need_file:
+            return tr("tip_start_need_both")
+        if need_login:
+            return tr("tip_start_need_login")
+        if need_file:
+            return tr("tip_start_need_file")
+        return ""  # enabled — no tooltip
 
     def _start_run(self) -> None:
         if self._excel_path is None or self._token is None:
@@ -522,10 +673,15 @@ class MainWindow(QMainWindow):
         dry_run = self.dryrun_check.isChecked()
         update_mode = self.mode_combo.currentIndex() == 1
         if not dry_run:
+            msg = tr("msg_confirm_push_update") if update_mode else tr("msg_confirm_push")
+            if self._validated_path != self._excel_path:
+                msg = tr("msg_not_validated_warn") + msg
+            elif self._validated_invalid > 0:
+                msg = tr("msg_validation_had_errors").format(n=self._validated_invalid) + msg
             confirm = QMessageBox.question(
                 self,
                 tr("dlg_confirm_push"),
-                tr("msg_confirm_push_update") if update_mode else tr("msg_confirm_push"),
+                msg,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -635,10 +791,10 @@ class MainWindow(QMainWindow):
         cells = [
             str(outcome.row_index),
             outcome.identifier or "",
-            outcome.status.value,
+            _tr_status(outcome.status),
             "" if outcome.patient_id is None else str(outcome.patient_id),
             "" if outcome.record_id is None else str(outcome.record_id),
-            outcome.message,
+            _tr_message(outcome.message),
         ]
         for c, text in enumerate(cells):
             item = QTableWidgetItem(text)
@@ -699,7 +855,9 @@ class MainWindow(QMainWindow):
         if skipped > 0:
             parts.append(tr("msg_skipped_rows").format(skipped=skipped))
         parts.append(tr("msg_report_path").format(path=summary.run_dir))
-        QMessageBox.information(self, tr("dlg_run_complete"), "\n".join(parts))
+        # Inline, no modal: headline is in status_label, tally in counter_label, the Open
+        # buttons are enabled above — surface the detail + recovery guidance in the log pane.
+        self.log_pane.appendPlainText("\n" + "\n".join(parts))
 
     def _on_run_failed(self, message: str) -> None:
         self.status_label.setText(tr("lbl_error"))
@@ -719,6 +877,29 @@ class MainWindow(QMainWindow):
     def _open_report(self) -> None:
         if self._last_run_dir is not None:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._last_run_dir)))
+
+    @staticmethod
+    def _excel_from_mime(event: QDragEnterEvent | QDropEvent) -> Path | None:
+        md = event.mimeData()
+        if not md.hasUrls():
+            return None
+        for url in md.urls():
+            if url.isLocalFile():
+                p = Path(url.toLocalFile())
+                if p.suffix.lower() in (".xlsx", ".xlsm"):
+                    return p
+        return None
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        idle = self._run_thread is None and self._validate_thread is None
+        if idle and self._excel_from_mime(event) is not None:
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        path = self._excel_from_mime(event)
+        if path is not None:
+            self._set_excel(path)
+            event.acceptProposedAction()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # Never let the window (and its QThreads) be torn down while a worker is still running.
@@ -744,4 +925,6 @@ class MainWindow(QMainWindow):
                 tr("msg_still_stopping"),
             )
             return
+        self._token_timer.stop()
+        self._ui.geometry = self.saveGeometry()
         event.accept()

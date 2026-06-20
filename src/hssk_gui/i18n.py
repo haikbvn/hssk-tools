@@ -114,6 +114,42 @@ _STRINGS: dict[str, dict[str, str]] = {
     "msg_no_issues": {"en": "No issues found.", "vi": "Không có lỗi."},
     "val_status_invalid": {"en": "INVALID", "vi": "Không hợp lệ"},
     "val_status_warning": {"en": "WARNING", "vi": "Cảnh báo"},
+    # run result statuses (results table)
+    "status_CREATED": {"en": "Created", "vi": "Đã tạo"},
+    "status_UPDATED": {"en": "Updated", "vi": "Đã cập nhật"},
+    "status_DRY_RUN_OK": {"en": "Dry-run OK", "vi": "Chạy thử OK"},
+    "status_SKIPPED_ALREADY": {"en": "Skipped (already sent)", "vi": "Bỏ qua (đã gửi)"},
+    "status_INVALID": {"en": "Invalid", "vi": "Không hợp lệ"},
+    "status_NO_PATIENT": {"en": "No patient found", "vi": "Không thấy bệnh nhân"},
+    "status_MULTI_MATCH": {"en": "Multiple matches", "vi": "Trùng nhiều bệnh nhân"},
+    "status_FAILED": {"en": "Failed", "vi": "Thất bại"},
+    "status_AUTH_EXPIRED": {"en": "Token expired", "vi": "Token hết hạn"},
+    "status_RATE_LIMITED": {"en": "Server busy", "vi": "Máy chủ bận"},
+    # engine-authored row messages (results table Message column). Raw API/exception and
+    # per-cell coercion detail is passed through untranslated.
+    "msg_row_created": {"en": "Created", "vi": "Đã tạo"},
+    "msg_row_updated": {"en": "Updated", "vi": "Đã cập nhật"},
+    "msg_row_dryrun": {"en": "Payload built (not sent)", "vi": "Đã dựng dữ liệu (chưa gửi)"},
+    "msg_row_already": {"en": "Already processed", "vi": "Đã xử lý trước đó"},
+    "msg_row_id_blank": {"en": "Identifier is blank", "vi": "Mã định danh trống"},
+    "msg_row_recordid_blank": {"en": "medicalRecordId is blank", "vi": "medicalRecordId trống"},
+    "msg_row_coercion": {"en": "Coercion error: ", "vi": "Lỗi chuyển đổi: "},
+    "msg_row_fetch": {"en": "Fetch detail: ", "vi": "Lỗi lấy chi tiết: "},
+    # individual coerce error/warning fragments (variable tails are field names / raw values)
+    "msg_coerce_missing_col": {
+        "en": "missing required column ",
+        "vi": "thiếu cột bắt buộc ",
+    },
+    "msg_coerce_cannot_parse": {
+        "en": ": cannot parse ",
+        "vi": ": không thể đọc ",
+    },
+    "msg_coerce_as_type": {"en": " as ", "vi": " thành "},
+    "msg_coerce_range": {
+        "en": " outside expected range ",
+        "vi": " nằm ngoài phạm vi ",
+    },
+    "msg_coerce_date_before": {"en": " is before ", "vi": " trước "},
     # mode combo (run box)
     "lbl_mode": {"en": "Mode:", "vi": "Chế độ:"},
     "mode_create": {"en": "Create", "vi": "Tạo mới"},
@@ -155,6 +191,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         ),
     },
     "dlg_mapping_error": {"en": "Mapping error", "vi": "Lỗi mapping"},
+    "msg_bad_targets": {
+        "en": "Mapping contains unknown API field target(s):\n{targets}",
+        "vi": "Mapping chứa trường API không hợp lệ:\n{targets}",
+    },
     # progress
     "prog_starting": {
         "en": "Starting… ({total} rows)",
@@ -229,6 +269,39 @@ _STRINGS: dict[str, dict[str, str]] = {
     "msg_report_path": {"en": "\nReport: {path}", "vi": "\nBáo cáo: {path}"},
     "dlg_run_failed": {"en": "Run failed", "vi": "Chạy thất bại"},
     "lbl_error": {"en": "Error.", "vi": "Lỗi."},
+    # disabled Start tooltips / nudges
+    "tip_start_need_login": {
+        "en": "Log in first to enable Start.",
+        "vi": "Đăng nhập trước để bật nút Bắt đầu.",
+    },
+    "tip_start_need_file": {
+        "en": "Choose an Excel file to enable Start.",
+        "vi": "Chọn file Excel để bật nút Bắt đầu.",
+    },
+    "tip_start_need_both": {
+        "en": "Log in and choose an Excel file to enable Start.",
+        "vi": "Đăng nhập và chọn file Excel để bật nút Bắt đầu.",
+    },
+    "tip_start_busy": {
+        "en": "An operation is already running.",
+        "vi": "Đang có một thao tác chạy.",
+    },
+    "msg_not_validated_warn": {
+        "en": "⚠ This file has not been validated yet.\n\n",
+        "vi": "⚠ File này chưa được kiểm tra.\n\n",
+    },
+    "msg_validation_had_errors": {
+        "en": "⚠ Validation found {n} invalid row(s) — those rows will fail.\n\n",
+        "vi": "⚠ Kiểm tra phát hiện {n} hàng không hợp lệ — các hàng đó sẽ thất bại.\n\n",
+    },
+    "log_token_low": {
+        "en": "⚠ Login token expires soon — re-login if your batch is large.",
+        "vi": "⚠ Token đăng nhập sắp hết hạn — đăng nhập lại nếu lô dữ liệu lớn.",
+    },
+    "log_token_expired": {
+        "en": "⛔ Login token expired — please log in again.",
+        "vi": "⛔ Token đăng nhập đã hết hạn — vui lòng đăng nhập lại.",
+    },
     # close while running
     "dlg_still_stopping": {
         "en": "Operation still stopping",

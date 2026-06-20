@@ -80,10 +80,15 @@ jobs:
           mkdir -p out
           tar -czf "out/hssk-gui-${{ matrix.label }}.tgz" -C dist .
 
+      # Only upload when something will consume it: the release job (tag pushes) or a
+      # manual run. PR builds still test + package above; uploading there just fills the
+      # Actions artifact-storage quota with .tgz files nothing downloads.
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
           name: hssk-gui-${{ matrix.label }}
           path: out/hssk-gui-${{ matrix.label }}.tgz
+          retention-days: 14
 
   release:
     name: publish release

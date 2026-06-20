@@ -26,6 +26,7 @@ class ValidationSummary:
     invalid: int
     warns: int
     total: int
+    cancelled: bool = False  # True if the user stopped the pass before all rows were checked
 
 
 class LoginWorker(QObject):
@@ -78,8 +79,10 @@ class ValidateWorker(QObject):
             rows = reader.read_rows(self._input, self._mapping)
             total = len(rows)
             valid = invalid = warns = 0
+            cancelled = False
             for i, (idx, raw) in enumerate(rows):
                 if self._cancel:
+                    cancelled = True
                     break
                 self.progress.emit(i, total)
                 r = coerce_row(raw, self._mapping, idx)
@@ -93,7 +96,7 @@ class ValidateWorker(QObject):
                     message = "; ".join(list(r.errors) + [f"⚠ {w}" for w in r.warnings])
                     self.problem.emit(ValidationProblem(idx, identifier, bool(r.errors), message))
             self.progress.emit(valid + invalid, total)
-            self.finished.emit(ValidationSummary(valid, invalid, warns, total))
+            self.finished.emit(ValidationSummary(valid, invalid, warns, total, cancelled))
         except Exception as exc:
             self.failed.emit(str(exc))
 

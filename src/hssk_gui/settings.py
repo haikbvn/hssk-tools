@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QByteArray, QSettings
 
 _ORG = "hssk-tools"
 _APP = "hssk-gui"
@@ -67,3 +67,12 @@ class UiSettings:
     @update_mode.setter
     def update_mode(self, value: bool) -> None:
         self._s.setValue("update_mode", value)
+
+    @property
+    def geometry(self) -> QByteArray:
+        value = self._s.value("geometry", QByteArray(), type=QByteArray)
+        return value if isinstance(value, QByteArray) else QByteArray()
+
+    @geometry.setter
+    def geometry(self, value: QByteArray) -> None:
+        self._s.setValue("geometry", value)
