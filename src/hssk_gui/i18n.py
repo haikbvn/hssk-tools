@@ -68,6 +68,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     "menu_settings": {"en": "Settings", "vi": "Cài đặt"},
     "menu_settings_action": {"en": "Settings…", "vi": "Cài đặt…"},
     "menu_help": {"en": "Help", "vi": "Trợ giúp"},
+    "menu_user_guide": {"en": "User Guide", "vi": "Hướng dẫn sử dụng"},
+    "guide_title": {
+        "en": "HSSK Tools — User Guide",
+        "vi": "HSSK Tools — Hướng dẫn sử dụng",
+    },
     "menu_terms": {"en": "Terms of Use", "vi": "Điều khoản sử dụng"},
     "menu_privacy": {"en": "Privacy Policy", "vi": "Chính sách bảo mật"},
     "menu_security": {"en": "Security", "vi": "Bảo mật"},
