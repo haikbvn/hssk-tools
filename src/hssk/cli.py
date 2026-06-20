@@ -21,6 +21,24 @@ def _resolve_mapping(path: str | None):
     return load_mapping(mapping_path)
 
 
+def _confirm_production(action: str) -> bool:
+    """Require an explicit typed 'YES' before sending live data.
+
+    Returns False (abort) when stdin isn't interactive, so a piped or closed stdin can never
+    silently fall through to a live run.
+    """
+    print(f"⚠️  PRODUCTION — this will {action} LIVE medical records.")
+    try:
+        answer = input("   Type YES to proceed: ").strip()
+    except EOFError:
+        print("Aborted (no interactive input).")
+        return False
+    if answer != "YES":
+        print("Aborted.")
+        return False
+    return True
+
+
 def cmd_login(args: argparse.Namespace) -> int:
     from .auth.browser_login import capture_token
     from .auth.profile import load_profile
@@ -82,11 +100,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.reset_ledger:
         led.reset()
 
-    if not dry_run and not args.yes:
-        print("⚠️  PRODUCTION — this will create LIVE medical records.")
-        if input("   Type YES to proceed: ").strip() != "YES":
-            print("Aborted.")
-            return 1
+    if not dry_run and not args.yes and not _confirm_production("create"):
+        return 1
 
     def on_row(o: runner.RowOutcome) -> None:
         print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
@@ -123,11 +138,8 @@ def cmd_update(args: argparse.Namespace) -> int:
     if args.delay is not None:
         s = s.model_copy(update={"request_delay": args.delay})
 
-    if not dry_run and not args.yes:
-        print("⚠️  PRODUCTION — this will update LIVE medical records.")
-        if input("   Type YES to proceed: ").strip() != "YES":
-            print("Aborted.")
-            return 1
+    if not dry_run and not args.yes and not _confirm_production("update"):
+        return 1
 
     def on_row(o: runner.RowOutcome) -> None:
         print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")

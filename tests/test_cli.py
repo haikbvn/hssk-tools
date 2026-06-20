@@ -236,3 +236,29 @@ def test_cmd_run_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert result == 0
 
     _s.cache_clear()
+
+
+def test_cmd_run_commit_aborts_on_non_interactive_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """run --commit without --yes must abort cleanly on closed stdin, not crash with EOFError."""
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+
+    mapping_path = _copy_mapping(tmp_path)
+    xlsx = _make_xlsx(tmp_path)
+    monkeypatch.setattr("hssk.auth.token_store.load_valid_token", lambda **kw: "fake-token")
+
+    def _eof(*_a, **_k):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", _eof)
+
+    # No network mocks: aborting at the prompt must happen before any request is made.
+    result = main(["run", "-m", str(mapping_path), "-i", str(xlsx), "--commit"])
+    assert result == 1
+
+    _s.cache_clear()

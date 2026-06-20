@@ -165,6 +165,17 @@ def run(
                 emit(RowOutcome(row_index, identifier, Status.RATE_LIMITED, message=str(exc)))
                 aborted, abort_reason = True, str(exc)
                 break
+            except ApiError as exc:
+                emit(
+                    RowOutcome(
+                        row_index,
+                        identifier,
+                        Status.FAILED,
+                        message=f"search: {exc}",
+                        warnings=coerced.warnings,
+                    )
+                )
+                continue
 
             payload = builder.build(
                 coerced,
