@@ -67,7 +67,7 @@ jobs:
       - name: Install Playwright Chromium (into bundle dir)
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/pw-browsers
-        run: python -m playwright install chromium
+        run: python -m playwright install chromium --no-shell
 
       - name: Build app
         env:

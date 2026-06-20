@@ -7,13 +7,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from hssk.auth.browser_login import capture_token
 from hssk.auth.token_store import TokenData
 from hssk.config import Settings
-from hssk.excel import reader
-from hssk.excel.coerce import coerce_row
 from hssk.mapping import MappingConfig
-from hssk.pipeline import runner
 
 
 @dataclass
@@ -46,6 +42,8 @@ class LoginWorker(QObject):
 
     @Slot()
     def run(self) -> None:
+        from hssk.auth.browser_login import capture_token
+
         try:
             data: TokenData = capture_token(
                 on_status=lambda m: self.status.emit(m),
@@ -73,6 +71,9 @@ class ValidateWorker(QObject):
 
     @Slot()
     def run(self) -> None:
+        from hssk.excel import reader
+        from hssk.excel.coerce import coerce_row
+
         try:
             rows = reader.read_rows(self._input, self._mapping)
             total = len(rows)
@@ -130,6 +131,8 @@ class RunWorker(QObject):
 
     @Slot()
     def run(self) -> None:
+        from hssk.pipeline import runner
+
         try:
             cb = runner.Callbacks(
                 on_progress=lambda d, t: self.progress.emit(d, t),
