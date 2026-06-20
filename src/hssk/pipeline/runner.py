@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from enum import StrEnum
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -26,30 +25,10 @@ from ..excel.coerce import coerce_row
 from ..mapping import MappingConfig
 from ..payload import builder, update_builder
 from .ledger import Ledger
+from .results import RowOutcome, RunSummary, Status
 
-
-class Status(StrEnum):
-    CREATED = "CREATED"
-    UPDATED = "UPDATED"
-    DRY_RUN_OK = "DRY_RUN_OK"
-    SKIPPED_ALREADY = "SKIPPED_ALREADY"
-    INVALID = "INVALID"
-    NO_PATIENT = "NO_PATIENT"
-    MULTI_MATCH = "MULTI_MATCH"
-    FAILED = "FAILED"
-    AUTH_EXPIRED = "AUTH_EXPIRED"
-    RATE_LIMITED = "RATE_LIMITED"
-
-
-@dataclass
-class RowOutcome:
-    row_index: int
-    identifier: str | None
-    status: Status
-    patient_id: Any = None
-    record_id: Any = None
-    message: str = ""
-    warnings: list[str] = field(default_factory=list)
+# Re-export so existing ``from hssk.pipeline.runner import Status`` imports keep working.
+__all__ = ["Callbacks", "RowOutcome", "RunSummary", "Status", "run", "run_update"]
 
 
 @dataclass
@@ -57,31 +36,6 @@ class Callbacks:
     on_progress: Callable[[int, int], None] = lambda done, total: None
     on_row: Callable[[RowOutcome], None] = lambda outcome: None
     on_log: Callable[[str], None] = lambda msg: None
-
-
-@dataclass
-class RunSummary:
-    total: int
-    counts: dict[Status, int]
-    outcomes: list[RowOutcome]
-    run_dir: Path
-    aborted: bool = False
-    abort_reason: str = ""
-
-    @property
-    def created(self) -> int:
-        return self.counts.get(Status.CREATED, 0)
-
-    @property
-    def updated(self) -> int:
-        return self.counts.get(Status.UPDATED, 0)
-
-    @property
-    def failed(self) -> int:
-        return sum(
-            self.counts.get(s, 0)
-            for s in (Status.FAILED, Status.NO_PATIENT, Status.MULTI_MATCH, Status.INVALID)
-        )
 
 
 def run(
@@ -110,6 +64,7 @@ def run(
     total = len(rows)
 
     led = ledger if ledger is not None else Ledger.load()
+    payload_base = builder.prepare_base(mapping)
     out_base = (s.data_dir / "output") if s.data_dir else output_dir()
     out_base.mkdir(parents=True, exist_ok=True)
     run_dir = report_mod.new_run_dir(out_base, dry_run=dry_run)
@@ -213,7 +168,7 @@ def run(
 
             payload = builder.build(
                 coerced,
-                mapping,
+                payload_base,
                 pid,
                 medical_identifier_code=resolved.medical_identifier_code,
                 profile=profile,
@@ -324,6 +279,7 @@ def run_update(
         rows = rows[:limit]
     total = len(rows)
 
+    update_payload_base = builder.prepare_base(mapping)
     out_base = (s.data_dir / "output") if s.data_dir else output_dir()
     out_base.mkdir(parents=True, exist_ok=True)
     run_dir = report_mod.new_run_dir(out_base, dry_run=dry_run)
@@ -407,6 +363,7 @@ def run_update(
                 medical_record_id=medical_record_id,
                 medical_identifier_code=mic,
                 profile=profile,
+                _base=update_payload_base,
             )
             who = (detail.get("medicalRecordInfo") or detail.get("medicalRecords") or {}).get(
                 "doctorName"

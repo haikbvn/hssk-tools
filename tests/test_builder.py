@@ -15,7 +15,7 @@ def test_build_payload_shape(mapping):
         **_REQUIRED,
     }
     row = coerce_row(raw, mapping, row_index=2)
-    payload = builder.build(row, mapping, patient_id=372954970)
+    payload = builder.build(row, builder.prepare_base(mapping), patient_id=372954970)
 
     info = payload["medicalRecordInfo"]
     detail = payload["medicalPatientDetailInfo"]
@@ -82,7 +82,7 @@ def test_organ_desc_and_clinical_fields_routed(mapping):
     }
     row = coerce_row(raw, mapping, row_index=2)
     assert row.ok, row.errors
-    payload = builder.build(row, mapping, patient_id=1)
+    payload = builder.build(row, builder.prepare_base(mapping), patient_id=1)
     info = payload["medicalRecordInfo"]
 
     assert info["heartDesc"] == "Nhịp tim đều"
@@ -94,7 +94,7 @@ def test_organ_desc_and_clinical_fields_routed(mapping):
 def test_diagnoses_list_mirrored_from_discharge(mapping):
     raw = {"Mã định danh": "X", **_REQUIRED}
     row = coerce_row(raw, mapping, row_index=2)
-    payload = builder.build(row, mapping, patient_id=1)
+    payload = builder.build(row, builder.prepare_base(mapping), patient_id=1)
     info = payload["medicalRecordInfo"]
     assert info["diagnosesDischargeList"] == ["0000 - Bình thường"]
 
@@ -106,7 +106,7 @@ def test_explicit_diagnoses_list_not_overridden(mapping):
         "Bệnh kèm theo": "0000 - Bình thường; J00 - Cảm lạnh",
     }
     row = coerce_row(raw, mapping, row_index=2)
-    payload = builder.build(row, mapping, patient_id=1)
+    payload = builder.build(row, builder.prepare_base(mapping), patient_id=1)
     info = payload["medicalRecordInfo"]
     assert info["diagnosesDischargeList"] == ["0000 - Bình thường", "J00 - Cảm lạnh"]
 
@@ -126,7 +126,7 @@ def test_profile_fills_empty_doctor_and_facility(mapping):
     """Profile values are used when row and mapping defaults are both absent."""
     raw = {"Mã định danh": "X", **_REQUIRED_NO_DOCTOR}
     row = coerce_row(raw, mapping, row_index=2)
-    payload = builder.build(row, mapping, patient_id=1, profile=_PROFILE)
+    payload = builder.build(row, builder.prepare_base(mapping), patient_id=1, profile=_PROFILE)
     info = payload["medicalRecordInfo"]
     assert info["doctorName"] == "Trạm y tế Liên Bão"
     assert info["healthfacilitiesId"] == "27084"
@@ -136,7 +136,7 @@ def test_per_row_value_wins_over_profile(mapping):
     """An explicit per-row doctor name overrides the profile."""
     raw = {"Mã định danh": "X", **_REQUIRED, "Bác sĩ": "Trần Văn An"}
     row = coerce_row(raw, mapping, row_index=2)
-    payload = builder.build(row, mapping, patient_id=1, profile=_PROFILE)
+    payload = builder.build(row, builder.prepare_base(mapping), patient_id=1, profile=_PROFILE)
     assert payload["medicalRecordInfo"]["doctorName"] == "Trần Văn An"
 
 
@@ -144,7 +144,7 @@ def test_no_profile_leaves_fields_at_template_default(mapping):
     """Without a profile, healthfacilitiesId stays None; doctorName stays blank."""
     raw = {"Mã định danh": "X", **_REQUIRED_NO_DOCTOR}
     row = coerce_row(raw, mapping, row_index=2)
-    payload = builder.build(row, mapping, patient_id=1, profile=None)
+    payload = builder.build(row, builder.prepare_base(mapping), patient_id=1, profile=None)
     info = payload["medicalRecordInfo"]
     assert info["healthfacilitiesId"] is None
     assert info["doctorName"] == ""

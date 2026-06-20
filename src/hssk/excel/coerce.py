@@ -9,6 +9,7 @@ exception that kills the batch.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,6 +29,7 @@ _RANGES: dict[str, tuple[float, float]] = {
 }
 
 _EXCEL_EPOCH = dt.datetime(1899, 12, 30)
+_LIST_SPLIT_RE = re.compile(r"[;\n]+")
 
 
 @dataclass
@@ -107,9 +109,7 @@ def _coerce_one(value: Any, spec: ColumnSpec) -> Any:
             d = d.replace(hour=ht.hour, minute=ht.minute, second=ht.second)
         return d.strftime(spec.out_format)
     if t == "list":
-        import re
-
-        parts = re.split(r"[;\n]+", str(value))
+        parts = _LIST_SPLIT_RE.split(str(value))
         return [p.strip() for p in parts if p.strip()]
     raise ValueError(f"unknown column type {t!r}")
 

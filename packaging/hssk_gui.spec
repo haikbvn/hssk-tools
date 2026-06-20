@@ -57,7 +57,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[str(ROOT / "packaging" / "runtime_hook_playwright.py")],
-    excludes=["tkinter"],
+    excludes=["tkinter", "PIL", "mypy", "mypyc", "pytest", "_pytest", "numpy"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
@@ -87,8 +87,69 @@ if sys.platform == "darwin":
 else:
     _ms_dest = Path(DISTPATH) / "hssk-gui" / "ms-playwright"
 
-# Copy Chromium into the finished app, preserving symlinks so the nested .app/.framework bundles stay
-# valid. Done here (post-build) rather than via Analysis datas to avoid symlink flattening and the
-# ad-hoc codesign step that rejects the collected browser binary. runtime_hook_playwright.py then
-# points PLAYWRIGHT_BROWSERS_PATH at this directory.
-shutil.copytree(_browsers, _ms_dest, symlinks=True, dirs_exist_ok=True)
+# Copy only the headed Chromium into the finished app (skip headless shell, firefox, webkit, ffmpeg).
+# Preserving symlinks is required so the nested .app/.framework bundles stay valid; done post-build
+# rather than via Analysis to avoid symlink flattening and the ad-hoc codesign rejection.
+# runtime_hook_playwright.py then points PLAYWRIGHT_BROWSERS_PATH at this directory.
+_COPY_PREFIXES = ("chromium-",)
+_SKIP_SUBSTRINGS = ("headless_shell",)
+_ms_dest.mkdir(parents=True, exist_ok=True)
+for child in _browsers.iterdir():
+    if not any(child.name.startswith(p) for p in _COPY_PREFIXES):
+        continue
+    if any(s in child.name for s in _SKIP_SUBSTRINGS):
+        continue
+    shutil.copytree(child, _ms_dest / child.name, symlinks=True, dirs_exist_ok=True)
+
+# Prune Qt frameworks bundled by PyInstaller's PySide6 hook but never used by this pure-QtWidgets
+# app. The denylist is deliberately conservative: it EXCLUDES frameworks that a startup-loaded
+# library hard-links (verified with `otool -L`), since deleting one of those makes dyld abort the
+# process before any window shows. Notably NOT pruned:
+#   - QtDBus: hard-linked by QtGui (always loaded) → removing it crashes the app at launch.
+#   - QtSvg:  linked by the svg imageformat + svg icon-engine plugins → removing it breaks icons.
+# QtPdf is only linked by the optional ``imageformats/libqpdf`` plugin, so we drop that plugin too.
+_QT_LIB_PRUNE = {
+    "QtPdf", "QtQuick", "QtQml", "QtQmlModels", "QtQmlMeta",
+    "QtQmlWorkerScript", "QtOpenGL",
+    "QtVirtualKeyboard", "QtVirtualKeyboardQml",
+}
+_QT_PLUGIN_PRUNE = ("imageformats/libqpdf",)  # orphaned once QtPdf is gone
+_TOP_LEVEL_PRUNE = {"PIL", "mypy", "ast_serialize"}
+
+def _prune(root: Path) -> None:
+    """Remove unused Qt frameworks/DLLs and stray dev packages from the built bundle."""
+    # Qt frameworks (macOS: <name>.framework dirs; Windows: Qt<name>*.dll + PySide6/<name>.pyd)
+    qt_lib = root / "PySide6" / "Qt" / "lib"
+    if qt_lib.is_dir():
+        for entry in qt_lib.iterdir():
+            stem = entry.name.split(".")[0]  # "QtPdf.framework" → "QtPdf"
+            if stem in _QT_LIB_PRUNE and entry.exists():
+                shutil.rmtree(entry)
+    # Windows-style DLLs live directly under PySide6/
+    pyside_dir = root / "PySide6"
+    if pyside_dir.is_dir():
+        for entry in pyside_dir.iterdir():
+            stem = entry.stem  # "Qt6Pdf.dll" → "Qt6Pdf"
+            for name in _QT_LIB_PRUNE:
+                if stem == name or stem == f"Qt6{name[2:]}":  # strip "Qt" prefix for Qt6 DLLs
+                    entry.unlink(missing_ok=True)
+                    break
+    # Orphaned plugins whose backing framework we just removed (dylib on mac, dll on win)
+    plugins = root / "PySide6" / "Qt" / "plugins"
+    for rel in _QT_PLUGIN_PRUNE:
+        for ext in (".dylib", ".dll"):
+            (plugins / rel).with_suffix(ext).unlink(missing_ok=True)
+    # Qt translations (all unused; app ships its own i18n.py)
+    qt_trans = root / "PySide6" / "Qt" / "translations"
+    if qt_trans.is_dir():
+        shutil.rmtree(qt_trans)
+    # Top-level dev packages
+    for name in _TOP_LEVEL_PRUNE:
+        p = root / name
+        if p.is_dir():
+            shutil.rmtree(p)
+
+if sys.platform == "darwin":
+    _prune(Path(DISTPATH) / "HSSK Tools.app" / "Contents" / "Resources")
+else:
+    _prune(Path(DISTPATH) / "hssk-gui" / "_internal")

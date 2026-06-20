@@ -34,8 +34,7 @@ from hssk.config import ensure_mapping_file
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
 from hssk.mapping import load_mapping
-from hssk.payload import builder
-from hssk.pipeline.runner import RowOutcome, RunSummary, Status
+from hssk.pipeline.results import RowOutcome, RunSummary, Status
 
 from .i18n import tr
 from .preferences_dialog import PreferencesDialog
@@ -410,6 +409,8 @@ class MainWindow(QMainWindow):
         except (ConfigError, HsskError) as exc:
             QMessageBox.critical(self, tr("dlg_validation"), str(exc))
             return
+        from hssk.payload import builder  # deferred: loads openpyxl/API stack on first use
+
         bad_targets = builder.validate_targets(mapping)
         if bad_targets:
             QMessageBox.critical(

@@ -18,16 +18,21 @@ def build_update(
     medical_record_id: Any,
     medical_identifier_code: str | None = None,
     profile: ProfileData | None = None,
+    _base: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the health-examination update payload for one patient.
 
     The update endpoint uses the same flat body shape as create, differing only by
     a populated ``medicalRecordId``, an added ``concludesDisease`` key, and two
     empty ``deleted*`` lists required by the server.
+
+    Pass ``_base`` (from ``builder.prepare_base(mapping)``) when calling in a loop so the
+    merged template is not recomputed for every row.
     """
+    base = _base if _base is not None else builder.prepare_base(mapping)
     payload = builder.build(
         row,
-        mapping,
+        base,
         patient_id,
         medical_identifier_code=medical_identifier_code,
         profile=profile,

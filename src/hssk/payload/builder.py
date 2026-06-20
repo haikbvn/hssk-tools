@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from ..auth.profile import ProfileData
@@ -17,9 +18,25 @@ def validate_targets(mapping: MappingConfig) -> list[str]:
     ]
 
 
+def prepare_base(mapping: MappingConfig) -> dict[str, Any]:
+    """Build the merged payload base once per run (constant across all rows).
+
+    Layers the mapping's constant defaults on top of the canonical template. The result is
+    deep-copied per row inside ``build()`` so each row gets an independent payload.
+    """
+    base = templates.default_payload(normal=mapping.defaults.normal_desc_value)
+    base["medicalRecordInfo"] = templates.deep_merge(
+        base["medicalRecordInfo"], mapping.defaults.medicalRecordInfo
+    )
+    base["medicalPatientDetailInfo"] = templates.deep_merge(
+        base["medicalPatientDetailInfo"], mapping.defaults.medicalPatientDetailInfo
+    )
+    return base
+
+
 def build(
     row: RowResult,
-    mapping: MappingConfig,
+    base: dict[str, Any],
     patient_id: Any,
     *,
     medical_identifier_code: str | None = None,
@@ -27,18 +44,13 @@ def build(
 ) -> dict[str, Any]:
     """Build the full health-examination create payload for one patient.
 
+    ``base`` is the pre-merged template returned by ``prepare_base()`` — call it once per run
+    and pass the same dict here for every row.
+
     ``medical_identifier_code`` (the patient's real code, from the search result) overrides whatever
     the Excel "identifier" column held, since the searched value may be a CCCD/phone/insurance no.
     """
-    payload = templates.default_payload(normal=mapping.defaults.normal_desc_value)
-
-    # Layer constant defaults from the mapping on top of the canonical template.
-    payload["medicalRecordInfo"] = templates.deep_merge(
-        payload["medicalRecordInfo"], mapping.defaults.medicalRecordInfo
-    )
-    payload["medicalPatientDetailInfo"] = templates.deep_merge(
-        payload["medicalPatientDetailInfo"], mapping.defaults.medicalPatientDetailInfo
-    )
+    payload = copy.deepcopy(base)
 
     record = payload["medicalRecordInfo"]
     detail = payload["medicalPatientDetailInfo"]
