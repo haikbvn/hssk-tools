@@ -59,6 +59,9 @@ py -3.12 -m venv .venv
 4. Untick **Dry-run**, confirm the PRODUCTION prompt, and **Start** to push for real. Start with a
    small **Limit** (e.g. 1) and verify it in the website before scaling up.
 
+A full step-by-step walkthrough for operators is built into the app under
+**Help → User Guide / Hướng dẫn sử dụng** (bilingual, follows the active UI language).
+
 ### Getting a blank template
 
 Click **Template…** in the app (or `hssk template -o my_template.xlsx`) to generate an Excel file

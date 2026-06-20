@@ -212,6 +212,12 @@ class MainWindow(QMainWindow):
 
         help_menu = self.menuBar().addMenu(tr("menu_help"))
 
+        guide_action = QAction(tr("menu_user_guide"), self)
+        guide_action.setMenuRole(QAction.MenuRole.NoRole)
+        guide_action.triggered.connect(self._show_guide)
+        help_menu.addAction(guide_action)
+        help_menu.addSeparator()
+
         terms_action = QAction(tr("menu_terms"), self)
         terms_action.setMenuRole(QAction.MenuRole.NoRole)
         terms_action.triggered.connect(lambda: self._show_legal(0))
@@ -233,6 +239,11 @@ class MainWindow(QMainWindow):
         about_action.setMenuRole(QAction.MenuRole.AboutRole)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+    def _show_guide(self) -> None:
+        from .guide_dialog import GuideDialog
+
+        GuideDialog(self).exec()
 
     def _show_legal(self, tab: int) -> None:
         from .legal_dialog import LegalDialog
