@@ -30,23 +30,29 @@ from hssk.mapping import MappingConfig, load_mapping, save_record_defaults
 from .i18n import tr
 from .settings import UiSettings
 
-# Friendly Vietnamese labels for the common medicalRecordInfo defaults.
-_LABELS: dict[str, str] = {
-    "normal_desc_value": "Mô tả bình thường",
-    "doctorName": "Bác sĩ (mặc định)",
-    "healthfacilitiesId": "Mã cơ sở y tế",
-    "typeOfExamination": "Mã hình thức khám",
-    "reasonCode": "Mã đối tượng khám",
-    "reasonsMedicalexamination": "Lý do khám",
-    "symptoms": "Bệnh sử mặc định",
-    "treatmentDayNumber": "Số ngày điều trị",
-    "diagnosesDischarge": "Kết luận mặc định",
-    "diagnosesDischargeList": "Danh sách bệnh kèm (cách nhau bởi dấu phẩy)",
-    "noteDisease": "Bệnh theo dõi mặc định",
-    "treatmentDirection": "Tư vấn điều trị mặc định",
-    "treatmentResultId": "Mã kết quả khám",
-    "dischargeStatusId": "Mã tình trạng ra viện",
+# Maps medicalRecordInfo default keys to their i18n label strings.
+_LABEL_KEYS: dict[str, str] = {
+    "normal_desc_value": "rec_normal_desc_value",
+    "doctorName": "rec_doctorName",
+    "healthfacilitiesId": "rec_healthfacilitiesId",
+    "typeOfExamination": "rec_typeOfExamination",
+    "reasonCode": "rec_reasonCode",
+    "reasonsMedicalexamination": "rec_reasonsMedicalexamination",
+    "symptoms": "rec_symptoms",
+    "treatmentDayNumber": "rec_treatmentDayNumber",
+    "diagnosesDischarge": "rec_diagnosesDischarge",
+    "diagnosesDischargeList": "rec_diagnosesDischargeList",
+    "noteDisease": "rec_noteDisease",
+    "treatmentDirection": "rec_treatmentDirection",
+    "treatmentResultId": "rec_treatmentResultId",
+    "dischargeStatusId": "rec_dischargeStatusId",
 }
+
+
+def _label(key: str) -> str:
+    """Translated label for a record-default field, falling back to the raw key."""
+    i18n_key = _LABEL_KEYS.get(key)
+    return tr(i18n_key) if i18n_key else key
 
 
 class PreferencesDialog(QDialog):
@@ -151,15 +157,15 @@ class PreferencesDialog(QDialog):
         profile = load_profile()
 
         # Read-only facility ID row (locked to the logged-in account).
-        facility_text = (profile.identity_label() if profile else None) or "(chưa đăng nhập)"
+        facility_text = (profile.identity_label() if profile else None) or tr("ph_not_logged_in")
         facility_label = QLabel(facility_text)
         facility_label.setStyleSheet("color: #6e7781;")
-        form.addRow(_LABELS.get("healthfacilitiesId", "Mã cơ sở y tế") + ":", facility_label)
+        form.addRow(_label("healthfacilitiesId") + ":", facility_label)
 
         # normal_desc_value comes first among editable fields
         nv = mapping.defaults.normal_desc_value
         w_nv = QLineEdit(str(nv))
-        form.addRow(_LABELS.get("normal_desc_value", "normal_desc_value") + ":", w_nv)
+        form.addRow(_label("normal_desc_value") + ":", w_nv)
         self._widgets["normal_desc_value"] = w_nv
 
         # rest of medicalRecordInfo (skip healthfacilitiesId — read-only above)
@@ -167,7 +173,7 @@ class PreferencesDialog(QDialog):
         for key, val in rec.items():
             if key == "healthfacilitiesId":
                 continue
-            label = _LABELS.get(key, key)
+            label = _label(key)
             widget: QWidget
             if isinstance(val, list):
                 widget = QLineEdit(", ".join(str(x) for x in val))
@@ -188,7 +194,7 @@ class PreferencesDialog(QDialog):
                     text = profile.display_name
                 widget = QLineEdit(text)
             if profile and isinstance(widget, QLineEdit) and key == "doctorName":
-                widget.setPlaceholderText(f"(từ tài khoản: {profile.display_name})")
+                widget.setPlaceholderText(tr("ph_from_account").format(name=profile.display_name))
             form.addRow(label + ":", widget)
             self._widgets[key] = widget
 
