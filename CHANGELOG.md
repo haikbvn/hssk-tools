@@ -1,5 +1,52 @@
 # Changelog
 
+## v1.2.0 — 2026-06-21
+
+### New features
+- **Complete bilingual UI (Vietnamese / English)** — every user-facing string is now translated,
+  not just static labels. The Results table translates all 10 `Status` values and engine-authored
+  Message text in both the run and validate paths (coercion-error prefixes, bare and compound
+  errors, the four coerce patterns — missing required column, unparseable cell, out-of-range value,
+  finishDate-before-startDate). Raw API/exception text passes through untranslated. The previously
+  hardcoded "Mapping uses unknown API field target(s)" error now routes through `tr()`.
+- **In-app User Guide** — a bilingual (VI + EN) operator guide reachable from
+  **Help → User Guide / Hướng dẫn sử dụng**, rendered in the active UI language. It covers the full
+  workflow (login → template → fill Excel → validate → dry-run → push → read results → re-run
+  safely), plus Create/Update modes, Preferences, mapping, troubleshooting, and files/privacy. The
+  end-user docs previously lived only in the developer README, outside the app.
+
+### UX improvements
+- **Drag-and-drop** an Excel file onto the window (idle state only) instead of always using the
+  file picker.
+- **Window geometry persisted** across restarts via `QSettings`.
+- **Start button tooltip** explains why it is disabled (need login / need file / busy).
+- **Smarter live-push confirmation** — the prompt now distinguishes a file that was never validated
+  ("not validated yet") from one validated with errors ("found N invalid rows"); previously both
+  showed the same misleading text.
+- **Run summary inline** — the run-complete summary is written to the log pane instead of a blocking
+  `QMessageBox`.
+- **Token countdown** renders every second from cached `TokenData` (no per-tick disk I/O); low-token
+  (<5 min) and expired events are logged once.
+- **Validate button** re-enables after a validate run finishes.
+
+### Fixes & robustness
+- **Batch-safety hardening** (audit of the run/coerce paths):
+  - The runner now catches `ApiError` raised during patient **search**; a non-401 4xx previously
+    escaped the resolve `try/except` and aborted the whole run, breaking the "one bad row never
+    kills the batch" invariant. The row is now recorded as FAILED and the loop continues.
+  - `coerce` rejects non-finite numbers (`inf`/`nan`, e.g. `"1e400"`) as clean per-cell errors
+    instead of letting `OverflowError` escape.
+  - The CLI aborts cleanly when stdin is non-interactive — the PRODUCTION confirmation prompt no
+    longer raises an uncaught `EOFError` on piped/closed stdin and never falls through to a live run.
+  - The ledger escapes the `|` key separator so values containing `|` can't collide across the
+    id/date boundary (backward-compatible — ordinary data yields a byte-identical key), and
+    flush + fsync each append so a created row's dedup entry is durable before proceeding.
+- Stopping a validation pass early no longer marks the file as validated. A cancelled pass reports
+  partial counts and leaves the file unvalidated, so the "not validated yet" nudge stays honest; a
+  re-check also clears any stale verdict at the start.
+
+---
+
 ## v1.1.1 — 2026-06-20
 
 ### Fixes
