@@ -16,7 +16,9 @@ record. **Dry-run is the default** and the app is deliberately throttled — see
 Pre-built installers for Windows and macOS are attached to each
 [GitHub Release](../../releases/latest).
 
-**macOS** — download `HSSK-Tools-*.dmg`, open it, and drag **HSSK Tools** to Applications.
+**macOS** — pick the DMG for your chip (Apple menu → About This Mac):
+`HSSK-Tools-*-apple-silicon.dmg` for Apple Silicon (M1/M2/M3/…) or
+`HSSK-Tools-*-intel.dmg` for an Intel Mac. Open it and drag **HSSK Tools** to Applications.
 The app is not code-signed; right-click → Open, then click Open, or from a terminal:
 ```sh
 xattr -dr com.apple.quarantine "/Applications/HSSK Tools.app"

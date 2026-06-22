@@ -38,7 +38,7 @@ jobs:
         run: mypy
 
   build:
-    name: build (${{ matrix.os }})
+    name: build (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -46,8 +46,10 @@ jobs:
         include:
           - os: windows-latest
             label: windows
-          - os: macos-latest
-            label: macos
+          - os: macos-13          # Intel (x86_64) — last Intel runner
+            label: macos-intel
+          - os: macos-14          # Apple Silicon (arm64)
+            label: macos-arm64
 
     steps:
       - uses: actions/checkout@v7
@@ -80,13 +82,13 @@ jobs:
         run: echo "version=$(python -c 'import hssk; print(hssk.__version__)')" >> "$GITHUB_OUTPUT"
 
       - name: Build DMG (macOS)
-        if: matrix.label == 'macos'
+        if: runner.os == 'macOS'
         run: |
           brew install create-dmg
           bash packaging/make_dmg.sh "${{ steps.ver.outputs.version }}"
 
       - name: Build installer (Windows)
-        if: matrix.label == 'windows'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           choco install innosetup -y
