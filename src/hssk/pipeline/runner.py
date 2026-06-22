@@ -3,6 +3,10 @@
 Per-row ``try/except`` isolates failures so one bad row never kills the batch. Progress is reported
 via plain callbacks (no UI imports) so the same engine drives both the CLI and the GUI. Auth/rate
 problems abort the batch cleanly; the ledger makes the next run resumable.
+
+``run`` (create) and ``run_update`` (update) share one skeleton, ``_run_batch``: it owns the loop,
+per-row coercion, the dry-run write, the send/abort error ladder, and reporting. Each mode supplies
+a ``process_row`` closure for the part that differs (resolve-vs-fetch, ledger, which builder).
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from ..config import Settings, output_dir
 from ..config import settings as default_settings
 from ..errors import ApiError, AuthExpired, ConfigError, MultiMatch, PatientNotFound, RateLimited
 from ..excel import reader
-from ..excel.coerce import coerce_row
+from ..excel.coerce import RowResult, coerce_row
 from ..mapping import MappingConfig
 from ..payload import builder, update_builder
 from .ledger import Ledger
@@ -38,33 +42,49 @@ class Callbacks:
     on_log: Callable[[str], None] = lambda msg: None
 
 
-def run(
+@dataclass
+class _Proceed:
+    """A row that passed validation and is ready to dry-run-write or send.
+
+    Returned by a mode's ``process_row`` to hand control back to ``_run_batch`` for the shared
+    dry-run / send / commit tail.
+    """
+
+    payload: dict[str, Any]
+    patient_id: Any
+    who: str
+    success_status: Status  # CREATED / UPDATED
+    success_verb: str  # "created" / "updated" (kept literal: the GUI matches on these heads)
+    send: Callable[[ApiClient], tuple[Any, Any]]  # exams.create / records.update → (rid, resp)
+    on_commit: Callable[[Any], None] | None = None  # create: ledger mark_done; update: None
+    dryrun_record_id: str | None = None  # create: None; update: medicalRecordId
+
+
+# A mode returns a finished RowOutcome (emit & continue) or a _Proceed (run the shared tail).
+# It may raise AuthExpired / RateLimited; _run_batch catches those to abort cleanly.
+ProcessRow = Callable[[ApiClient, int, RowResult, Callable[[Any], None]], "RowOutcome | _Proceed"]
+
+
+def _run_batch(
     input_path: str | Path,
     mapping: MappingConfig,
     *,
     token: str,
-    dry_run: bool = True,
-    limit: int | None = None,
-    settings: Settings | None = None,
-    callbacks: Callbacks | None = None,
-    ledger: Ledger | None = None,
-    should_cancel: Callable[[], bool] | None = None,
+    dry_run: bool,
+    limit: int | None,
+    settings: Settings | None,
+    callbacks: Callbacks | None,
+    should_cancel: Callable[[], bool] | None,
+    process_row: ProcessRow,
 ) -> RunSummary:
     s = settings or default_settings()
     cb = callbacks or Callbacks()
-    profile = load_profile()
-
-    bad_targets = builder.validate_targets(mapping)
-    if bad_targets:
-        raise ConfigError(f"Mapping uses unknown API field target(s): {bad_targets}")
 
     rows = reader.read_rows(input_path, mapping)
     if limit is not None:
         rows = rows[:limit]
     total = len(rows)
 
-    led = ledger if ledger is not None else Ledger.load()
-    payload_base = builder.prepare_base(mapping)
     out_base = (s.data_dir / "output") if s.data_dir else output_dir()
     out_base.mkdir(parents=True, exist_ok=True)
     run_dir = report_mod.new_run_dir(out_base, dry_run=dry_run)
@@ -103,7 +123,6 @@ def run(
                 emit(RowOutcome(row_index, None, Status.INVALID, message=f"coercion error: {exc}"))
                 continue
             identifier = coerced.identifier
-            key = Ledger.make_key(identifier, coerced.exam_date)
 
             if not coerced.ok:
                 emit(
@@ -116,47 +135,9 @@ def run(
                     )
                 )
                 continue
-            if led.done(key):
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.SKIPPED_ALREADY,
-                        record_id=led.record_id(key),
-                        message="already processed",
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
 
-            if identifier is None:  # defense-in-depth: coerced.ok should guarantee this
-                emit(RowOutcome(row_index, None, Status.INVALID, message="identifier is blank"))
-                continue
             try:
-                resolved = patients.resolve(client, identifier, mapping.search, on_raw=raw_logger)
-                pid = resolved.patient_id
-            except PatientNotFound as exc:
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.NO_PATIENT,
-                        message=str(exc),
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
-            except MultiMatch as exc:
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.MULTI_MATCH,
-                        message=str(exc),
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
+                step = process_row(client, row_index, coerced, raw_logger)
             except AuthExpired as exc:
                 emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
                 aborted, abort_reason = True, str(exc)
@@ -165,46 +146,31 @@ def run(
                 emit(RowOutcome(row_index, identifier, Status.RATE_LIMITED, message=str(exc)))
                 aborted, abort_reason = True, str(exc)
                 break
-            except ApiError as exc:
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.FAILED,
-                        message=f"search: {exc}",
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
 
-            payload = builder.build(
-                coerced,
-                payload_base,
-                pid,
-                medical_identifier_code=resolved.medical_identifier_code,
-                profile=profile,
-            )
-            who = resolved.fullname or ""
+            if isinstance(step, RowOutcome):
+                emit(step)
+                continue
 
             if dry_run:
                 payloads_dir.mkdir(parents=True, exist_ok=True)
                 (payloads_dir / f"row_{row_index}.json").write_text(
-                    json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+                    json.dumps(step.payload, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
                 emit(
                     RowOutcome(
                         row_index,
                         identifier,
                         Status.DRY_RUN_OK,
-                        patient_id=pid,
-                        message=f"payload built (not sent) — {who}".strip(" —"),
+                        patient_id=step.patient_id,
+                        record_id=step.dryrun_record_id,
+                        message=f"payload built (not sent) — {step.who}".strip(" —"),
                         warnings=coerced.warnings,
                     )
                 )
                 continue
 
             try:
-                rid, _resp = exams.create(client, payload)
+                rid, _resp = step.send(client)
             except AuthExpired as exc:
                 emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
                 aborted, abort_reason = True, str(exc)
@@ -219,22 +185,23 @@ def run(
                         row_index,
                         identifier,
                         Status.FAILED,
-                        patient_id=pid,
+                        patient_id=step.patient_id,
                         message=str(exc),
                         warnings=coerced.warnings,
                     )
                 )
                 continue
 
-            led.mark_done(key, rid)
+            if step.on_commit is not None:
+                step.on_commit(rid)
             emit(
                 RowOutcome(
                     row_index,
                     identifier,
-                    Status.CREATED,
-                    patient_id=pid,
-                    record_id=rid,
-                    message=f"created — {who}".strip(" —"),
+                    step.success_status,
+                    patient_id=step.patient_id,
+                    record_id=rid or step.dryrun_record_id,
+                    message=f"{step.success_verb} — {step.who}".strip(" —"),
                     warnings=coerced.warnings,
                 )
             )
@@ -250,6 +217,104 @@ def run(
     )
     report_mod.write_report(run_dir, outcomes, dry_run=dry_run)
     return summary
+
+
+def run(
+    input_path: str | Path,
+    mapping: MappingConfig,
+    *,
+    token: str,
+    dry_run: bool = True,
+    limit: int | None = None,
+    settings: Settings | None = None,
+    callbacks: Callbacks | None = None,
+    ledger: Ledger | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> RunSummary:
+    bad_targets = builder.validate_targets(mapping)
+    if bad_targets:
+        raise ConfigError(f"Mapping uses unknown API field target(s): {bad_targets}")
+
+    profile = load_profile()
+    payload_base = builder.prepare_base(mapping)
+    led = ledger if ledger is not None else Ledger.load()
+
+    def process_row(
+        client: ApiClient,
+        row_index: int,
+        coerced: RowResult,
+        raw_logger: Callable[[Any], None],
+    ) -> RowOutcome | _Proceed:
+        identifier = coerced.identifier
+        key = Ledger.make_key(identifier, coerced.exam_date)
+        if led.done(key):
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.SKIPPED_ALREADY,
+                record_id=led.record_id(key),
+                message="already processed",
+                warnings=coerced.warnings,
+            )
+        if identifier is None:  # defense-in-depth: coerced.ok should guarantee this
+            return RowOutcome(row_index, None, Status.INVALID, message="identifier is blank")
+
+        try:
+            resolved = patients.resolve(client, identifier, mapping.search, on_raw=raw_logger)
+        except PatientNotFound as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.NO_PATIENT,
+                message=str(exc),
+                warnings=coerced.warnings,
+            )
+        except MultiMatch as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.MULTI_MATCH,
+                message=str(exc),
+                warnings=coerced.warnings,
+            )
+        except ApiError as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.FAILED,
+                message=f"search: {exc}",
+                warnings=coerced.warnings,
+            )
+
+        pid = resolved.patient_id
+        payload = builder.build(
+            coerced,
+            payload_base,
+            pid,
+            medical_identifier_code=resolved.medical_identifier_code,
+            profile=profile,
+        )
+        return _Proceed(
+            payload=payload,
+            patient_id=pid,
+            who=resolved.fullname or "",
+            success_status=Status.CREATED,
+            success_verb="created",
+            send=lambda c: exams.create(c, payload),
+            on_commit=lambda rid: led.mark_done(key, rid),
+        )
+
+    return _run_batch(
+        input_path,
+        mapping,
+        token=token,
+        dry_run=dry_run,
+        limit=limit,
+        settings=settings,
+        callbacks=callbacks,
+        should_cancel=should_cancel,
+        process_row=process_row,
+    )
 
 
 def run_update(
@@ -269,10 +334,6 @@ def run_update(
     and does not consult or write the ledger (re-running an update with corrected data must be
     allowed). The mapping must include a column with ``target: medicalRecordId, required: true``.
     """
-    s = settings or default_settings()
-    cb = callbacks or Callbacks()
-    profile = load_profile()
-
     if not any(
         spec.target == "medicalRecordId" and spec.required for spec in mapping.columns.values()
     ):
@@ -285,162 +346,68 @@ def run_update(
     if bad_targets:
         raise ConfigError(f"Mapping uses unknown API field target(s): {bad_targets}")
 
-    rows = reader.read_rows(input_path, mapping)
-    if limit is not None:
-        rows = rows[:limit]
-    total = len(rows)
-
+    profile = load_profile()
     update_payload_base = builder.prepare_base(mapping)
-    out_base = (s.data_dir / "output") if s.data_dir else output_dir()
-    out_base.mkdir(parents=True, exist_ok=True)
-    run_dir = report_mod.new_run_dir(out_base, dry_run=dry_run)
-    payloads_dir = run_dir / "payloads"
 
-    outcomes: list[RowOutcome] = []
-    counts: dict[Status, int] = {}
-    aborted = False
-    abort_reason = ""
-
-    def emit(outcome: RowOutcome) -> None:
-        outcomes.append(outcome)
-        counts[outcome.status] = counts.get(outcome.status, 0) + 1
-        cb.on_row(outcome)
-
-    with ApiClient(token, s, on_log=cb.on_log) as client:
-        for i, (row_index, raw) in enumerate(rows, start=1):
-            if should_cancel is not None and should_cancel():
-                aborted, abort_reason = True, "cancelled by user"
-                break
-            cb.on_progress(i - 1, total)
-            try:
-                coerced = coerce_row(raw, mapping, row_index)
-            except Exception as exc:
-                emit(RowOutcome(row_index, None, Status.INVALID, message=f"coercion error: {exc}"))
-                continue
-            identifier = coerced.identifier
-
-            if not coerced.ok:
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.INVALID,
-                        message="; ".join(coerced.errors),
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
-
-            medical_record_id = coerced.values.get("medicalRecordId")
-            if medical_record_id is None:
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.INVALID,
-                        message="medicalRecordId is blank",
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
-
-            try:
-                detail = records.fetch_detail(client, medical_record_id)
-            except AuthExpired as exc:
-                emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
-                aborted, abort_reason = True, str(exc)
-                break
-            except RateLimited as exc:
-                emit(RowOutcome(row_index, identifier, Status.RATE_LIMITED, message=str(exc)))
-                aborted, abort_reason = True, str(exc)
-                break
-            except ApiError as exc:
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.FAILED,
-                        message=f"fetch detail: {exc}",
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
-
-            patient_id, mic = records.extract_patient_ref(detail)
-            payload = update_builder.build_update(
-                coerced,
-                mapping,
-                patient_id,
-                medical_record_id=medical_record_id,
-                medical_identifier_code=mic,
-                profile=profile,
-                _base=update_payload_base,
-            )
-            who = (detail.get("medicalRecordInfo") or detail.get("medicalRecords") or {}).get(
-                "doctorName"
-            ) or ""
-
-            if dry_run:
-                payloads_dir.mkdir(parents=True, exist_ok=True)
-                (payloads_dir / f"row_{row_index}.json").write_text(
-                    json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.DRY_RUN_OK,
-                        patient_id=patient_id,
-                        record_id=medical_record_id,
-                        message=f"payload built (not sent) — {who}".strip(" —"),
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
-
-            try:
-                rid, _resp = records.update(client, payload)
-            except AuthExpired as exc:
-                emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
-                aborted, abort_reason = True, str(exc)
-                break
-            except RateLimited as exc:
-                emit(RowOutcome(row_index, identifier, Status.RATE_LIMITED, message=str(exc)))
-                aborted, abort_reason = True, str(exc)
-                break
-            except ApiError as exc:
-                emit(
-                    RowOutcome(
-                        row_index,
-                        identifier,
-                        Status.FAILED,
-                        patient_id=patient_id,
-                        message=str(exc),
-                        warnings=coerced.warnings,
-                    )
-                )
-                continue
-
-            emit(
-                RowOutcome(
-                    row_index,
-                    identifier,
-                    Status.UPDATED,
-                    patient_id=patient_id,
-                    record_id=rid or medical_record_id,
-                    message=f"updated — {who}".strip(" —"),
-                    warnings=coerced.warnings,
-                )
+    def process_row(
+        client: ApiClient,
+        row_index: int,
+        coerced: RowResult,
+        raw_logger: Callable[[Any], None],
+    ) -> RowOutcome | _Proceed:
+        identifier = coerced.identifier
+        medical_record_id = coerced.values.get("medicalRecordId")
+        if medical_record_id is None:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.INVALID,
+                message="medicalRecordId is blank",
+                warnings=coerced.warnings,
             )
 
-    cb.on_progress(total, total)
-    summary = RunSummary(
-        total=total,
-        counts=counts,
-        outcomes=outcomes,
-        run_dir=run_dir,
-        aborted=aborted,
-        abort_reason=abort_reason,
+        try:
+            detail = records.fetch_detail(client, medical_record_id)
+        except ApiError as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.FAILED,
+                message=f"fetch detail: {exc}",
+                warnings=coerced.warnings,
+            )
+
+        patient_id, mic = records.extract_patient_ref(detail)
+        payload = update_builder.build_update(
+            coerced,
+            mapping,
+            patient_id,
+            medical_record_id=medical_record_id,
+            medical_identifier_code=mic,
+            profile=profile,
+            _base=update_payload_base,
+        )
+        who = (detail.get("medicalRecordInfo") or detail.get("medicalRecords") or {}).get(
+            "doctorName"
+        ) or ""
+        return _Proceed(
+            payload=payload,
+            patient_id=patient_id,
+            who=who,
+            success_status=Status.UPDATED,
+            success_verb="updated",
+            send=lambda c: records.update(c, payload),
+            dryrun_record_id=medical_record_id,
+        )
+
+    return _run_batch(
+        input_path,
+        mapping,
+        token=token,
+        dry_run=dry_run,
+        limit=limit,
+        settings=settings,
+        callbacks=callbacks,
+        should_cancel=should_cancel,
+        process_row=process_row,
     )
-    report_mod.write_report(run_dir, outcomes, dry_run=dry_run)
-    return summary
