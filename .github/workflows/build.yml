@@ -17,9 +17,9 @@ jobs:
     name: lint & type-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -50,9 +50,9 @@ jobs:
             label: macos
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -74,20 +74,34 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/pw-browsers
         run: pyinstaller packaging/hssk_gui.spec
 
-      - name: Package artifact
+      - name: Get version
+        id: ver
         shell: bash
+        run: echo "version=$(python -c 'import hssk; print(hssk.__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Build DMG (macOS)
+        if: matrix.label == 'macos'
         run: |
-          mkdir -p out
-          tar -czf "out/hssk-gui-${{ matrix.label }}.tgz" -C dist .
+          brew install create-dmg
+          bash packaging/make_dmg.sh "${{ steps.ver.outputs.version }}"
+
+      - name: Build installer (Windows)
+        if: matrix.label == 'windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DMyAppVersion=${{ steps.ver.outputs.version }} `
+            packaging\hssk_gui.iss
 
       # Only upload when something will consume it: the release job (tag pushes) or a
-      # manual run. PR builds still test + package above; uploading there just fills the
-      # Actions artifact-storage quota with .tgz files nothing downloads.
-      - uses: actions/upload-artifact@v4
+      # manual run. PR builds still test + build above; uploading there just fills the
+      # Actions artifact-storage quota.
+      - uses: actions/upload-artifact@v7
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
           name: hssk-gui-${{ matrix.label }}
-          path: out/hssk-gui-${{ matrix.label }}.tgz
+          path: out/*
           retention-days: 14
 
   release:
@@ -98,11 +112,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: artifacts/**/*.tgz
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.exe

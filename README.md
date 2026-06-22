@@ -13,15 +13,17 @@ record. **Dry-run is the default** and the app is deliberately throttled — see
 
 ## Download
 
-Pre-built binaries for Windows and macOS are attached to each
-[GitHub Release](../../releases/latest). Download the `.tgz` for your platform and extract it.
+Pre-built installers for Windows and macOS are attached to each
+[GitHub Release](../../releases/latest).
 
-**macOS** — the app is not code-signed. Right-click → Open, then click Open; or from a terminal:
+**macOS** — download `HSSK-Tools-*.dmg`, open it, and drag **HSSK Tools** to Applications.
+The app is not code-signed; right-click → Open, then click Open, or from a terminal:
 ```sh
-xattr -dr com.apple.quarantine "HSSK Tools.app"
+xattr -dr com.apple.quarantine "/Applications/HSSK Tools.app"
 ```
 
-**Windows** — the `.exe` is not code-signed. When SmartScreen appears, click "More info" → "Run anyway".
+**Windows** — download `HSSK-Tools-Setup-*.exe` and run it (no admin required).
+The installer is not code-signed; if SmartScreen appears, click "More info" → "Run anyway".
 
 ## Requirements
 
@@ -95,15 +97,26 @@ hssk run -i data/input.xlsx      # dry-run by default; add --commit to send
 - The token is stored locally (gitignored, `chmod 600`) and never logged. Excel/reports contain
   patient PII and are gitignored.
 
-## Packaging (Windows `.exe` + macOS `.app`)
+## Packaging (Windows installer + macOS DMG)
 
 PyInstaller can't cross-compile, so each OS builds on its own GitHub Actions runner
-([`.github/workflows/build.yml`](.github/workflows/build.yml)). Artifacts (Windows `.exe`, macOS
-`.app`) are uploaded per build and attached to tagged releases. The Playwright Chromium is bundled
-so operators install nothing.
+([`.github/workflows/build.yml`](.github/workflows/build.yml)). The Playwright Chromium is bundled
+so operators install nothing. Installers (Windows `.exe`, macOS `.dmg`) are attached to tagged releases.
 
-To test a build locally on your current OS:
+To test a build locally:
 
+**macOS:**
 ```bash
 .venv/bin/pyinstaller packaging/hssk_gui.spec
+brew install create-dmg
+bash packaging/make_dmg.sh         # reads version from hssk.__version__
+# → out/HSSK-Tools-<version>.dmg
+```
+
+**Windows:**
+```powershell
+.venv\Scripts\pyinstaller packaging\hssk_gui.spec
+# Install Inno Setup from https://jrsoftware.org/isinfo.php, then:
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=1.3.0 packaging\hssk_gui.iss
+# → out\HSSK-Tools-Setup-<version>.exe
 ```
