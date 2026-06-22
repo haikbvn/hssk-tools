@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Packaging
+
+- **Native installers** — releases now ship a Windows per-user installer
+  (`HSSK-Tools-Setup-*.exe`, no admin required, Start Menu + optional Desktop shortcut,
+  uninstaller) and a macOS drag-to-Applications DMG (`HSSK-Tools-*.dmg`) instead of
+  raw `.tgz` archives.
+
 ## v1.3.0 — 2026-06-22
 
 ### New features
