@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.3.1 — 2026-06-22
 
 ### Packaging
 
