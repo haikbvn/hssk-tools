@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.3.0 — 2026-06-22
+
+### New features
+
+- **Update-mode overlay (`mapping.update.yaml`)** — `hssk update` (and GUI Update mode) no longer
+  requires manually editing `mapping.yaml` to uncomment a `medicalRecordId` line. On first use,
+  the tool auto-seeds a small `mapping.update.yaml` file in your config directory (from a bundled
+  example) and merges its `columns` on top of your base mapping. The file is user-editable — rename
+  the `"Mã hồ sơ"` column header if your Excel uses a different name. Create mode is unaffected;
+  create payloads keep `medicalRecordId: null`. If you already had `medicalRecordId` mapped in your
+  `mapping.yaml`, the overlay becomes a no-op for that key (base-wins semantics).
+- **`template --update` CLI flag** — `hssk template --update` generates an Excel template that
+  already includes the "Mã hồ sơ" column, so operators get update-ready headers without any
+  config editing.
+
+### UX improvements
+
+- **Coloured, bordered Excel template** — the generated template header row now uses amber / red /
+  blue fill with contrasting text to distinguish identifier, required, and optional columns at a
+  glance. Data cells have a visible grid border across 1 000 rows, and the header row is protected
+  (Review → Unprotect Sheet to edit structure).
+- **Per-column data validation** — the generated template enforces type-appropriate rules:
+  - *Stop* / whole-number for code-int targets (`typeOfExamination`, `reasonCode`, etc.)
+  - *Warning* / between for vitals (`pulse`, `bloodPressureMax`, `weight`, `height`, …) using the
+    same reference ranges as the coercion engine
+  - *Warning* / between for eye-acuity (0–10) and circumference (20–250 cm) columns
+  - *Decimal* between for temperature
+  - *Date* between (2000–2100) for examination date; a cross-field custom formula warns when finish
+    date precedes start date
+- **Colour legend** in the guide sheet labels the three header-colour categories with live swatches.
+- **Updated in-app guide** (both VI + EN) — describes the new `mapping.update.yaml` overlay flow
+  instead of the old "uncomment a line" instruction.
+
+### Internal
+
+- **Application icons refreshed** — higher-resolution `.icns` / `.ico` assets and full macOS
+  iconset (16 × 16 → 512 × 512 @2x).
+
+---
+
 ## v1.2.1 — 2026-06-22
 
 ### Internal
