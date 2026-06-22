@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .config import ensure_mapping_file, settings
+from .config import ensure_mapping_file, ensure_update_overlay_file, settings
 from .errors import ConfigError, HsskError
 from .excel import reader
 from .excel.coerce import coerce_row
@@ -16,9 +16,10 @@ from .pipeline import runner
 from .pipeline.ledger import Ledger
 
 
-def _resolve_mapping(path: str | None):
+def _resolve_mapping(path: str | None, *, update: bool = False):
     mapping_path = Path(path) if path else ensure_mapping_file()
-    return load_mapping(mapping_path)
+    overlay = ensure_update_overlay_file() if update else None
+    return load_mapping(mapping_path, overlay_path=overlay)
 
 
 def _confirm_production(action: str) -> bool:
@@ -58,8 +59,10 @@ def cmd_login(args: argparse.Namespace) -> int:
 def cmd_template(args: argparse.Namespace) -> int:
     from .excel.template import make_template
 
-    mapping = _resolve_mapping(args.mapping)
-    out = make_template(mapping, args.output, examples=not args.no_examples)
+    mapping = _resolve_mapping(args.mapping, update=args.update)
+    out = make_template(
+        mapping, args.output, examples=not args.no_examples, protect=not args.no_protect
+    )
     print(f"✓ Template written to {out}")
     return 0
 
@@ -131,7 +134,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     from .auth.token_store import load_valid_token
 
     token = load_valid_token()
-    mapping = _resolve_mapping(args.mapping)
+    mapping = _resolve_mapping(args.mapping, update=True)
     dry_run = not args.commit
 
     s = settings()
@@ -176,6 +179,12 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("-o", "--output", default="hssk_template.xlsx", help="Output .xlsx path")
     t.add_argument("-m", "--mapping", help="Mapping YAML path (defaults to user config)")
     t.add_argument("--no-examples", action="store_true", help="Omit the example rows")
+    t.add_argument("--no-protect", action="store_true", help="Skip header row protection")
+    t.add_argument(
+        "--update",
+        action="store_true",
+        help="Template for `hssk update` (adds the medicalRecordId / 'Mã hồ sơ' column)",
+    )
     t.set_defaults(func=cmd_template)
 
     v = sub.add_parser("validate", help="Offline mapping/data validation (no network)")
@@ -195,7 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     u = sub.add_parser(
         "update",
-        help="Update existing records (dry-run by default); mapping must define medicalRecordId",
+        help="Update existing records (dry-run by default); uses mapping.update.yaml",
     )
     u.add_argument("-i", "--input", required=True, help="Excel file path")
     u.add_argument("-m", "--mapping", help="Mapping YAML path (defaults to user config)")

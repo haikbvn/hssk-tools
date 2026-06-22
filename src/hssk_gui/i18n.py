@@ -183,16 +183,14 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "msg_update_needs_record_id": {
         "en": (
-            "Update mode requires a mapping column with:\n"
-            "  target: medicalRecordId\n"
-            "  required: true\n\n"
-            "Add it to your mapping.yaml (see mapping.example.yaml for an example)."
+            "Update mode needs the medicalRecordId column, which lives in mapping.update.yaml.\n\n"
+            "That file is created automatically; if the column is missing, check that "
+            "mapping.update.yaml still maps a column to target: medicalRecordId, required: true."
         ),
         "vi": (
-            "Chế độ cập nhật yêu cầu một cột mapping với:\n"
-            "  target: medicalRecordId\n"
-            "  required: true\n\n"
-            "Thêm vào file mapping.yaml của bạn (xem mapping.example.yaml để biết ví dụ)."
+            "Chế độ cập nhật cần cột medicalRecordId, nằm trong file mapping.update.yaml.\n\n"
+            "File này được tạo tự động; nếu thiếu cột, hãy kiểm tra mapping.update.yaml vẫn "
+            "ánh xạ một cột tới target: medicalRecordId, required: true."
         ),
     },
     "dlg_mapping_error": {"en": "Mapping error", "vi": "Lỗi mapping"},

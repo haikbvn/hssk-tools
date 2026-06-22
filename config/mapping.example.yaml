@@ -15,8 +15,9 @@ identifier:
 columns:
   # --- key + dates (-> medicalRecordInfo) ---
   "Mã định danh": { target: medicalIdentifierCode, type: str, required: true }
-  # For `hssk update` only: uncomment the line below (and add the matching column to your Excel).
-  # "Mã hồ sơ": { target: medicalRecordId, type: int, required: true }
+  # `hssk update` (editing existing records) needs the medicalRecordId column. It lives in a
+  # separate overlay file, mapping.update.yaml, that update mode merges on top of this one —
+  # edit that file (not this one) if your "Mã hồ sơ" column has a different header.
   "Ngày khám":
     {
       target: examinationDate,

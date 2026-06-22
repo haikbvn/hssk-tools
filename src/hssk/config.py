@@ -131,3 +131,22 @@ def ensure_mapping_file() -> Path:
         if example.exists():
             target.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
     return target
+
+
+def update_overlay_path() -> Path:
+    """User's active update-only overlay, merged onto ``mapping.yaml`` for ``hssk update``."""
+    return config_dir() / "mapping.update.yaml"
+
+
+def example_update_overlay_path() -> Path:
+    return bundle_root() / "config" / "mapping.update.example.yaml"
+
+
+def ensure_update_overlay_file() -> Path:
+    """Return the active update-overlay path, seeding it from the bundled example if missing."""
+    target = update_overlay_path()
+    if not target.exists():
+        example = example_update_overlay_path()
+        if example.exists():
+            target.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+    return target
