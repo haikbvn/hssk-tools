@@ -100,15 +100,48 @@ class MappingConfig(BaseModel):
         return dict(self.columns)
 
 
-def load_mapping(path: str | Path) -> MappingConfig:
-    """Read and validate a mapping YAML file, raising ConfigError with a readable message."""
-    p = Path(path)
-    if not p.exists():
-        raise ConfigError(f"Mapping file not found: {p}")
+def _read_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise ConfigError(f"Mapping file not found: {path}")
     try:
-        raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as exc:
-        raise ConfigError(f"Could not parse YAML in {p}: {exc}") from exc
+        raise ConfigError(f"Could not parse YAML in {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError(f"Invalid mapping in {path}: expected a YAML mapping at the top level")
+    return data
+
+
+def _merge_overlay_columns(base_raw: dict[str, Any], overlay_raw: dict[str, Any]) -> None:
+    """Merge the overlay's ``columns`` into ``base_raw`` in place; base wins on key collision.
+
+    Only the ``columns`` block is merged — the overlay carries update-only field mappings (e.g.
+    ``medicalRecordId``). Base-wins keeps a user who already defines the column in their main
+    mapping working unchanged (the overlay becomes a no-op for that key).
+    """
+    overlay_cols = overlay_raw.get("columns") or {}
+    if not isinstance(overlay_cols, dict):
+        return
+    base_cols = base_raw.setdefault("columns", {})
+    if not isinstance(base_cols, dict):
+        return
+    for col, spec in overlay_cols.items():
+        base_cols.setdefault(col, spec)
+
+
+def load_mapping(path: str | Path, *, overlay_path: str | Path | None = None) -> MappingConfig:
+    """Read and validate a mapping YAML file, raising ConfigError with a readable message.
+
+    When ``overlay_path`` is given and the file exists, its ``columns`` are merged onto the base
+    mapping (base wins on collision) before validation, so the merged result is validated as a
+    single whole (the identifier rule and ``extra='forbid'`` still apply).
+    """
+    p = Path(path)
+    raw = _read_yaml(p)
+    if overlay_path is not None:
+        op = Path(overlay_path)
+        if op.exists():
+            _merge_overlay_columns(raw, _read_yaml(op))
     try:
         return MappingConfig.model_validate(raw)
     except ValidationError as exc:

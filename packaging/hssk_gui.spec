@@ -64,6 +64,7 @@ if not _chromium_src.is_dir():
 
 # App resources
 datas.append((str(ROOT / "config" / "mapping.example.yaml"), "config"))
+datas.append((str(ROOT / "config" / "mapping.update.example.yaml"), "config"))
 
 a = Analysis(
     [str(ROOT / "packaging" / "launch.py")],

@@ -133,6 +133,34 @@ def test_cmd_template_no_examples(tmp_path: Path):
     assert out.exists()
 
 
+def _header_row(path: Path) -> list:
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path, read_only=True)
+    ws = wb.active
+    headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    wb.close()
+    return headers
+
+
+def test_cmd_template_update_adds_record_id_column(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """`template --update` merges the overlay so the generated Excel has the Mã hồ sơ column."""
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))  # overlay seeds here, not real config dir
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        mapping_path = _copy_mapping(tmp_path)
+        create_out = tmp_path / "create.xlsx"
+        update_out = tmp_path / "update.xlsx"
+        assert main(["template", "-m", str(mapping_path), "-o", str(create_out)]) == 0
+        assert main(["template", "-m", str(mapping_path), "-o", str(update_out), "--update"]) == 0
+        assert "Mã hồ sơ" not in _header_row(create_out)
+        assert "Mã hồ sơ" in _header_row(update_out)
+    finally:
+        _s.cache_clear()
+
+
 # -- validate --------------------------------------------------------------------------
 
 

@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 
 from hssk.auth.profile import load_profile
 from hssk.auth.token_store import TokenData, load_token
-from hssk.config import ensure_mapping_file
+from hssk.config import ensure_mapping_file, ensure_update_overlay_file
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
 from hssk.mapping import load_mapping
@@ -376,7 +376,7 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".xlsx"):
             path += ".xlsx"
         try:
-            out = make_template(self._load_mapping(), path)
+            out = make_template(self._load_mapping(update=self._is_update_mode()), path)
         except (ConfigError, HsskError) as exc:
             QMessageBox.critical(self, tr("dlg_template_error"), str(exc))
             return
@@ -391,14 +391,18 @@ class MainWindow(QMainWindow):
         path = ensure_mapping_file()
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
-    def _load_mapping(self):
-        return load_mapping(ensure_mapping_file())
+    def _load_mapping(self, *, update: bool = False):
+        overlay = ensure_update_overlay_file() if update else None
+        return load_mapping(ensure_mapping_file(), overlay_path=overlay)
+
+    def _is_update_mode(self) -> bool:
+        return self.mode_combo.currentIndex() == 1
 
     def _validate(self) -> None:
         if self._excel_path is None:
             return
         try:
-            mapping = self._load_mapping()
+            mapping = self._load_mapping(update=self._is_update_mode())
         except (ConfigError, HsskError) as exc:
             QMessageBox.critical(self, tr("dlg_validation"), str(exc))
             return
@@ -537,7 +541,7 @@ class MainWindow(QMainWindow):
                 return
 
         try:
-            mapping = self._load_mapping()
+            mapping = self._load_mapping(update=update_mode)
         except (ConfigError, HsskError) as exc:
             QMessageBox.critical(self, tr("dlg_mapping_error"), str(exc))
             return

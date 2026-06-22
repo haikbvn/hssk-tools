@@ -133,8 +133,11 @@ record is created twice.</p>
 
 <a name="modes"></a><h3>10 · Create vs Update mode</h3>
 <p>The <b>Mode</b> selector chooses <b>Create</b> (new records, the usual case) or <b>Update</b>
-(modify existing records). Update mode requires your mapping to include a column targeting
-<code>medicalRecordId</code> (the <b>Mã hồ sơ</b> column); the tool tells you if it is missing.</p>
+(modify existing records). Update mode reads <code>medicalRecordId</code> (the <b>Mã hồ sơ</b>
+column) from a small extra mapping file, <code>mapping.update.yaml</code>, that the tool creates and
+merges automatically — so update templates already include the column. You still fill in each
+record's id in Excel; if your header differs from <b>Mã hồ sơ</b>, edit
+<code>mapping.update.yaml</code>.</p>
 
 <a name="prefs"></a><h3>11 · Preferences</h3>
 <p>Open <b>Settings → Settings…</b>. Under <b>Run defaults</b> you can set the delay between rows,
@@ -288,8 +291,10 @@ lần.</p>
 
 <a name="modes"></a><h3>10 · Chế độ Tạo mới và Cập nhật</h3>
 <p>Ô <b>Chế độ</b> chọn <b>Tạo mới</b> (hồ sơ mới, trường hợp thường gặp) hoặc <b>Cập nhật</b> (sửa
-hồ sơ đã có). Chế độ Cập nhật yêu cầu file mapping của bạn có một cột trỏ tới
-<code>medicalRecordId</code> (cột <b>Mã hồ sơ</b>); công cụ sẽ báo nếu thiếu.</p>
+hồ sơ đã có). Chế độ Cập nhật đọc <code>medicalRecordId</code> (cột <b>Mã hồ sơ</b>) từ một file
+mapping phụ nhỏ, <code>mapping.update.yaml</code>, được công cụ tạo và gộp tự động — nên mẫu Excel
+cho cập nhật đã có sẵn cột này. Bạn vẫn cần điền mã hồ sơ của từng bản ghi vào Excel; nếu tiêu đề
+cột của bạn khác <b>Mã hồ sơ</b>, hãy sửa <code>mapping.update.yaml</code>.</p>
 
 <a name="prefs"></a><h3>11 · Cài đặt</h3>
 <p>Mở <b>Cài đặt → Cài đặt…</b>. Trong tab <b>Cài đặt chạy</b> bạn có thể đặt độ trễ giữa các hàng,

@@ -88,6 +88,25 @@ def test_ledger_path_is_under_data_dir(tmp_path: Path, monkeypatch: pytest.Monke
         _settings_cached.cache_clear()
 
 
+def test_ensure_update_overlay_seeds_from_example(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """ensure_update_overlay_file() creates mapping.update.yaml under config_dir on first use."""
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
+    from hssk.config import settings as _settings_cached
+
+    _settings_cached.cache_clear()
+    try:
+        from hssk.config import ensure_update_overlay_file, update_overlay_path
+
+        p = ensure_update_overlay_file()
+        assert p == update_overlay_path()
+        assert p.name == "mapping.update.yaml"
+        assert tmp_path in p.parents
+        assert p.exists()
+        assert "medicalRecordId" in p.read_text(encoding="utf-8")
+    finally:
+        _settings_cached.cache_clear()
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="chmod is Unix-only")
 def test_secrets_dir_is_chmod_700(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
