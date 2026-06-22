@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.2.1 — 2026-06-22
+
+### Internal
+
+- **Engine de-duplication** — `ApiClient.get`/`post` now share a single `_request` method,
+  eliminating the duplicate ~40-line retry/backoff/circuit-breaker ladder. Public API unchanged.
+- **Runner de-duplication** — `run()` and `run_update()` now delegate their shared skeleton
+  (loop, coercion, dry-run write, send/abort error ladder, reporting) to a private `_run_batch`
+  helper, removing ~190 lines of near-identical code. Public signatures unchanged.
+- **GUI god-object split** — `MainWindow` (941 → 691 lines) extracted into two focused modules:
+  `hssk_gui/messages.py` (pure i18n formatters, independently testable) and
+  `hssk_gui/results_panel.py` (`ResultsPanel(QGroupBox)` owning progress, log, table, counters,
+  and Open buttons). Thread/worker lifecycle left untouched.
+
+---
+
 ## v1.2.0 — 2026-06-21
 
 ### New features
