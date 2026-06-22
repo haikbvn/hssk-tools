@@ -13,7 +13,7 @@ import pytest
 
 from hssk.pipeline.results import Status
 from hssk_gui.i18n import set_language
-from hssk_gui.main_window import _tr_coerce_msg, _tr_coerce_msgs, _tr_message, _tr_status
+from hssk_gui.messages import _tr_coerce_msg, _tr_coerce_msgs, _tr_message, _tr_status
 from hssk_gui.workers import ValidationSummary
 
 

@@ -107,7 +107,14 @@ class ApiClient:
 
     # -- public -------------------------------------------------------------------------
 
-    def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+    ) -> Any:
         if self._consecutive_failures >= self.s.circuit_breaker_threshold:
             raise RateLimited(
                 f"circuit breaker open after {self._consecutive_failures} consecutive failures"
@@ -117,51 +124,9 @@ class ApiClient:
         for attempt in range(self.s.max_retries + 1):
             self._throttle()
             try:
-                resp = self._client.get(path, params=params, headers=self._headers())
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                last_detail = f"transport error: {exc}"
-                if attempt < self.s.max_retries:
-                    self._backoff(attempt, None)
-                    continue
-                self._consecutive_failures += 1
-                raise RateLimited(last_detail) from exc
-
-            status = resp.status_code
-            if status == 401:
-                self._consecutive_failures = 0
-                raise AuthExpired("server returned 401 — token invalid or expired")
-            if status in _RETRYABLE_STATUS:
-                last_detail = f"HTTP {status}"
-                if attempt < self.s.max_retries:
-                    self._backoff(attempt, self._retry_after(resp))
-                    continue
-                self._consecutive_failures += 1
-                raise RateLimited(f"{last_detail} after {attempt + 1} attempts")
-            if status >= 400:
-                self._consecutive_failures = 0
-                raise ApiError(f"HTTP {status}", status=status, body=resp.text[:1000])
-
-            self._consecutive_failures = 0
-            if not resp.content:
-                return None
-            try:
-                return resp.json()
-            except ValueError:
-                return resp.text
-
-        raise RateLimited(last_detail or "request failed")  # pragma: no cover
-
-    def post(self, path: str, json: Any) -> Any:
-        if self._consecutive_failures >= self.s.circuit_breaker_threshold:
-            raise RateLimited(
-                f"circuit breaker open after {self._consecutive_failures} consecutive failures"
-            )
-
-        last_detail = ""
-        for attempt in range(self.s.max_retries + 1):
-            self._throttle()
-            try:
-                resp = self._client.post(path, json=json, headers=self._headers())
+                resp = self._client.request(
+                    method, path, params=params, json=json, headers=self._headers()
+                )
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_detail = f"transport error: {exc}"
                 if attempt < self.s.max_retries:
@@ -195,3 +160,9 @@ class ApiClient:
                 return resp.text
 
         raise RateLimited(last_detail or "request failed")  # pragma: no cover
+
+    def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        return self._request("GET", path, params=params)
+
+    def post(self, path: str, json: Any) -> Any:
+        return self._request("POST", path, json=json)

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
-    QColor,
     QDesktopServices,
     QDragEnterEvent,
     QDropEvent,
@@ -22,16 +20,11 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMainWindow,
     QMessageBox,
-    QPlainTextEdit,
-    QProgressBar,
     QPushButton,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,108 +35,13 @@ from hssk.config import ensure_mapping_file
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
 from hssk.mapping import load_mapping
-from hssk.pipeline.results import RowOutcome, RunSummary, Status
+from hssk.pipeline.results import RunSummary, Status
 
 from .i18n import tr
 from .preferences_dialog import PreferencesDialog
+from .results_panel import ResultsPanel
 from .settings import UiSettings
-from .workers import LoginWorker, RunWorker, ValidateWorker, ValidationProblem, ValidationSummary
-
-_STATUS_COLORS = {
-    Status.CREATED: "#1a7f37",
-    Status.UPDATED: "#1a7f37",
-    Status.DRY_RUN_OK: "#0969da",
-    Status.SKIPPED_ALREADY: "#6e7781",
-    Status.INVALID: "#bf8700",
-    Status.NO_PATIENT: "#bf8700",
-    Status.MULTI_MATCH: "#bf8700",
-    Status.FAILED: "#cf222e",
-    Status.AUTH_EXPIRED: "#cf222e",
-    Status.RATE_LIMITED: "#cf222e",
-}
-_TABLE_COL_KEYS = [
-    "col_row",
-    "col_identifier",
-    "col_status",
-    "col_patient_id",
-    "col_record_id",
-    "col_message",
-]
-
-
-def _tr_status(status: Status) -> str:
-    """Localized label for a run-result Status (falls back to the raw enum value)."""
-    key = f"status_{status.value}"
-    text = tr(key)
-    return status.value if text == key else text
-
-
-# Engine-authored row messages from hssk/pipeline/runner.py. Anything not matched here
-# (raw API/exception text, per-cell coercion detail) is shown as-is — it is server or
-# diagnostic content we don't control. Keep these prefixes in sync with the runner.
-_MSG_EXACT = {
-    "already processed": "msg_row_already",
-    "identifier is blank": "msg_row_id_blank",
-    "medicalRecordId is blank": "msg_row_recordid_blank",
-}
-_MSG_HEADS = [  # "<head>" or "<head> — <name>"
-    ("created", "msg_row_created"),
-    ("updated", "msg_row_updated"),
-    ("payload built (not sent)", "msg_row_dryrun"),
-]
-
-
-def _tr_coerce_msg(msg: str) -> str:
-    """Translate a single coerce error/warning line from the engine (no ⚠ prefix)."""
-    if msg.startswith("missing required column "):
-        return tr("msg_coerce_missing_col") + msg[len("missing required column ") :]
-    if ": cannot parse " in msg:
-        # "'COL': cannot parse 'VAL' as TYPE (detail)" — translate the two fixed phrases
-        msg = msg.replace(": cannot parse ", tr("msg_coerce_cannot_parse"), 1)
-        msg = msg.replace(" as ", tr("msg_coerce_as_type"), 1)
-        return msg
-    if " outside expected range " in msg:
-        return msg.replace(" outside expected range ", tr("msg_coerce_range"), 1)
-    if " is before " in msg:
-        return msg.replace(" is before ", tr("msg_coerce_date_before"), 1)
-    return msg
-
-
-def _tr_coerce_msgs(compound: str) -> str:
-    """Translate a semicolon-joined string of coerce errors/warnings (validation path)."""
-    parts = compound.split("; ")
-    result = []
-    for part in parts:
-        if part.startswith("⚠ "):
-            result.append("⚠ " + _tr_coerce_msg(part[2:]))
-        else:
-            result.append(_tr_coerce_msg(part))
-    return "; ".join(result)
-
-
-def _tr_message(message: str) -> str:
-    """Localize engine-authored row messages; pass diagnostic detail through unchanged."""
-    if not message:
-        return ""
-    exact = _MSG_EXACT.get(message)
-    if exact is not None:
-        return tr(exact)
-    for head, key in _MSG_HEADS:
-        if message == head:
-            return tr(key)
-        if message.startswith(f"{head} — "):
-            return f"{tr(key)} — {message[len(head) + 3 :]}"
-    # "coercion error: <coerce detail>" — translate prefix and coerce detail
-    if message.startswith("coercion error: "):
-        return tr("msg_row_coercion") + _tr_coerce_msg(message[len("coercion error: ") :])
-    # "fetch detail: <diagnostic tail>" — translate prefix, diagnostic passes through
-    if message.startswith("fetch detail: "):
-        return tr("msg_row_fetch") + message[len("fetch detail: ") :]
-    # Bare/compound coerce errors (runner joins coerced.errors with "; " — no prefix).
-    # _tr_coerce_msgs only substitutes a few distinctive fixed phrases, so raw API/exception
-    # text is left intact in practice (a server string containing e.g. " is before " could
-    # in theory be partially rewritten, but those phrases are specific enough to be safe).
-    return _tr_coerce_msgs(message)
+from .workers import LoginWorker, RunWorker, ValidateWorker, ValidationSummary
 
 
 class MainWindow(QMainWindow):
@@ -166,10 +64,6 @@ class MainWindow(QMainWindow):
         self._excel_path: Path | None = None
         self._validated_path: Path | None = None  # last file a validation pass completed on
         self._validated_invalid = 0  # invalid-row count from that pass
-        self._last_run_dir: Path | None = None
-        self._last_results_file: Path | None = None
-        self._run_start: float = 0.0
-        self._counts: dict[Status, int] = {}
 
         # thread/worker handles (kept alive while running)
         self._login_thread: QThread | None = None
@@ -198,7 +92,8 @@ class MainWindow(QMainWindow):
         root.addWidget(self._build_login_box())
         root.addWidget(self._build_data_box())
         root.addWidget(self._build_run_box())
-        root.addWidget(self._build_results_box(), stretch=1)
+        self.results = ResultsPanel()
+        root.addWidget(self.results, stretch=1)
         self.setCentralWidget(central)
         self._build_menu()
 
@@ -338,46 +233,6 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.banner)
         return box
 
-    def _build_results_box(self) -> QGroupBox:
-        box = QGroupBox(tr("group_results"))
-        lay = QVBoxLayout(box)
-
-        prog_row = QHBoxLayout()
-        self.progress = QProgressBar()
-        self.status_label = QLabel("")
-        self.counter_label = QLabel("—")
-        prog_row.addWidget(self.progress, stretch=1)
-        prog_row.addWidget(self.status_label)
-        prog_row.addWidget(self.counter_label)
-        lay.addLayout(prog_row)
-
-        self.log_pane = QPlainTextEdit()
-        self.log_pane.setReadOnly(True)
-        self.log_pane.setMaximumHeight(80)
-        self.log_pane.setPlaceholderText(tr("log_placeholder"))
-        lay.addWidget(self.log_pane)
-
-        self.table = QTableWidget(0, len(_TABLE_COL_KEYS))
-        self.table.setHorizontalHeaderLabels([tr(k) for k in _TABLE_COL_KEYS])
-        self.table.horizontalHeader().setSectionResizeMode(
-            len(_TABLE_COL_KEYS) - 1, QHeaderView.ResizeMode.Stretch
-        )
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        lay.addWidget(self.table, stretch=1)
-
-        bottom = QHBoxLayout()
-        bottom.addStretch(1)
-        self.open_results_btn = QPushButton(tr("btn_open_results"))
-        self.open_results_btn.setEnabled(False)
-        self.open_results_btn.clicked.connect(self._open_results)
-        bottom.addWidget(self.open_results_btn)
-        self.open_report_btn = QPushButton(tr("btn_open_report"))
-        self.open_report_btn.setEnabled(False)
-        self.open_report_btn.clicked.connect(self._open_report)
-        bottom.addWidget(self.open_report_btn)
-        lay.addLayout(bottom)
-        return box
-
     # -- preferences --------------------------------------------------------------------
 
     def _restore_prefs(self) -> None:
@@ -438,13 +293,13 @@ class MainWindow(QMainWindow):
             was_logged_in = self._token is not None
             self._render_token_label()  # flips to "expired" and clears self._token
             if was_logged_in:
-                self._on_log(tr("log_token_expired"))
+                self.results.append_log(tr("log_token_expired"))
                 self._update_start_enabled()
             return
         rem = data.seconds_remaining()
         if rem is not None and rem < 300 and not self._token_low_warned:
             self._token_low_warned = True
-            self._on_log(tr("log_token_low"))
+            self.results.append_log(tr("log_token_low"))
         self._render_token_label()
 
     def _set_token_label(self, text: str, color: str) -> None:
@@ -561,14 +416,13 @@ class MainWindow(QMainWindow):
         # so a stopped/failed pass leaves the file marked unvalidated.
         self._validated_path = None
         self._validated_invalid = 0
-        self._reset_results(for_validation=True)
-        self._run_start = time.monotonic()
+        self.results.reset(for_validation=True)
         self._validate_thread = QThread()
         self._validate_worker = ValidateWorker(self._excel_path, mapping)
         self._validate_worker.moveToThread(self._validate_thread)
         self._validate_thread.started.connect(self._validate_worker.run)
-        self._validate_worker.progress.connect(self._on_progress)
-        self._validate_worker.problem.connect(self._on_validate_problem)
+        self._validate_worker.progress.connect(self.results.set_progress)
+        self._validate_worker.problem.connect(self.results.add_validation_row)
         self._validate_worker.finished.connect(self._validate_thread.quit)
         self._validate_worker.failed.connect(self._validate_thread.quit)
         self._validate_worker.finished.connect(self._on_validate_finished)
@@ -580,17 +434,12 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(True)
         self._validate_thread.start()
 
-    def _on_validate_problem(self, problem: ValidationProblem) -> None:
-        self._append_validation_row(
-            problem.row_index, problem.identifier, problem.has_errors, problem.message
-        )
-
     def _on_validate_finished(self, summary: ValidationSummary) -> None:
         if summary.invalid == 0 and summary.warns == 0:
-            self.status_label.setText(tr("msg_no_issues"))
-            self.counter_label.setStyleSheet("color:#1a7f37; font-weight:bold;")
+            self.results.set_status(tr("msg_no_issues"))
+            counter_color = "color:#1a7f37; font-weight:bold;"
         else:
-            self.status_label.setText(
+            self.results.set_status(
                 tr("msg_validation_summary").format(
                     valid=summary.valid,
                     invalid=summary.invalid,
@@ -598,8 +447,10 @@ class MainWindow(QMainWindow):
                     total=summary.total,
                 )
             )
-            self.counter_label.setStyleSheet("")
-        self.counter_label.setText(f"✓ {summary.valid}   ⚠ {summary.warns}   ✗ {summary.invalid}")
+            counter_color = ""
+        self.results.set_counter(
+            f"✓ {summary.valid}   ⚠ {summary.warns}   ✗ {summary.invalid}", counter_color
+        )
         # Only a pass that checked every row counts as validated. A stopped pass reports
         # partial counts (invalid may be 0 simply because the bad rows weren't reached),
         # so leave the file unvalidated to keep the "not validated yet" nudge honest.
@@ -608,7 +459,7 @@ class MainWindow(QMainWindow):
             self._validated_invalid = summary.invalid
 
     def _on_validate_failed(self, message: str) -> None:
-        self.status_label.setText(tr("lbl_error"))
+        self.results.set_status(tr("lbl_error"))
         QMessageBox.critical(self, tr("dlg_validation"), message)
 
     def _on_validate_thread_finished(self) -> None:
@@ -617,20 +468,6 @@ class MainWindow(QMainWindow):
         self.validate_btn.setEnabled(self._excel_path is not None)
         self.stop_btn.setEnabled(self._run_thread is not None)
         self._update_start_enabled()
-
-    def _append_validation_row(
-        self, idx: int, identifier: str, has_errors: bool, message: str
-    ) -> None:
-        status_text = tr("val_status_invalid") if has_errors else tr("val_status_warning")
-        status_color = "#cf222e" if has_errors else "#bf8700"
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        cells = [str(idx), identifier, status_text, "", "", _tr_coerce_msgs(message)]
-        for c, text in enumerate(cells):
-            item = QTableWidgetItem(text)
-            if c == 2:
-                item.setForeground(QColor(status_color))
-            self.table.setItem(row, c, item)
 
     # -- run ----------------------------------------------------------------------------
 
@@ -724,8 +561,7 @@ class MainWindow(QMainWindow):
         settings = engine_settings().model_copy(update={"request_delay": self.delay_spin.value()})
         limit = self.limit_spin.value() or None
 
-        self._reset_results()
-        self._run_start = time.monotonic()
+        self.results.reset()
         self._run_thread = QThread()
         self._run_worker = RunWorker(
             self._excel_path,
@@ -738,9 +574,9 @@ class MainWindow(QMainWindow):
         )
         self._run_worker.moveToThread(self._run_thread)
         self._run_thread.started.connect(self._run_worker.run)
-        self._run_worker.progress.connect(self._on_progress)
-        self._run_worker.row.connect(self._on_row)
-        self._run_worker.log.connect(self._on_log)
+        self._run_worker.progress.connect(self.results.set_progress)
+        self._run_worker.row.connect(self.results.add_row)
+        self._run_worker.log.connect(self.results.append_log)
         # Stop the thread first, then run the UI handlers; drop references only after the thread
         # has fully finished — destroying a running QThread aborts the process.
         self._run_worker.finished.connect(self._run_thread.quit)
@@ -762,86 +598,8 @@ class MainWindow(QMainWindow):
             self._validate_worker.cancel()
         self.stop_btn.setEnabled(False)
 
-    def _reset_results(self, for_validation: bool = False) -> None:
-        self.table.setRowCount(0)
-        self.progress.setValue(0)
-        self._counts = {}
-        self.counter_label.setText("—")
-        self.counter_label.setStyleSheet("")
-        self.status_label.setText("")
-        self.log_pane.clear()
-        self.open_report_btn.setEnabled(False)
-        self.open_results_btn.setEnabled(False)
-        # col indices: 0=row, 1=identifier, 2=status, 3=patient_id, 4=record_id, 5=message
-        self.table.setColumnHidden(3, for_validation)
-        self.table.setColumnHidden(4, for_validation)
-
-    def _on_progress(self, done: int, total: int) -> None:
-        self.progress.setMaximum(max(total, 1))
-        self.progress.setValue(done)
-        if done == 0:
-            self.status_label.setText(tr("prog_starting").format(total=total))
-        elif done >= total:
-            self.status_label.setText(tr("prog_all_done").format(total=total))
-        else:
-            elapsed = time.monotonic() - self._run_start
-            if elapsed > 0:
-                rem = int((elapsed / done) * (total - done))
-                if rem >= 60:
-                    eta = tr("eta_min_sec").format(m=rem // 60, s=rem % 60)
-                else:
-                    eta = tr("eta_sec").format(s=rem)
-                self.status_label.setText(tr("prog_row_of").format(done=done, total=total, eta=eta))
-            else:
-                self.status_label.setText(tr("prog_row_of_no_eta").format(done=done, total=total))
-
-    def _on_row(self, outcome: RowOutcome) -> None:
-        self._counts[outcome.status] = self._counts.get(outcome.status, 0) + 1
-        r = self.table.rowCount()
-        self.table.insertRow(r)
-        cells = [
-            str(outcome.row_index),
-            outcome.identifier or "",
-            _tr_status(outcome.status),
-            "" if outcome.patient_id is None else str(outcome.patient_id),
-            "" if outcome.record_id is None else str(outcome.record_id),
-            _tr_message(outcome.message),
-        ]
-        for c, text in enumerate(cells):
-            item = QTableWidgetItem(text)
-            if c == 2:
-                item.setForeground(QColor(_STATUS_COLORS.get(outcome.status, "#000000")))
-            self.table.setItem(r, c, item)
-        self.table.scrollToBottom()
-        self._update_counter_label()
-
-    def _update_counter_label(self) -> None:
-        created = (
-            self._counts.get(Status.CREATED, 0)
-            + self._counts.get(Status.UPDATED, 0)
-            + self._counts.get(Status.DRY_RUN_OK, 0)
-        )
-        skipped = self._counts.get(Status.SKIPPED_ALREADY, 0)
-        failed = sum(
-            self._counts.get(s, 0)
-            for s in (Status.FAILED, Status.NO_PATIENT, Status.MULTI_MATCH, Status.INVALID)
-        )
-        aborted = self._counts.get(Status.AUTH_EXPIRED, 0) + self._counts.get(
-            Status.RATE_LIMITED, 0
-        )
-        text = f"✓ {created}   ↷ {skipped}   ✗ {failed}"
-        if aborted:
-            text += f"   ⛔ {aborted}"
-        self.counter_label.setText(text)
-
-    def _on_log(self, message: str) -> None:
-        self.log_pane.appendPlainText(message)
-
     def _on_run_finished(self, summary: RunSummary) -> None:
-        self._last_run_dir = summary.run_dir
-        self._last_results_file = summary.run_dir / "results.xlsx"
-        self.open_report_btn.setEnabled(True)
-        self.open_results_btn.setEnabled(self._last_results_file.exists())
+        self.results.record_run(summary.run_dir)
         self._refresh_token_status()
 
         processed = len(summary.outcomes)
@@ -851,27 +609,27 @@ class MainWindow(QMainWindow):
         if summary.aborted:
             if summary.counts.get(Status.AUTH_EXPIRED, 0):
                 parts.append(tr("msg_token_expired_abort"))
-                self.status_label.setText(tr("lbl_aborted_token"))
+                self.results.set_status(tr("lbl_aborted_token"))
             elif summary.counts.get(Status.RATE_LIMITED, 0):
                 parts.append(tr("msg_rate_limited_abort"))
-                self.status_label.setText(tr("lbl_aborted_server"))
+                self.results.set_status(tr("lbl_aborted_server"))
             else:
                 parts.append(tr("msg_run_cancelled"))
-                self.status_label.setText(tr("lbl_cancelled"))
+                self.results.set_status(tr("lbl_cancelled"))
             parts.append(tr("msg_processed_of").format(done=processed, total=summary.total))
         else:
             parts.append(tr("msg_done").format(done=processed))
-            self.status_label.setText(tr("lbl_finished").format(done=processed))
+            self.results.set_status(tr("lbl_finished").format(done=processed))
 
         if skipped > 0:
             parts.append(tr("msg_skipped_rows").format(skipped=skipped))
         parts.append(tr("msg_report_path").format(path=summary.run_dir))
         # Inline, no modal: headline is in status_label, tally in counter_label, the Open
         # buttons are enabled above — surface the detail + recovery guidance in the log pane.
-        self.log_pane.appendPlainText("\n" + "\n".join(parts))
+        self.results.append_log("\n" + "\n".join(parts))
 
     def _on_run_failed(self, message: str) -> None:
-        self.status_label.setText(tr("lbl_error"))
+        self.results.set_status(tr("lbl_error"))
         QMessageBox.critical(self, tr("dlg_run_failed"), message)
 
     def _on_run_thread_finished(self) -> None:
@@ -880,14 +638,6 @@ class MainWindow(QMainWindow):
         self._run_worker = None
         self.stop_btn.setEnabled(False)
         self._update_start_enabled()
-
-    def _open_results(self) -> None:
-        if self._last_results_file is not None:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._last_results_file)))
-
-    def _open_report(self) -> None:
-        if self._last_run_dir is not None:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._last_run_dir)))
 
     @staticmethod
     def _excel_from_mime(event: QDragEnterEvent | QDropEvent) -> Path | None:
