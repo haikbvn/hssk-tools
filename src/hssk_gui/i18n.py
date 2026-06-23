@@ -77,6 +77,24 @@ _STRINGS: dict[str, dict[str, str]] = {
     "menu_privacy": {"en": "Privacy Policy", "vi": "Chính sách bảo mật"},
     "menu_security": {"en": "Security", "vi": "Bảo mật"},
     "menu_about": {"en": "About HSSK Tools", "vi": "Về HSSK Tools"},
+    # sponsor / support dialog
+    "menu_sponsor": {"en": "Support the Developer…", "vi": "Ủng hộ nhà phát triển…"},
+    "footer_sponsor": {"en": "Support the developer", "vi": "Ủng hộ nhà phát triển"},
+    "sponsor_title": {"en": "Support HSSK Tools", "vi": "Ủng hộ HSSK Tools"},
+    "sponsor_intro": {
+        "en": "If HSSK Tools saves you time, a small donation keeps it maintained and free.",
+        "vi": "Nếu HSSK Tools giúp ích cho bạn, một chút ủng hộ sẽ giúp duy trì và phát triển.",
+    },
+    "sponsor_vietqr_caption": {
+        "en": "Bank transfer (VietQR)",
+        "vi": "Chuyển khoản ngân hàng (VietQR)",
+    },
+    "sponsor_momo_caption": {"en": "MoMo wallet", "vi": "Ví MoMo"},
+    "sponsor_thanks": {
+        "en": "Thank you for your support!",
+        "vi": "Cảm ơn bạn đã ủng hộ!",
+    },
+    "sponsor_qr_missing": {"en": "QR image not available", "vi": "Chưa có ảnh QR"},
     # about dialog
     "about_title": {"en": "About HSSK Tools", "vi": "Về HSSK Tools"},
     "about_body": {
