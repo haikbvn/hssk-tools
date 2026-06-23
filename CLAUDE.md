@@ -13,6 +13,13 @@ clinic staff, hence the GUI; the CLI exists for debugging the same engine.
 > requirements locked with the project owner — treat them as invariants, not implementation details
 > to be optimized away.
 
+## Library docs & setup — use Context7
+
+When a task needs **library/API documentation, code generation, or setup/configuration steps** for
+any third-party dependency (PySide6, pydantic, Playwright, openpyxl, httpx, PyInstaller, …),
+**proactively use the Context7 MCP** (`resolve-library-id` → `query-docs`) to pull current docs
+first — without waiting to be asked. Prefer it over recalling version-specific APIs from memory.
+
 ## Commands
 
 Dev runs from a Python **3.12** venv at `.venv` (the dev Mac's system 3.14 is too new for some
@@ -32,8 +39,10 @@ pytest tests/test_coerce.py::test_name   # one test
 .venv/bin/pyinstaller packaging/hssk_gui.spec   # build the app for the current OS
 ```
 
-CLI (debugging the engine without the GUI): `hssk login` | `hssk template -o out.xlsx` |
-`hssk validate -i in.xlsx` | `hssk run -i in.xlsx` (dry-run; add `--commit` to send).
+CLI (debugging the engine without the GUI): `hssk login` | `hssk template -o out.xlsx`
+(`--update` adds the `medicalRecordId` column) | `hssk validate -i in.xlsx` |
+`hssk run -i in.xlsx` (create) | `hssk update -i in.xlsx` (update existing records). Both `run` and
+`update` are dry-run by default; add `--commit` to send and `--yes` to skip the production prompt.
 
 Runtime knobs are `Settings` fields overridable via `HSSK_*` env vars or a `.env`
 (e.g. `HSSK_REQUEST_DELAY=2`, `HSSK_DATA_DIR=/tmp/hssk` for an isolated sandbox).
@@ -45,7 +54,10 @@ Runtime knobs are `Settings` fields overridable via `HSSK_*` env vars or a `.env
 (`on_progress`/`on_row`/`on_log`) and never imports any UI — so the CLI and GUI share identical
 behavior. When adding engine features, keep this boundary: no Qt/print inside `hssk/`.
 
-**Per-row pipeline** (`hssk/pipeline/runner.py`, the orchestrator to read first):
+**Per-row pipeline** (`hssk/pipeline/runner.py`, the orchestrator to read first). `run` (create) and
+`run_update` (update) share one skeleton, `_run_batch` — it owns the loop, coercion, the dry-run
+write, the send/abort error ladder, and reporting; each mode passes a `process_row` closure for the
+part that differs. The **create** path:
 
 ```
 read_rows (excel/reader)        # Excel → {header: value}, validates required columns exist
@@ -55,6 +67,12 @@ read_rows (excel/reader)        # Excel → {header: value}, validates required 
   → builder.build (payload/)    # canonical template ⊕ mapping defaults ⊕ row values
   → dry-run: write payloads/row_N.json   |   commit: exams.create → Ledger.mark_done
 ```
+
+The **update** path (`run_update`) skips both patient search and the ledger: it reads a
+`medicalRecordId` from the row, `records.fetch_detail`s the existing record to recover its
+`patientId`, then `update_builder.build_update` overlays the row's values and `records.update` sends
+it. Re-running an update with corrected data is intentional, so it **never** consults or writes the
+ledger.
 
 Each row is wrapped in `try/except` so one bad row never kills the batch. Auth/rate failures
 (`AuthExpired`, `RateLimited`) **abort** the whole batch cleanly; per-row failures
@@ -94,11 +112,19 @@ canonical template → deep-merge the mapping's `defaults` block → inject per-
 the correct sub-object (a target is routed by membership in `RECORD_INFO_TARGETS` vs
 `PATIENT_DETAIL_TARGETS`) → set `patientId`/`medicalIdentifierCode` last. `validate_targets` rejects
 any mapped target that isn't a real field in these templates — run it before any batch.
+`update_builder.build_update` reuses `builder.build`, then stamps `medicalRecordId`, adds
+`concludesDisease`, and the two empty `deleted*` lists the update endpoint requires. `builder.build`
+also fills operator-identity fields from the cached login profile (`auth/profile.py`, fetched once at
+login) when the row leaves them blank.
 
 ### Config & the mapping file (`mapping.py`, `config.py`)
 
 The Excel-column → API-field map is a **user-editable** `mapping.yaml`, seeded on first run from
 `config/mapping.example.yaml`. It lives in the OS config dir (`config_dir()`), **not** the repo.
+Update mode adds a second user file, `mapping.update.yaml` (seeded from
+`config/mapping.update.example.yaml`) — a **columns-only overlay** merged onto `mapping.yaml` by
+`load_mapping(overlay_path=…)`, base-wins on key collision — that carries the update-only
+`medicalRecordId` column so the main mapping stays unchanged.
 A pydantic validator enforces that `identifier.column` maps to target `medicalIdentifierCode`. All
 writable runtime files (token, browser profile, ledger, output reports) live under the platformdirs
 user-data dir via `config.py` helpers — never next to the (possibly read-only, frozen) executable.
@@ -121,19 +147,37 @@ commit 5ea2803). The fixed lifecycle: `worker.finished/failed → thread.quit`; 
 `thread.finished` do `deleteLater` and drop the Python references. `closeEvent` cancels workers and
 `wait()`s for threads before accepting. Preserve this ordering when touching the worker wiring.
 
+### GUI shell (`hssk_gui/`)
+
+`app.py:main` is the entry point: it loads the language from `UiSettings` (`settings.py`, a QSettings
+wrapper), shows the **first-run consent gate** (`legal_dialog.LegalDialog(consent=True)`; declining
+exits the app and does not persist `terms_accepted`), then opens `MainWindow`.
+
+Every user-facing string goes through `i18n.tr(key)` — a flat VI/EN dict in `i18n.py`, **Vietnamese
+default**, switched in Preferences (applies on restart). Add a key there rather than a bare literal.
+Subtle cross-boundary coupling: the engine emits a few literal English verb heads ("created" /
+"updated") in row messages that the GUI matches on, so those stay untranslated at the source.
+
+Dialogs: `preferences_dialog` (run defaults + record defaults — the latter edits the mapping's
+`defaults` block in place), `legal_dialog` (Terms/Privacy/Security, also opened read-only from Help),
+`guide_dialog`, and `sponsor_dialog` (VietQR + MoMo QR images, reachable from the Help menu and a
+grey footer link). `results_panel` is the live results table.
+
 ## Packaging
 
 PyInstaller can't cross-compile, so each OS builds on its own GitHub Actions runner
 (`.github/workflows/build.yml`): install deps, run `pytest`, `playwright install chromium` into
 `$PLAYWRIGHT_BROWSERS_PATH`, then `pyinstaller packaging/hssk_gui.spec`. The spec bundles that
-Chromium (so operators install nothing) plus `mapping.example.yaml`; `runtime_hook_playwright.py`
+Chromium (so operators install nothing) plus `mapping.example.yaml`, `mapping.update.example.yaml`,
+and the sponsor QR PNGs (`assets/sponsor/`); `runtime_hook_playwright.py`
 points the frozen app at the bundled browser. Output is a Windows `.exe` folder and a macOS `.app`,
 uploaded per build and attached to `v*` tag releases.
 
 ## Notes
 
-- Excel files, reports, the token, and `mapping.yaml` all contain PII or secrets and are gitignored —
-  never commit them. `~$hssk_template.xlsx` is an Excel lock file; ignore it.
+- Excel files, reports, the token, and `mapping.yaml`/`mapping.update.yaml` all contain PII or
+  secrets and are gitignored — never commit them. `~$hssk_template.xlsx` is an Excel lock file;
+  ignore it.
 - Vietnamese text and locale quirks are pervasive (comma decimals, `dd/MM/yyyy HH:mm:ss` dates,
   diacritics in field defaults). Keep `ensure_ascii=False` when writing JSON and preserve the exact
   Vietnamese constant strings in `templates.py`.

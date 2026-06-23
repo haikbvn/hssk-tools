@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import sys
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QDialog
 
 from hssk import __version__
+from hssk.config import app_icon
 
 from .i18n import set_language
 from .main_window import MainWindow
@@ -31,6 +33,9 @@ def main() -> int:
     app.setApplicationName("HSSK Tools")
     app.setOrganizationName("hssk-tools")
     app.setApplicationVersion(__version__)
+    icon_path = app_icon()
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     set_language(UiSettings().language)
     if not _ensure_terms_accepted():
         return 0

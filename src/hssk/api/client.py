@@ -17,12 +17,12 @@ from typing import Any
 
 import httpx
 
+from .. import __version__
 from ..config import Settings
 from ..config import settings as default_settings
 from ..errors import ApiError, AuthExpired, RateLimited
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
-_USER_AGENT = "hssk-tools/0.1"
 
 
 class ApiClient:
@@ -44,6 +44,11 @@ class ApiClient:
         self._consecutive_failures = 0
         self._client = httpx.Client(
             base_url=self.s.base_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "*/*",
+                "User-Agent": f"hssk-tools/{__version__}",
+            },
             timeout=httpx.Timeout(
                 connect=self.s.connect_timeout,
                 read=self.s.read_timeout,
@@ -62,14 +67,6 @@ class ApiClient:
         self._client.close()
 
     # -- internals ----------------------------------------------------------------------
-
-    def _headers(self) -> dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-            "Accept": "*/*",
-            "User-Agent": _USER_AGENT,
-        }
 
     def _throttle(self) -> None:
         wait = self.s.request_delay - (self._monotonic() - self._last_request)
@@ -124,9 +121,7 @@ class ApiClient:
         for attempt in range(self.s.max_retries + 1):
             self._throttle()
             try:
-                resp = self._client.request(
-                    method, path, params=params, json=json, headers=self._headers()
-                )
+                resp = self._client.request(method, path, params=params, json=json)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_detail = f"transport error: {exc}"
                 if attempt < self.s.max_retries:

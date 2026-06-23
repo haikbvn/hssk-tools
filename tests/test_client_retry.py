@@ -171,6 +171,14 @@ def test_create_extracts_record_id():
     assert rid == 555
 
 
+def test_client_user_agent_contains_version() -> None:
+    from hssk import __version__
+
+    with _client() as c:
+        ua = c._client.headers.get("user-agent", "")
+    assert f"hssk-tools/{__version__}" in ua, f"unexpected User-Agent: {ua!r}"
+
+
 @respx.mock
 def test_429_http_date_retry_after_is_honored():
     import datetime as dt

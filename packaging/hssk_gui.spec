@@ -67,6 +67,7 @@ datas.append((str(ROOT / "config" / "mapping.example.yaml"), "config"))
 datas.append((str(ROOT / "config" / "mapping.update.example.yaml"), "config"))
 datas.append((str(ROOT / "assets" / "sponsor" / "vietqr.png"), "assets/sponsor"))
 datas.append((str(ROOT / "assets" / "sponsor" / "momo.png"), "assets/sponsor"))
+datas.append((str(ROOT / "packaging" / "assets" / "icon.png"), "assets"))
 
 a = Analysis(
     [str(ROOT / "packaging" / "launch.py")],
