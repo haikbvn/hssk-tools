@@ -44,18 +44,20 @@ jobs:
       fail-fast: false
       matrix:
         # GitHub-hosted Intel macOS runners are retired, so the Intel (x86_64) DMG is
-        # cross-built on the arm64 runner under Rosetta: setup-python installs an x64
-        # interpreter and PyInstaller (run via Rosetta) then emits an x86_64 app.
+        # cross-built on the arm64 runner under Rosetta. setup-python provides a
+        # universal2 framework Python; prefixing every Python call with `arch -x86_64`
+        # (matrix.pyrun) runs it in x86_64 mode, so pip pulls x86_64 wheels, Playwright
+        # fetches the x86_64 Chromium, and PyInstaller emits an x86_64 app.
         include:
           - os: windows-latest
             label: windows
-            py-arch: x64
+            pyrun: ""
           - os: macos-14          # Apple Silicon (arm64), native
             label: macos-arm64
-            py-arch: arm64
+            pyrun: ""
           - os: macos-14          # Intel (x86_64), cross-built via Rosetta
             label: macos-intel
-            py-arch: x64
+            pyrun: "arch -x86_64"
 
     steps:
       - uses: actions/checkout@v7
@@ -63,30 +65,33 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          architecture: ${{ matrix.py-arch }}
+
+      - name: Ensure Rosetta 2 (Intel cross-build)
+        if: matrix.label == 'macos-intel'
+        run: softwareupdate --install-rosetta --agree-to-license || true
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          ${{ matrix.pyrun }} python -m pip install --upgrade pip
+          ${{ matrix.pyrun }} python -m pip install -e ".[dev]"
 
       - name: Run tests
-        run: pytest -q
+        run: ${{ matrix.pyrun }} python -m pytest -q
 
       - name: Install Playwright Chromium (into bundle dir)
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/pw-browsers
-        run: python -m playwright install --no-shell chromium
+        run: ${{ matrix.pyrun }} python -m playwright install --no-shell chromium
 
       - name: Build app
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/pw-browsers
-        run: pyinstaller packaging/hssk_gui.spec
+        run: ${{ matrix.pyrun }} python -m PyInstaller packaging/hssk_gui.spec
 
       - name: Get version
         id: ver
         shell: bash
-        run: echo "version=$(python -c 'import hssk; print(hssk.__version__)')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(${{ matrix.pyrun }} python -c 'import hssk; print(hssk.__version__)')" >> "$GITHUB_OUTPUT"
 
       - name: Build DMG (macOS)
         if: runner.os == 'macOS'

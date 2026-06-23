@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.3.3 — 2026-06-23
+## v1.3.4 — 2026-06-23
 
 ### Packaging
 
@@ -9,7 +9,10 @@
   Intel Macs ("not supported on this Mac"). Releases now ship two DMGs:
   `HSSK-Tools-*-apple-silicon.dmg` and `HSSK-Tools-*-intel.dmg`. Because
   GitHub-hosted Intel macOS runners have been retired, the Intel DMG is cross-built
-  on the Apple Silicon runner under Rosetta (x64 Python + PyInstaller).
+  on the Apple Silicon runner by running the universal2 framework Python under
+  Rosetta (`arch -x86_64`), so pip, Playwright, and PyInstaller all target x86_64.
+  (v1.3.3 attempted this via setup-python's `architecture: x64`, which was ignored —
+  both legs built arm64 and the identically-named DMGs collided on upload.)
 
 ## v1.3.1 — 2026-06-22
 
