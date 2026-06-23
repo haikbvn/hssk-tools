@@ -107,6 +107,22 @@ def test_ensure_update_overlay_seeds_from_example(tmp_path: Path, monkeypatch: p
         _settings_cached.cache_clear()
 
 
+def test_sponsor_asset_path() -> None:
+    from hssk.config import sponsor_asset
+
+    p = sponsor_asset("vietqr.png")
+    assert p.parts[-3:] == ("assets", "sponsor", "vietqr.png"), f"unexpected path: {p}"
+
+
+def test_sponsor_placeholder_images_exist() -> None:
+    from hssk.config import sponsor_asset
+
+    for name in ("vietqr.png", "momo.png"):
+        p = sponsor_asset(name)
+        assert p.exists(), f"placeholder image missing: {p}"
+        assert p.stat().st_size > 0, f"placeholder image is empty: {p}"
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="chmod is Unix-only")
 def test_secrets_dir_is_chmod_700(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))

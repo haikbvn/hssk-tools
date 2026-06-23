@@ -123,6 +123,11 @@ def example_mapping_path() -> Path:
     return bundle_root() / "config" / "mapping.example.yaml"
 
 
+def sponsor_asset(name: str) -> Path:
+    """Path to a bundled sponsor image (``assets/sponsor/``, or ``_MEIPASS`` when frozen)."""
+    return bundle_root() / "assets" / "sponsor" / name
+
+
 def ensure_mapping_file() -> Path:
     """Return the active mapping path, seeding it from the bundled example if missing."""
     target = mapping_path()

@@ -94,8 +94,24 @@ class MainWindow(QMainWindow):
         root.addWidget(self._build_run_box())
         self.results = ResultsPanel()
         root.addWidget(self.results, stretch=1)
+        root.addWidget(self._build_footer())
         self.setCentralWidget(central)
         self._build_menu()
+
+    def _build_footer(self) -> QWidget:
+        footer = QWidget()
+        lay = QHBoxLayout(footer)
+        lay.setContentsMargins(0, 0, 4, 2)
+        html = (
+            f'<a href="#sponsor" style="color: grey; font-size: small; text-decoration: none;">'
+            f'{tr("footer_sponsor")} <span style="color: #e05050;">♥</span></a>'
+        )
+        link = QLabel(html)
+        link.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        link.setTextFormat(Qt.TextFormat.RichText)
+        link.linkActivated.connect(lambda _: self._show_sponsor())
+        lay.addWidget(link)
+        return footer
 
     def _build_menu(self) -> None:
         settings_menu = self.menuBar().addMenu(tr("menu_settings"))
@@ -130,6 +146,13 @@ class MainWindow(QMainWindow):
 
         help_menu.addSeparator()
 
+        sponsor_action = QAction(tr("menu_sponsor"), self)
+        sponsor_action.setMenuRole(QAction.MenuRole.NoRole)
+        sponsor_action.triggered.connect(self._show_sponsor)
+        help_menu.addAction(sponsor_action)
+
+        help_menu.addSeparator()
+
         about_action = QAction(tr("menu_about"), self)
         about_action.setMenuRole(QAction.MenuRole.AboutRole)
         about_action.triggered.connect(self._show_about)
@@ -144,6 +167,11 @@ class MainWindow(QMainWindow):
         from .legal_dialog import LegalDialog
 
         LegalDialog(self, tab=tab).exec()
+
+    def _show_sponsor(self) -> None:
+        from .sponsor_dialog import SponsorDialog
+
+        SponsorDialog(self).exec()
 
     def _show_about(self) -> None:
         from hssk import __version__
