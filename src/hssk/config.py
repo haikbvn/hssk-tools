@@ -128,6 +128,19 @@ def sponsor_asset(name: str) -> Path:
     return bundle_root() / "assets" / "sponsor" / name
 
 
+def app_icon() -> Path:
+    """Path to the application icon PNG for runtime use (e.g. ``QIcon``).
+
+    In frozen bundles the PNG lives at ``_MEIPASS/assets/icon.png`` (added by the spec).
+    In source runs it falls back to ``packaging/assets/icon.png`` so the icon also appears
+    during development without duplicating the file.
+    """
+    candidate = bundle_root() / "assets" / "icon.png"
+    if candidate.exists():
+        return candidate
+    return Path(__file__).resolve().parents[2] / "packaging" / "assets" / "icon.png"
+
+
 def ensure_mapping_file() -> Path:
     """Return the active mapping path, seeding it from the bundled example if missing."""
     target = mapping_path()

@@ -47,7 +47,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "lbl_limit": {"en": "Limit (0 = all):", "vi": "Giới hạn (0 = tất cả):"},
     "chk_dryrun": {"en": "Dry-run (don't send)", "vi": "Chạy thử (không gửi)"},
     "btn_start_dryrun": {"en": "Start dry-run", "vi": "Bắt đầu chạy thử"},
-    "btn_start_live": {"en": "PUSH live records", "vi": "ĐẨY DỮ LIỆU THẬT"},
+    "btn_start_live": {"en": "⚠  PUSH live records", "vi": "⚠  ĐẨY DỮ LIỆU THẬT"},
     "btn_stop": {"en": "Stop", "vi": "Dừng"},
     "banner_production": {
         "en": "⚠️  PRODUCTION — this sends LIVE medical records",
@@ -95,6 +95,27 @@ _STRINGS: dict[str, dict[str, str]] = {
         "vi": "Cảm ơn bạn đã ủng hộ!",
     },
     "sponsor_qr_missing": {"en": "QR image not available", "vi": "Chưa có ảnh QR"},
+    # Copyable payment details shown below each QR (replace with real info when QR images are set).
+    "sponsor_vietqr_details": {
+        "en": "(scan QR with your banking app)",
+        "vi": "(quét mã QR bằng ứng dụng ngân hàng)",
+    },
+    "sponsor_momo_details": {
+        "en": "(scan QR with the MoMo app)",
+        "vi": "(quét mã QR bằng ứng dụng MoMo)",
+    },
+    # Accessibility names for QR images (announced by screen readers instead of silence).
+    "a11y_vietqr_qr": {
+        "en": "VietQR bank transfer QR code",
+        "vi": "Mã QR chuyển khoản ngân hàng VietQR",
+    },
+    "a11y_momo_qr": {
+        "en": "MoMo e-wallet QR code",
+        "vi": "Mã QR ví điện tử MoMo",
+    },
+    # Accessibility names for dynamic status labels (screen reader announces the role).
+    "a11y_token_status": {"en": "Login status", "vi": "Trạng thái đăng nhập"},
+    "a11y_file_status": {"en": "Selected file", "vi": "File đã chọn"},
     # about dialog
     "about_title": {"en": "About HSSK Tools", "vi": "Về HSSK Tools"},
     "about_body": {
@@ -177,7 +198,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "lbl_mode": {"en": "Mode:", "vi": "Chế độ:"},
     "mode_create": {"en": "Create", "vi": "Tạo mới"},
     "mode_update": {"en": "Update", "vi": "Cập nhật"},
-    "btn_start_update_live": {"en": "UPDATE live records", "vi": "CẬP NHẬT DỮ LIỆU THẬT"},
+    "btn_start_update_live": {"en": "⚠  UPDATE live records", "vi": "⚠  CẬP NHẬT DỮ LIỆU THẬT"},
     "banner_production_update": {
         "en": "⚠️  PRODUCTION — this UPDATES LIVE medical records",
         "vi": "⚠️  PRODUCTION — đang CẬP NHẬT hồ sơ y tế THẬT",

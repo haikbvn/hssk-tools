@@ -17,6 +17,10 @@ _SPONSOR_KEYS = [
     "sponsor_momo_caption",
     "sponsor_thanks",
     "sponsor_qr_missing",
+    "sponsor_vietqr_details",
+    "sponsor_momo_details",
+    "a11y_vietqr_qr",
+    "a11y_momo_qr",
 ]
 
 

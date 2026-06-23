@@ -21,7 +21,7 @@ from .i18n import tr
 _QR_WIDTH = 220
 
 
-def _qr_widget(image_name: str, caption_key: str) -> QWidget:
+def _qr_widget(image_name: str, caption_key: str, a11y_key: str, details_key: str) -> QWidget:
     container = QWidget()
     layout = QVBoxLayout(container)
     layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -30,6 +30,8 @@ def _qr_widget(image_name: str, caption_key: str) -> QWidget:
     px = QPixmap(str(sponsor_asset(image_name)))
     img_label = QLabel()
     img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    img_label.setAccessibleName(tr(a11y_key))
+    img_label.setAccessibleDescription(tr(caption_key))
     if px.isNull():
         img_label.setText(tr("sponsor_qr_missing"))
         img_label.setFrameShape(QFrame.Shape.Box)
@@ -41,8 +43,17 @@ def _qr_widget(image_name: str, caption_key: str) -> QWidget:
     caption = QLabel(tr(caption_key))
     caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+    details = QLabel(tr(details_key))
+    details.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    details.setTextInteractionFlags(
+        Qt.TextInteractionFlag.TextSelectableByMouse
+        | Qt.TextInteractionFlag.TextSelectableByKeyboard
+    )
+    details.setWordWrap(True)
+
     layout.addWidget(img_label)
     layout.addWidget(caption)
+    layout.addWidget(details)
     return container
 
 
@@ -63,8 +74,14 @@ class SponsorDialog(QDialog):
         qr_row = QHBoxLayout()
         qr_row.setSpacing(24)
         qr_row.addStretch()
-        qr_row.addWidget(_qr_widget("vietqr.png", "sponsor_vietqr_caption"))
-        qr_row.addWidget(_qr_widget("momo.png", "sponsor_momo_caption"))
+        qr_row.addWidget(
+            _qr_widget(
+                "vietqr.png", "sponsor_vietqr_caption", "a11y_vietqr_qr", "sponsor_vietqr_details"
+            )
+        )
+        qr_row.addWidget(
+            _qr_widget("momo.png", "sponsor_momo_caption", "a11y_momo_qr", "sponsor_momo_details")
+        )
         qr_row.addStretch()
         layout.addLayout(qr_row)
 

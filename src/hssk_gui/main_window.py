@@ -43,6 +43,23 @@ from .results_panel import ResultsPanel
 from .settings import UiSettings
 from .workers import LoginWorker, RunWorker, ValidateWorker, ValidationSummary
 
+# Style for the live PUSH/UPDATE button. Unlike a flat background override (which suppresses
+# Qt's native hover/pressed/disabled feedback), this keeps the most dangerous control responsive:
+# it darkens on hover/press and visibly greys out while a run is in progress (button disabled).
+_LIVE_BTN_STYLE = """
+QPushButton {
+    background: #cf222e;
+    color: white;
+    font-weight: bold;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+}
+QPushButton:hover { background: #b01c27; }
+QPushButton:pressed { background: #8a141d; }
+QPushButton:disabled { background: #e3a6ab; color: #fbe9ea; }
+"""
+
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -188,6 +205,7 @@ class MainWindow(QMainWindow):
         self.login_btn = QPushButton(tr("btn_login"))
         self.login_btn.clicked.connect(self._do_login)
         self.token_label = QLabel(tr("lbl_not_logged_in"))
+        self.token_label.setAccessibleName(tr("a11y_token_status"))
         lay.addWidget(self.login_btn)
         lay.addWidget(self.token_label, stretch=1)
         return box
@@ -198,6 +216,7 @@ class MainWindow(QMainWindow):
         self.choose_btn = QPushButton(tr("btn_choose_excel"))
         self.choose_btn.clicked.connect(self._choose_excel)
         self.file_label = QLabel(tr("lbl_no_file"))
+        self.file_label.setAccessibleName(tr("a11y_file_status"))
         self.template_btn = QPushButton(tr("btn_template"))
         self.template_btn.clicked.connect(self._make_template)
         self.mapping_btn = QPushButton(tr("btn_open_mapping"))
@@ -216,25 +235,31 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(box)
 
         controls = QHBoxLayout()
-        controls.addWidget(QLabel(tr("lbl_mode")))
         self.mode_combo = QComboBox()
         self.mode_combo.addItem(tr("mode_create"))
         self.mode_combo.addItem(tr("mode_update"))
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        mode_lbl = QLabel(tr("lbl_mode"))
+        mode_lbl.setBuddy(self.mode_combo)
+        controls.addWidget(mode_lbl)
         controls.addWidget(self.mode_combo)
         controls.addSpacing(12)
 
-        controls.addWidget(QLabel(tr("lbl_delay")))
         self.delay_spin = QDoubleSpinBox()
         self.delay_spin.setRange(0.2, 10.0)
         self.delay_spin.setSingleStep(0.5)
         self.delay_spin.setValue(1.0)
+        delay_lbl = QLabel(tr("lbl_delay"))
+        delay_lbl.setBuddy(self.delay_spin)
+        controls.addWidget(delay_lbl)
         controls.addWidget(self.delay_spin)
 
-        controls.addWidget(QLabel(tr("lbl_limit")))
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(0, 1_000_000)
         self.limit_spin.setValue(0)
+        limit_lbl = QLabel(tr("lbl_limit"))
+        limit_lbl.setBuddy(self.limit_spin)
+        controls.addWidget(limit_lbl)
         controls.addWidget(self.limit_spin)
 
         self.dryrun_check = QCheckBox(tr("chk_dryrun"))
@@ -516,10 +541,10 @@ class MainWindow(QMainWindow):
             self.start_btn.setStyleSheet("")
         elif update_mode:
             self.start_btn.setText(tr("btn_start_update_live"))
-            self.start_btn.setStyleSheet("background:#cf222e; color:white; font-weight:bold;")
+            self.start_btn.setStyleSheet(_LIVE_BTN_STYLE)
         else:
             self.start_btn.setText(tr("btn_start_live"))
-            self.start_btn.setStyleSheet("background:#cf222e; color:white; font-weight:bold;")
+            self.start_btn.setStyleSheet(_LIVE_BTN_STYLE)
 
     def _on_dryrun_toggled(self) -> None:
         self._refresh_run_controls()

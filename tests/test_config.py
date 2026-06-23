@@ -107,6 +107,14 @@ def test_ensure_update_overlay_seeds_from_example(tmp_path: Path, monkeypatch: p
         _settings_cached.cache_clear()
 
 
+def test_app_icon_path() -> None:
+    from hssk.config import app_icon
+
+    p = app_icon()
+    assert p.name == "icon.png"
+    assert p.exists(), f"app icon PNG not found at {p}"
+
+
 def test_sponsor_asset_path() -> None:
     from hssk.config import sponsor_asset
 

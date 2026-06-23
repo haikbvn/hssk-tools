@@ -12,6 +12,7 @@ venv/
 # Packaging
 build/
 dist/
+out/
 *.spec.bak
 
 # App runtime data / secrets / PII — NEVER commit
