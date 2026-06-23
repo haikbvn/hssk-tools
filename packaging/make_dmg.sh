@@ -14,26 +14,28 @@ if [[ -z "$VERSION" ]]; then
   VERSION="$("$REPO_ROOT/.venv/bin/python" -c 'import hssk; print(hssk.__version__)')"
 fi
 
-# Arch suffix so the Intel and Apple Silicon DMGs don't collide. PyInstaller builds
-# for the host arch, so detect it from this machine (override with $2 if needed).
-ARCH="${2:-}"
-if [[ -z "$ARCH" ]]; then
-  case "$(uname -m)" in
-    arm64)  ARCH="apple-silicon" ;;
-    x86_64) ARCH="intel" ;;
-    *)      ARCH="$(uname -m)" ;;
-  esac
-fi
-
 APP_NAME="HSSK Tools"
 APP_PATH="$REPO_ROOT/dist/${APP_NAME}.app"
 OUT_DIR="$REPO_ROOT/out"
-DMG_PATH="$OUT_DIR/HSSK-Tools-${VERSION}-${ARCH}.dmg"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "ERROR: '$APP_PATH' not found — run pyinstaller packaging/hssk_gui.spec first." >&2
   exit 1
 fi
+
+# Arch suffix so the Intel and Apple Silicon DMGs don't collide. Detect it from the
+# *built binary* (not `uname`): the Intel DMG is cross-built on an arm64 runner under
+# Rosetta, so the host arch would mislabel it. Override with $2 if needed.
+ARCH="${2:-}"
+if [[ -z "$ARCH" ]]; then
+  case "$(lipo -archs "$APP_PATH/Contents/MacOS/hssk-gui" 2>/dev/null)" in
+    *arm64*)  ARCH="apple-silicon" ;;
+    *x86_64*) ARCH="intel" ;;
+    *)        ARCH="$(uname -m)" ;;
+  esac
+fi
+
+DMG_PATH="$OUT_DIR/HSSK-Tools-${VERSION}-${ARCH}.dmg"
 
 mkdir -p "$OUT_DIR"
 

@@ -1,14 +1,15 @@
 # Changelog
 
-## v1.3.2 — 2026-06-22
+## v1.3.3 — 2026-06-23
 
 ### Packaging
 
 - **macOS DMG now built per-architecture** — the v1.3.1 macOS build ran on an
   Apple Silicon CI runner and produced an arm64-only app that failed to launch on
   Intel Macs ("not supported on this Mac"). Releases now ship two DMGs:
-  `HSSK-Tools-*-apple-silicon.dmg` (built on `macos-14`) and
-  `HSSK-Tools-*-intel.dmg` (built on `macos-13`).
+  `HSSK-Tools-*-apple-silicon.dmg` and `HSSK-Tools-*-intel.dmg`. Because
+  GitHub-hosted Intel macOS runners have been retired, the Intel DMG is cross-built
+  on the Apple Silicon runner under Rosetta (x64 Python + PyInstaller).
 
 ## v1.3.1 — 2026-06-22
 

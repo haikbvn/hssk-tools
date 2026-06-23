@@ -43,13 +43,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # GitHub-hosted Intel macOS runners are retired, so the Intel (x86_64) DMG is
+        # cross-built on the arm64 runner under Rosetta: setup-python installs an x64
+        # interpreter and PyInstaller (run via Rosetta) then emits an x86_64 app.
         include:
           - os: windows-latest
             label: windows
-          - os: macos-13          # Intel (x86_64) — last Intel runner
-            label: macos-intel
-          - os: macos-14          # Apple Silicon (arm64)
+            py-arch: x64
+          - os: macos-14          # Apple Silicon (arm64), native
             label: macos-arm64
+            py-arch: arm64
+          - os: macos-14          # Intel (x86_64), cross-built via Rosetta
+            label: macos-intel
+            py-arch: x64
 
     steps:
       - uses: actions/checkout@v7
@@ -57,6 +63,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          architecture: ${{ matrix.py-arch }}
 
       - name: Install dependencies
         run: |
