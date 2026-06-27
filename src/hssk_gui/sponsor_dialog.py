@@ -61,7 +61,7 @@ class SponsorDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("sponsor_title"))
-        self.setMinimumWidth(540)
+        self.setMinimumWidth(320)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
@@ -74,11 +74,11 @@ class SponsorDialog(QDialog):
         qr_row = QHBoxLayout()
         qr_row.setSpacing(24)
         qr_row.addStretch()
-        qr_row.addWidget(
-            _qr_widget(
-                "vietqr.png", "sponsor_vietqr_caption", "a11y_vietqr_qr", "sponsor_vietqr_details"
-            )
-        )
+        # qr_row.addWidget(
+        #     _qr_widget(
+        #         "vietqr.png", "sponsor_vietqr_caption", "a11y_vietqr_qr", "sponsor_vietqr_details"
+        #     )
+        # )
         qr_row.addWidget(
             _qr_widget("momo.png", "sponsor_momo_caption", "a11y_momo_qr", "sponsor_momo_details")
         )
