@@ -10,6 +10,7 @@ on:
       - "tests/**"
       - "packaging/**"
       - "pyproject.toml"
+      - "constraints.txt"
       - ".github/workflows/build.yml"
 
 jobs:
@@ -22,11 +23,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: constraints.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev]" -c constraints.txt
 
       - name: Ruff lint
         run: ruff check .
@@ -65,6 +68,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: constraints.txt
 
       - name: Ensure Rosetta 2 (Intel cross-build)
         if: matrix.label == 'macos-intel'
@@ -73,10 +78,19 @@ jobs:
       - name: Install dependencies
         run: |
           ${{ matrix.pyrun }} python -m pip install --upgrade pip
-          ${{ matrix.pyrun }} python -m pip install -e ".[dev]"
+          ${{ matrix.pyrun }} python -m pip install -e ".[dev]" -c constraints.txt
 
       - name: Run tests
         run: ${{ matrix.pyrun }} python -m pytest -q
+
+      # Cache the ~130 MB Chromium per platform/arch (matrix.label) and Playwright version
+      # (pinned in constraints.txt). On a hit, the install step below verifies and skips the
+      # download; on a miss it downloads and this cache saves it for next time.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/pw-browsers
+          key: playwright-${{ matrix.label }}-${{ hashFiles('constraints.txt') }}
 
       - name: Install Playwright Chromium (into bundle dir)
         env:

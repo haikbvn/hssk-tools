@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.3.5 — 2026-06-24
+
+### New features
+
+- **In-app Support/Donate dialog** — accessible from *Help → Support the Developer…* and a
+  footer link. Shows VietQR and MoMo QR codes side by side; a selectable text label under each QR
+  lets users on the same machine copy payment details without needing a second phone.
+- **App icon at runtime** — the window, dock, and taskbar now show the polished HSSK Tools icon
+  instead of the generic Qt Q. A new `app_icon()` config helper resolves to the bundled
+  `packaging/assets/icon.png` in source runs and `_MEIPASS/assets/icon.png` in frozen builds.
+
+### UX improvements
+
+- **Live-button interactive feedback** — the *PUSH live records* and *UPDATE live records* buttons
+  now show proper `:hover` (darkens), `:pressed` (darker), and `:disabled` (muted pink) states. The
+  previous flat `background:#cf222e` override silently suppressed all native Qt feedback, leaving the
+  button looking fully armed even while a run was in progress and the button was disabled.
+- **Live-button danger glyph** — both live-action buttons now carry a `⚠ ` prefix so the warning
+  reads on the control itself, not only on the production banner above it.
+
+### Accessibility
+
+- `token_label` and `file_label` annotated with `setAccessibleName` so screen readers announce
+  their role ("Login status", "Selected file") rather than reading raw dynamic text.
+- Mode, Delay, and Limit `QLabel`s in the run box now call `setBuddy(widget)` to associate each
+  label with its control for keyboard and assistive-technology navigation.
+- QR images in the sponsor dialog get `setAccessibleName` + `setAccessibleDescription`.
+
+### Internal
+
+- **httpx header idiom** — `User-Agent` now reflects the actual version (`hssk-tools/1.3.5`
+  instead of the hardcoded `hssk-tools/0.1`). Constant headers (`Authorization`, `Accept`,
+  `User-Agent`) moved to `httpx.Client(headers=...)` constructor per library best practice;
+  per-request `_headers()` method removed. `Content-Type: application/json` is now set by httpx
+  automatically only on POST requests (GETs no longer send a misleading content type header).
+
 ## v1.3.4 — 2026-06-23
 
 ### Packaging

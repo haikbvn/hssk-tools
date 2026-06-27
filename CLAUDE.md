@@ -26,7 +26,8 @@ Dev runs from a Python **3.12** venv at `.venv` (the dev Mac's system 3.14 is to
 wheels — `brew install python@3.12`).
 
 ```bash
-.venv/bin/pip install -e ".[dev]"        # install with dev deps
+.venv/bin/pip install -e ".[dev]"        # install with dev deps (latest compatible)
+# CI instead pins versions: pip install -e ".[dev]" -c constraints.txt  (see Packaging)
 .venv/bin/playwright install chromium    # one-time, for the login flow
 .venv/bin/hssk-gui                        # launch the GUI
 
@@ -172,6 +173,18 @@ Chromium (so operators install nothing) plus `mapping.example.yaml`, `mapping.up
 and the sponsor QR PNGs (`assets/sponsor/`); `runtime_hook_playwright.py`
 points the frozen app at the bundled browser. Output is a Windows `.exe` folder and a macOS `.app`,
 uploaded per build and attached to `v*` tag releases.
+
+**Reproducible builds.** CI installs with `pip install -e ".[dev]" -c constraints.txt` so every run
+pins the exact same dependency versions. `constraints.txt` is a **universal** lockfile (it carries
+`sys_platform`/`platform_python_implementation` markers, so the same file pins the right wheels on
+Linux, Windows, and both macOS arches — e.g. `pefile`/`pywin32-ctypes` only on win32, `macholib`
+only on darwin). `pyproject.toml` stays the source of truth for *which* deps; the lockfile only pins
+*which versions*. It targets the CI Python (3.12). Regenerate it after changing `pyproject.toml`
+deps with the command recorded in the file's header:
+`uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --no-annotate -o constraints.txt`
+(uv needs network; run it via `uvx`/`pipx` or a transient `pip install uv` — it is not a project
+dependency). CI runs `pytest` on every platform against the locked set before building, so a bad pin
+turns CI red rather than shipping.
 
 ## Notes
 
