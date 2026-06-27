@@ -87,7 +87,7 @@ jobs:
       # (pinned in constraints.txt). On a hit, the install step below verifies and skips the
       # download; on a miss it downloads and this cache saves it for next time.
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/pw-browsers
           key: playwright-${{ matrix.label }}-${{ hashFiles('constraints.txt') }}
