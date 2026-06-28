@@ -13,6 +13,7 @@ from hssk.config import app_icon
 from .i18n import set_language
 from .main_window import MainWindow
 from .settings import UiSettings
+from .theme import apply_app_theme
 
 
 def _ensure_terms_accepted() -> bool:
@@ -40,6 +41,8 @@ def main() -> int:
     if not _ensure_terms_accepted():
         return 0
     window = MainWindow()
+    # Re-theme the window's programmatically-coloured labels/button when the OS toggles Light/Dark.
+    apply_app_theme(app, on_change=window.on_theme_changed)
     window.show()
     return app.exec()
 

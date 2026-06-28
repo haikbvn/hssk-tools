@@ -27,7 +27,7 @@ from hssk.config import ensure_mapping_file, example_mapping_path
 from hssk.errors import ConfigError, HsskError
 from hssk.mapping import MappingConfig, load_mapping, save_record_defaults
 
-from .i18n import tr
+from .i18n import set_language, tr
 from .settings import UiSettings
 
 # Maps medicalRecordInfo default keys to their i18n label strings.
@@ -231,11 +231,12 @@ class PreferencesDialog(QDialog):
         self._ui.limit = self._limit_spin.value()
         self._ui.dry_run = self._dryrun_check.isChecked()
 
-        # Save language selection; notify user if it changed.
+        # Save language selection and apply it immediately; MainWindow re-translates live on
+        # accept (it compares the stored language before/after), so no restart is needed.
         new_lang: str = self._lang_combo.currentData()
         if new_lang != self._ui.language:
             self._ui.language = new_lang
-            QMessageBox.information(self, tr("dlg_prefs_title"), tr("msg_restart_language"))
+            set_language(new_lang)
 
         if self._mapping is None:
             # Active mapping is unreadable — inform the user and accept with run defaults only.

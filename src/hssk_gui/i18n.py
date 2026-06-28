@@ -410,10 +410,36 @@ _STRINGS: dict[str, dict[str, str]] = {
         ),
     },
     "dlg_save_error": {"en": "Save error", "vi": "Lỗi lưu"},
-    "msg_restart_language": {
-        "en": "Restart the app to apply the language change.",
-        "vi": "Khởi động lại ứng dụng để áp dụng ngôn ngữ mới.",
+    # run-control tooltips
+    "tip_mode": {
+        "en": "Create new records, or Update existing ones (needs a medicalRecordId column).",
+        "vi": "Tạo hồ sơ mới, hoặc Cập nhật hồ sơ có sẵn (cần cột medicalRecordId).",
     },
+    "tip_delay": {
+        "en": "Seconds to wait between rows. Increase this if the server rate-limits you.",
+        "vi": "Số giây chờ giữa các dòng. Tăng lên nếu máy chủ giới hạn tốc độ.",
+    },
+    "tip_limit": {
+        "en": "Process at most this many rows (0 = all rows). Handy for a quick test run.",
+        "vi": "Chỉ xử lý tối đa số dòng này (0 = tất cả). Tiện cho lần chạy thử nhanh.",
+    },
+    "tip_dryrun": {
+        "en": "When ticked, nothing is sent — payloads are built and written for inspection only.",
+        "vi": "Khi bật, không gửi gì cả — chỉ tạo và ghi dữ liệu để kiểm tra.",
+    },
+    # results filter / table tools
+    "ph_filter": {"en": "Filter rows…", "vi": "Lọc dòng…"},
+    "chk_problems_only": {"en": "Problems only", "vi": "Chỉ dòng có vấn đề"},
+    "empty_results": {
+        "en": "Choose an Excel file and Validate, or Start a dry-run.",
+        "vi": "Chọn file Excel rồi Kiểm tra, hoặc Chạy thử.",
+    },
+    "btn_export_csv": {"en": "Export CSV…", "vi": "Xuất CSV…"},
+    "ctx_copy_cell": {"en": "Copy cell", "vi": "Sao chép ô"},
+    "ctx_copy_row": {"en": "Copy row", "vi": "Sao chép dòng"},
+    "ctx_copy_all": {"en": "Copy all visible", "vi": "Sao chép tất cả đang hiện"},
+    "dlg_export_csv_title": {"en": "Export results to CSV", "vi": "Xuất kết quả ra CSV"},
+    "filter_csv": {"en": "CSV files (*.csv)", "vi": "File CSV (*.csv)"},
     # legal dialog
     "legal_consent_title": {
         "en": "HSSK Tools — Terms & Conditions",
