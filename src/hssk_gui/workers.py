@@ -92,7 +92,8 @@ class ValidateWorker(QObject):
                     invalid += 1
                 warns += len(r.warnings)
                 if not (r.ok and not r.warnings):
-                    identifier = str(raw.get(self._mapping.identifier.column, ""))
+                    id_cell = raw.get(self._mapping.identifier.column)
+                    identifier = "" if id_cell is None else str(id_cell)
                     message = "; ".join(list(r.errors) + [f"⚠ {w}" for w in r.warnings])
                     self.problem.emit(ValidationProblem(idx, identifier, bool(r.errors), message))
             self.progress.emit(valid + invalid, total)

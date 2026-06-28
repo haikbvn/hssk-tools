@@ -173,6 +173,7 @@ class ResultsPanel(QGroupBox):
             if c == 2:
                 item.setForeground(QColor(status_color))
             self.table.setItem(row, c, item)
+        self.table.scrollToBottom()
 
     def _update_counter_label(self) -> None:
         created = (

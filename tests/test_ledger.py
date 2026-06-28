@@ -92,6 +92,12 @@ def test_make_key_avoids_separator_collision():
     assert Ledger.make_key("ABC|DEF", "2024") != Ledger.make_key("ABC", "DEF|2024")
 
 
+def test_make_key_treats_none_as_empty():
+    # A missing exam date must produce an empty segment, not the literal string "None".
+    assert Ledger.make_key("MIC001", None) == "MIC001|"
+    assert Ledger.make_key(None, None) == "|"
+
+
 def test_jsonl_format_is_correct(tmp_path):
     path = tmp_path / "ledger.jsonl"
     led = Ledger.load(path)

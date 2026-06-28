@@ -487,8 +487,8 @@ class MainWindow(QMainWindow):
         self._validate_thread.finished.connect(self._validate_worker.deleteLater)
         self._validate_thread.finished.connect(self._validate_thread.deleteLater)
         self._validate_thread.finished.connect(self._on_validate_thread_finished)
-        self.validate_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
+        self._update_start_enabled()  # _validate_thread is set, so this disables Start/Validate
         self._validate_thread.start()
 
     def _on_validate_finished(self, summary: ValidationSummary) -> None:
@@ -522,9 +522,8 @@ class MainWindow(QMainWindow):
     def _on_validate_thread_finished(self) -> None:
         self._validate_thread = None
         self._validate_worker = None
-        self.validate_btn.setEnabled(self._excel_path is not None)
         self.stop_btn.setEnabled(self._run_thread is not None)
-        self._update_start_enabled()
+        self._update_start_enabled()  # re-enables Validate/Start now that idle is true
 
     # -- run ----------------------------------------------------------------------------
 
@@ -557,6 +556,9 @@ class MainWindow(QMainWindow):
         idle = self._run_thread is None and self._validate_thread is None
         self.start_btn.setEnabled(ready and idle)
         self.mode_combo.setEnabled(idle)
+        # Validate shares the table/progress with a run, so keep it mutually exclusive: only
+        # offer it when a file is loaded and nothing else is running.
+        self.validate_btn.setEnabled(self._excel_path is not None and idle)
         self.start_btn.setToolTip(self._start_disabled_reason(ready, idle))
 
     def _start_disabled_reason(self, ready: bool, idle: bool) -> str:
@@ -644,8 +646,8 @@ class MainWindow(QMainWindow):
         self._run_thread.finished.connect(self._run_thread.deleteLater)
         self._run_thread.finished.connect(self._on_run_thread_finished)
 
-        self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
+        self._update_start_enabled()  # _run_thread is set, so this also disables Start/Validate
         self._run_thread.start()
 
     def _stop_run(self) -> None:
