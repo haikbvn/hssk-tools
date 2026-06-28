@@ -26,7 +26,8 @@ class Ledger:
         # Ordinary data (an id + a formatted date, no '|' or '\') is byte-identical to the old
         # "id|date" format, so existing ledgers keep matching after this change.
         def esc(v: str | None) -> str:
-            return str(v).replace("\\", "\\\\").replace("|", "\\|")
+            s = "" if v is None else str(v)
+            return s.replace("\\", "\\\\").replace("|", "\\|")
 
         return f"{esc(identifier)}|{esc(exam_date)}"
 
