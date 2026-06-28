@@ -10,6 +10,7 @@ from PySide6.QtGui import (
     QCloseEvent,
     QDesktopServices,
     QDragEnterEvent,
+    QDragLeaveEvent,
     QDropEvent,
     QKeySequence,
 )
@@ -37,28 +38,12 @@ from hssk.errors import ConfigError, HsskError
 from hssk.mapping import load_mapping
 from hssk.pipeline.results import RunSummary, Status
 
+from . import theme
 from .i18n import tr
 from .preferences_dialog import PreferencesDialog
 from .results_panel import ResultsPanel
 from .settings import UiSettings
 from .workers import LoginWorker, RunWorker, ValidateWorker, ValidationSummary
-
-# Style for the live PUSH/UPDATE button. Unlike a flat background override (which suppresses
-# Qt's native hover/pressed/disabled feedback), this keeps the most dangerous control responsive:
-# it darkens on hover/press and visibly greys out while a run is in progress (button disabled).
-_LIVE_BTN_STYLE = """
-QPushButton {
-    background: #cf222e;
-    color: white;
-    font-weight: bold;
-    border: none;
-    border-radius: 4px;
-    padding: 6px 16px;
-}
-QPushButton:hover { background: #b01c27; }
-QPushButton:pressed { background: #8a141d; }
-QPushButton:disabled { background: #e3a6ab; color: #fbe9ea; }
-"""
 
 
 class MainWindow(QMainWindow):
@@ -104,31 +89,34 @@ class MainWindow(QMainWindow):
     # -- UI construction ----------------------------------------------------------------
 
     def _build_ui(self) -> None:
-        central = QWidget()
-        root = QVBoxLayout(central)
+        self._central = QWidget()
+        root = QVBoxLayout(self._central)
         root.addWidget(self._build_login_box())
         root.addWidget(self._build_data_box())
         root.addWidget(self._build_run_box())
         self.results = ResultsPanel()
         root.addWidget(self.results, stretch=1)
         root.addWidget(self._build_footer())
-        self.setCentralWidget(central)
+        self.setCentralWidget(self._central)
         self._build_menu()
 
     def _build_footer(self) -> QWidget:
         footer = QWidget()
         lay = QHBoxLayout(footer)
         lay.setContentsMargins(0, 0, 4, 2)
-        html = (
+        self._footer_link = QLabel()
+        self._footer_link.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._footer_link.setTextFormat(Qt.TextFormat.RichText)
+        self._footer_link.linkActivated.connect(lambda _: self._show_sponsor())
+        self._render_footer_link()
+        lay.addWidget(self._footer_link)
+        return footer
+
+    def _render_footer_link(self) -> None:
+        self._footer_link.setText(
             f'<a href="#sponsor" style="color: grey; font-size: small; text-decoration: none;">'
             f'{tr("footer_sponsor")} <span style="color: #e05050;">♥</span></a>'
         )
-        link = QLabel(html)
-        link.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        link.setTextFormat(Qt.TextFormat.RichText)
-        link.linkActivated.connect(lambda _: self._show_sponsor())
-        lay.addWidget(link)
-        return footer
 
     def _build_menu(self) -> None:
         settings_menu = self.menuBar().addMenu(tr("menu_settings"))
@@ -200,20 +188,21 @@ class MainWindow(QMainWindow):
         )
 
     def _build_login_box(self) -> QGroupBox:
-        box = QGroupBox(tr("group_login"))
-        lay = QHBoxLayout(box)
+        self._login_box = QGroupBox(tr("group_login"))
+        lay = QHBoxLayout(self._login_box)
         self.login_btn = QPushButton(tr("btn_login"))
         self.login_btn.clicked.connect(self._do_login)
         self.token_label = QLabel(tr("lbl_not_logged_in"))
         self.token_label.setAccessibleName(tr("a11y_token_status"))
         lay.addWidget(self.login_btn)
         lay.addWidget(self.token_label, stretch=1)
-        return box
+        return self._login_box
 
     def _build_data_box(self) -> QGroupBox:
-        box = QGroupBox(tr("group_data"))
-        lay = QHBoxLayout(box)
+        self._data_box = QGroupBox(tr("group_data"))
+        lay = QHBoxLayout(self._data_box)
         self.choose_btn = QPushButton(tr("btn_choose_excel"))
+        self.choose_btn.setShortcut(QKeySequence.StandardKey.Open)  # Ctrl/Cmd+O
         self.choose_btn.clicked.connect(self._choose_excel)
         self.file_label = QLabel(tr("lbl_no_file"))
         self.file_label.setAccessibleName(tr("a11y_file_status"))
@@ -222,26 +211,27 @@ class MainWindow(QMainWindow):
         self.mapping_btn = QPushButton(tr("btn_open_mapping"))
         self.mapping_btn.clicked.connect(self._open_mapping)
         self.validate_btn = QPushButton(tr("btn_validate"))
+        self.validate_btn.setShortcut(QKeySequence("Ctrl+L"))
         self.validate_btn.clicked.connect(self._validate)
         lay.addWidget(self.choose_btn)
         lay.addWidget(self.file_label, stretch=1)
         lay.addWidget(self.template_btn)
         lay.addWidget(self.mapping_btn)
         lay.addWidget(self.validate_btn)
-        return box
+        return self._data_box
 
     def _build_run_box(self) -> QGroupBox:
-        box = QGroupBox(tr("group_run"))
-        outer = QVBoxLayout(box)
+        self._run_box = QGroupBox(tr("group_run"))
+        outer = QVBoxLayout(self._run_box)
 
         controls = QHBoxLayout()
         self.mode_combo = QComboBox()
         self.mode_combo.addItem(tr("mode_create"))
         self.mode_combo.addItem(tr("mode_update"))
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        mode_lbl = QLabel(tr("lbl_mode"))
-        mode_lbl.setBuddy(self.mode_combo)
-        controls.addWidget(mode_lbl)
+        self._mode_lbl = QLabel(tr("lbl_mode"))
+        self._mode_lbl.setBuddy(self.mode_combo)
+        controls.addWidget(self._mode_lbl)
         controls.addWidget(self.mode_combo)
         controls.addSpacing(12)
 
@@ -249,17 +239,17 @@ class MainWindow(QMainWindow):
         self.delay_spin.setRange(0.2, 10.0)
         self.delay_spin.setSingleStep(0.5)
         self.delay_spin.setValue(1.0)
-        delay_lbl = QLabel(tr("lbl_delay"))
-        delay_lbl.setBuddy(self.delay_spin)
-        controls.addWidget(delay_lbl)
+        self._delay_lbl = QLabel(tr("lbl_delay"))
+        self._delay_lbl.setBuddy(self.delay_spin)
+        controls.addWidget(self._delay_lbl)
         controls.addWidget(self.delay_spin)
 
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(0, 1_000_000)
         self.limit_spin.setValue(0)
-        limit_lbl = QLabel(tr("lbl_limit"))
-        limit_lbl.setBuddy(self.limit_spin)
-        controls.addWidget(limit_lbl)
+        self._limit_lbl = QLabel(tr("lbl_limit"))
+        self._limit_lbl.setBuddy(self.limit_spin)
+        controls.addWidget(self._limit_lbl)
         controls.addWidget(self.limit_spin)
 
         self.dryrun_check = QCheckBox(tr("chk_dryrun"))
@@ -269,8 +259,10 @@ class MainWindow(QMainWindow):
         controls.addStretch(1)
 
         self.start_btn = QPushButton(tr("btn_start_dryrun"))
+        self.start_btn.setShortcut(QKeySequence("Ctrl+R"))
         self.start_btn.clicked.connect(self._start_run)
         self.stop_btn = QPushButton(tr("btn_stop"))
+        self.stop_btn.setShortcut(QKeySequence("Ctrl+."))
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self._stop_run)
         controls.addWidget(self.start_btn)
@@ -279,12 +271,17 @@ class MainWindow(QMainWindow):
 
         self.banner = QLabel(tr("banner_production"))
         self.banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.banner.setStyleSheet(
-            "background:#cf222e; color:white; font-weight:bold; padding:4px; border-radius:4px;"
-        )
+        self.banner.setStyleSheet(theme.banner_qss())
         self.banner.setVisible(False)
         outer.addWidget(self.banner)
-        return box
+        self._apply_control_tooltips()
+        return self._run_box
+
+    def _apply_control_tooltips(self) -> None:
+        self.mode_combo.setToolTip(tr("tip_mode"))
+        self.delay_spin.setToolTip(tr("tip_delay"))
+        self.limit_spin.setToolTip(tr("tip_limit"))
+        self.dryrun_check.setToolTip(tr("tip_dryrun"))
 
     # -- preferences --------------------------------------------------------------------
 
@@ -298,11 +295,58 @@ class MainWindow(QMainWindow):
         self._refresh_run_controls()
 
     def _show_preferences(self) -> None:
+        prev_lang = self._ui.language
         dlg = PreferencesDialog(self)
         if dlg.exec() == PreferencesDialog.DialogCode.Accepted:
             self.delay_spin.setValue(self._ui.delay)
             self.limit_spin.setValue(self._ui.limit)
             self.dryrun_check.setChecked(self._ui.dry_run)
+            if self._ui.language != prev_lang:
+                self.retranslate()
+
+    # -- live re-translation / theming --------------------------------------------------
+
+    def retranslate(self) -> None:
+        """Re-apply ``tr()`` to all persistent chrome so a language switch takes effect live.
+
+        On-demand dialogs are rebuilt each time they open, so only the always-present main
+        window needs this. Transient run/validation status text is left as-is; it is refreshed
+        on the next run.
+        """
+        from hssk import __version__
+
+        self.setWindowTitle(tr("window_title").format(version=__version__))
+        self._login_box.setTitle(tr("group_login"))
+        self._data_box.setTitle(tr("group_data"))
+        self._run_box.setTitle(tr("group_run"))
+        self.login_btn.setText(tr("btn_login"))
+        self.choose_btn.setText(tr("btn_choose_excel"))
+        self.template_btn.setText(tr("btn_template"))
+        self.mapping_btn.setText(tr("btn_open_mapping"))
+        self.validate_btn.setText(tr("btn_validate"))
+        self._mode_lbl.setText(tr("lbl_mode"))
+        self.mode_combo.setItemText(0, tr("mode_create"))
+        self.mode_combo.setItemText(1, tr("mode_update"))
+        self._delay_lbl.setText(tr("lbl_delay"))
+        self._limit_lbl.setText(tr("lbl_limit"))
+        self.dryrun_check.setText(tr("chk_dryrun"))
+        self.stop_btn.setText(tr("btn_stop"))
+        self.token_label.setAccessibleName(tr("a11y_token_status"))
+        self.file_label.setAccessibleName(tr("a11y_file_status"))
+        self._apply_control_tooltips()
+        self._render_footer_link()
+        self.menuBar().clear()
+        self._build_menu()
+        self.results.retranslate()
+        self._refresh_run_controls()  # start button + banner text
+        self._render_token_label()  # token label text
+        self._update_start_enabled()  # disabled-reason tooltip
+
+    def on_theme_changed(self) -> None:
+        """Re-colour the programmatically-styled chrome after a Light/Dark switch."""
+        self._refresh_run_controls()
+        self._render_token_label()
+        self.results.on_theme_changed()
 
     # -- login --------------------------------------------------------------------------
 
@@ -322,21 +366,21 @@ class MainWindow(QMainWindow):
         data = self._token_data
         if data is None:
             self._token = None
-            self._set_token_label(tr("lbl_not_logged_in"), "#cf222e")
+            self._set_token_label(tr("lbl_not_logged_in"), "danger")
             return
         if not data.is_valid():
             self._token = None
-            self._set_token_label(tr("lbl_token_expired"), "#cf222e")
+            self._set_token_label(tr("lbl_token_expired"), "danger")
             return
         self._token = data.token
         rem = data.seconds_remaining()
         identity = self._token_identity
         if rem is None:
-            self._set_token_label(tr("lbl_logged_in").format(identity=identity), "#1a7f37")
+            self._set_token_label(tr("lbl_logged_in").format(identity=identity), "success")
         else:
-            color = "#bf8700" if rem < 300 else "#1a7f37"
+            token = "warning" if rem < 300 else "success"
             text = tr("lbl_logged_in_ttl").format(identity=identity, m=rem // 60, s=rem % 60)
-            self._set_token_label(text, color)
+            self._set_token_label(text, token)
 
     def _tick_token(self) -> None:
         data = self._token_data
@@ -355,18 +399,18 @@ class MainWindow(QMainWindow):
             self.results.append_log(tr("log_token_low"))
         self._render_token_label()
 
-    def _set_token_label(self, text: str, color: str) -> None:
+    def _set_token_label(self, text: str, token: str) -> None:
         self.token_label.setText(text)
-        self.token_label.setStyleSheet(f"color:{color}; font-weight:bold;")
+        self.token_label.setStyleSheet(theme.label_qss(token))
 
     def _do_login(self) -> None:
         self.login_btn.setEnabled(False)
-        self._set_token_label(tr("lbl_opening_browser"), "#0969da")
+        self._set_token_label(tr("lbl_opening_browser"), "info")
         self._login_thread = QThread()
         self._login_worker = LoginWorker()
         self._login_worker.moveToThread(self._login_thread)
         self._login_thread.started.connect(self._login_worker.run)
-        self._login_worker.status.connect(lambda m: self._set_token_label(m, "#0969da"))
+        self._login_worker.status.connect(lambda m: self._set_token_label(m, "info"))
         # Stop the thread first, then update UI; only drop our references once the thread has
         # fully finished (dropping a running QThread is a fatal crash).
         self._login_worker.finished.connect(self._login_thread.quit)
@@ -494,7 +538,7 @@ class MainWindow(QMainWindow):
     def _on_validate_finished(self, summary: ValidationSummary) -> None:
         if summary.invalid == 0 and summary.warns == 0:
             self.results.set_status(tr("msg_no_issues"))
-            counter_color = "color:#1a7f37; font-weight:bold;"
+            counter_color = theme.label_qss("success")
         else:
             self.results.set_status(
                 tr("msg_validation_summary").format(
@@ -531,6 +575,7 @@ class MainWindow(QMainWindow):
         dry = self.dryrun_check.isChecked()
         update_mode = self.mode_combo.currentIndex() == 1
         self.banner.setVisible(not dry)
+        self.banner.setStyleSheet(theme.banner_qss())
         if not dry:
             self.banner.setText(
                 tr("banner_production_update") if update_mode else tr("banner_production")
@@ -538,12 +583,11 @@ class MainWindow(QMainWindow):
         if dry:
             self.start_btn.setText(tr("btn_start_dryrun"))
             self.start_btn.setStyleSheet("")
-        elif update_mode:
-            self.start_btn.setText(tr("btn_start_update_live"))
-            self.start_btn.setStyleSheet(_LIVE_BTN_STYLE)
         else:
-            self.start_btn.setText(tr("btn_start_live"))
-            self.start_btn.setStyleSheet(_LIVE_BTN_STYLE)
+            self.start_btn.setText(
+                tr("btn_start_update_live") if update_mode else tr("btn_start_live")
+            )
+            self.start_btn.setStyleSheet(theme.danger_button_qss())
 
     def _on_dryrun_toggled(self) -> None:
         self._refresh_run_controls()
@@ -710,12 +754,24 @@ class MainWindow(QMainWindow):
                     return p
         return None
 
+    def _set_drop_highlight(self, on: bool) -> None:
+        self._central.setProperty("dropTarget", on)
+        # Re-polish so the [dropTarget="true"] stylesheet rule (theme.app_qss) takes effect.
+        style = self._central.style()
+        style.unpolish(self._central)
+        style.polish(self._central)
+
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         idle = self._run_thread is None and self._validate_thread is None
         if idle and self._excel_from_mime(event) is not None:
+            self._set_drop_highlight(True)
             event.acceptProposedAction()
 
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
+        self._set_drop_highlight(False)
+
     def dropEvent(self, event: QDropEvent) -> None:
+        self._set_drop_highlight(False)
         path = self._excel_from_mime(event)
         if path is not None:
             self._set_excel(path)
