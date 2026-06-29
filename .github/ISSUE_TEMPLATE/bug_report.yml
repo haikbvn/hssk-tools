@@ -1,0 +1,90 @@
+name: Bug report
+description: Report something that isn't working correctly.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as possible.
+
+        > **Privacy reminder:** Do not include real patient names, ID numbers, health
+        > insurance numbers, tokens, or any other PII. Use synthetic / redacted data.
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: "Found in Help → About (e.g. 1.3.7)."
+      placeholder: "1.3.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: run_mode
+    attributes:
+      label: How are you running the app?
+      options:
+        - Pre-built installer / packaged app
+        - From source (`.venv/bin/hssk-gui`)
+        - CLI (`hssk` command)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: "Numbered steps that reliably trigger the bug."
+      placeholder: |
+        1. Open the app and log in.
+        2. Load an Excel file with …
+        3. Click Run.
+        4. See error …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output (redacted)
+      description: >
+        Paste any error messages or stack traces. Replace real names/IDs/tokens
+        with placeholders like `<PATIENT_NAME>` or `<TOKEN>`.
+      render: text
+
+  - type: checkboxes
+    id: pii_check
+    attributes:
+      label: Data safety confirmation
+      options:
+        - label: >
+            I confirm this report contains **no real patient PII, API tokens, or
+            live Excel / payload data**.
+          required: true
