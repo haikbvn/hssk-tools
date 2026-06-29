@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an improvement or new capability.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the feature you'd like and the problem it solves.
+
+        Note that changes which weaken the safety invariants (throttle, dry-run default,
+        ledger dedup, exact-match patient resolution, engine/UI boundary) will not be
+        accepted.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What is the current limitation or pain point?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you thought about?
+
+  - type: checkboxes
+    id: safety_check
+    attributes:
+      label: Safety invariants
+      options:
+        - label: >
+            I understand this feature must not weaken request throttling, the dry-run
+            default, ledger deduplication, exact-match patient resolution, or the
+            engine/UI separation.
+          required: true

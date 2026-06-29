@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/haikbvn/hssk-tools/security/advisories/new
+    about: >
+      Report a security issue privately via GitHub's security advisory flow.
+      Do not open a public issue for vulnerabilities. See SECURITY.md for details.
+  - name: General question / discussion
+    url: https://github.com/haikbvn/hssk-tools/discussions
+    about: Ask a question or start a discussion about usage or development.
