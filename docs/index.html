@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HSSK Tools — Đưa dữ liệu khám sức khoẻ từ Excel lên hệ thống quốc gia</title>
+<meta name="description" content="HSSK Tools đọc từng dòng Excel, tự tra cứu bệnh nhân và tạo bản ghi khám trên hososuckhoe.com.vn — tuần tự, có kiểm soát, và mặc định chạy thử.">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="HSSK Tools">
+<meta property="og:description" content="Đưa dữ liệu khám sức khoẻ từ Excel lên hệ thống quốc gia — tuần tự, có kiểm soát, mặc định chạy thử.">
+<meta property="og:image" content="assets/hssk-intro-poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=Be+Vietnam+Pro:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+    background: #FFFFFF;
+    color: #16201E;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: #1F8A86; color: #fff; }
+  a { color: inherit; text-decoration: none; }
+
+  /* ── Layout ── */
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 32px;
+    width: 100%;
+  }
+
+  /* ── Header ── */
+  .site-header {
+    padding: 48px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+  .logo img {
+    width: 30px;
+    height: 30px;
+    display: block;
+    border-radius: 7px;
+  }
+  .logo-name {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+  }
+  .github-link {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: #6E827D;
+    transition: color 0.15s;
+  }
+  .github-link:hover { color: #1F8A86; }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 72px 0 48px;
+  }
+  .hero-eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: #2A9D8F;
+    margin-bottom: 28px;
+  }
+  .hero h1 {
+    font-family: 'Source Serif 4', serif;
+    font-size: 44px;
+    line-height: 1.12;
+    letter-spacing: -0.018em;
+    font-weight: 500;
+    margin-bottom: 24px;
+    text-wrap: balance;
+  }
+  .hero-sub {
+    font-size: 18px;
+    line-height: 1.6;
+    color: #3F514D;
+    font-weight: 300;
+    margin-bottom: 40px;
+    text-wrap: pretty;
+  }
+  .hero-sub strong {
+    font-weight: 500;
+    color: #16201E;
+  }
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .btn {
+    display: inline-block;
+    padding: 13px 24px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .btn-primary {
+    background: #1F8A86;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #176E6B; }
+  .btn-secondary {
+    color: #1F8A86;
+    border: 1px solid #BAD8D2;
+  }
+  .btn-secondary:hover { border-color: #1F8A86; }
+  .hero-note {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: #6E827D;
+  }
+
+  /* ── Video / App window ── */
+  .video-section {
+    padding: 0 0 56px;
+  }
+  .app-window {
+    border: 1px solid #DDE6E3;
+    border-radius: 11px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px -28px rgba(22, 32, 30, 0.32);
+  }
+  .app-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 15px;
+    background: #EEF3F1;
+    border-bottom: 1px solid #DDE6E3;
+  }
+  .dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-red   { background: #E0B3AE; }
+  .dot-yellow{ background: #E6CF9C; }
+  .dot-green { background: #A9CBA0; }
+  .titlebar-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: #6E827D;
+    margin-left: 8px;
+  }
+  .video-wrap {
+    position: relative;
+    background: #000;
+  }
+  .video-wrap video {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+  }
+  .play-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(22, 32, 30, 0.18);
+    cursor: pointer;
+    border: none;
+    width: 100%;
+    transition: background 0.2s;
+  }
+  .play-overlay:hover { background: rgba(22, 32, 30, 0.28); }
+  .play-circle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: #1F8A86;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(31, 138, 134, 0.45);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .play-overlay:hover .play-circle {
+    transform: scale(1.06);
+    box-shadow: 0 6px 26px rgba(31, 138, 134, 0.55);
+  }
+  .play-triangle {
+    width: 0;
+    height: 0;
+    border-top: 11px solid transparent;
+    border-bottom: 11px solid transparent;
+    border-left: 18px solid #fff;
+    margin-left: 3px;
+  }
+  .video-caption {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: #9AACA7;
+    margin-top: 10px;
+    text-align: center;
+  }
+
+  /* ── Features ── */
+  .features {
+    padding: 0 0 56px;
+  }
+  .feature-row {
+    display: flex;
+    gap: 20px;
+    padding: 24px 0;
+    border-top: 1px solid #E4EBE9;
+  }
+  .feature-row:last-child { border-bottom: 1px solid #E4EBE9; }
+  .feature-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: #2A9D8F;
+    min-width: 24px;
+    padding-top: 2px;
+    flex-shrink: 0;
+  }
+  .feature-body h3 {
+    font-family: 'Source Serif 4', serif;
+    font-size: 19px;
+    font-weight: 600;
+    margin-bottom: 7px;
+    letter-spacing: -0.01em;
+  }
+  .feature-body p {
+    font-size: 15px;
+    line-height: 1.62;
+    color: #46584F;
+    font-weight: 300;
+  }
+
+  /* ── Safety note ── */
+  .safety {
+    padding: 0 0 64px;
+  }
+  .safety-inner {
+    border-left: 2px solid #1F8A86;
+    padding: 4px 0 4px 20px;
+  }
+  .safety-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: #2A9D8F;
+    margin-bottom: 8px;
+  }
+  .safety-text {
+    font-size: 15px;
+    line-height: 1.6;
+    color: #3F514D;
+    font-weight: 300;
+  }
+  .safety-text strong {
+    font-weight: 500;
+    color: #16201E;
+  }
+
+  /* ── Footer ── */
+  .site-footer {
+    padding: 28px 0 56px;
+    border-top: 1px solid #E4EBE9;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  .footer-tagline {
+    font-size: 13px;
+    color: #6E827D;
+    font-weight: 300;
+  }
+  .footer-host {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: #9AACA7;
+  }
+
+  /* ── Mobile ── */
+  @media (max-width: 600px) {
+    .container { padding: 0 20px; }
+    .site-header { padding-top: 32px; }
+    .hero { padding: 48px 0 36px; }
+    .hero h1 { font-size: 30px; }
+    .hero-sub { font-size: 16px; margin-bottom: 32px; }
+    .btn { padding: 13px 20px; }
+    .btn-primary,
+    .btn-secondary { width: 100%; text-align: center; }
+    .play-circle { width: 54px; height: 54px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <a href="https://github.com/haikbvn/hssk-tools" class="logo">
+      <img src="assets/icon.svg" alt="HSSK Tools">
+      <span class="logo-name">HSSK Tools</span>
+    </a>
+    <a href="https://github.com/haikbvn/hssk-tools" class="github-link">GitHub ↗</a>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-eyebrow">ỨNG DỤNG MÁY TÍNH · WINDOWS &amp; MACOS</div>
+    <h1>Đưa dữ liệu khám sức khoẻ từ Excel lên hệ thống quốc gia</h1>
+    <p class="hero-sub">HSSK Tools đọc từng dòng Excel, tự tra cứu bệnh nhân và tạo bản ghi khám trên <strong>hososuckhoe.com.vn</strong> — tuần tự, có kiểm soát, và mặc định chạy thử.</p>
+
+    <div class="cta-row">
+      <a href="https://github.com/haikbvn/hssk-tools/releases/latest" class="btn btn-primary">Tải xuống cho Windows</a>
+      <a href="https://github.com/haikbvn/hssk-tools/releases/latest" class="btn btn-secondary">macOS (.dmg)</a>
+    </div>
+    <div class="hero-note">Miễn phí &amp; mã nguồn mở · Không cần quyền admin</div>
+  </section>
+
+  <!-- VIDEO -->
+  <section class="video-section">
+    <div class="app-window">
+      <div class="app-titlebar">
+        <span class="dot dot-red"></span>
+        <span class="dot dot-yellow"></span>
+        <span class="dot dot-green"></span>
+        <span class="titlebar-label">HSSK Tools</span>
+      </div>
+      <div class="video-wrap">
+        <video id="intro-video" controls preload="none" poster="assets/hssk-intro-poster.jpg">
+          <source src="assets/hssk-intro.mp4" type="video/mp4">
+        </video>
+        <button class="play-overlay" id="play-btn" aria-label="Phát video giới thiệu">
+          <span class="play-circle">
+            <span class="play-triangle"></span>
+          </span>
+        </button>
+      </div>
+    </div>
+    <p class="video-caption">Video giới thiệu ứng dụng — nhấn để phát</p>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features">
+    <div class="feature-row">
+      <span class="feature-num">01</span>
+      <div class="feature-body">
+        <h3>Excel → API</h3>
+        <p>Mỗi dòng Excel được tự động tra cứu bệnh nhân và tạo bản ghi khám qua API của website.</p>
+      </div>
+    </div>
+    <div class="feature-row">
+      <span class="feature-num">02</span>
+      <div class="feature-body">
+        <h3>Mặc định chạy thử</h3>
+        <p>App dựng sẵn dữ liệu để bạn kiểm tra mà không gửi đi. Chỉ gửi thật khi bạn tự tay tắt chế độ chạy thử và xác nhận.</p>
+      </div>
+    </div>
+    <div class="feature-row">
+      <span class="feature-num">03</span>
+      <div class="feature-body">
+        <h3>Sổ chống trùng</h3>
+        <p>Ghi lại từng cặp (mã định danh, ngày khám) đã xử lý và tự bỏ qua khi chạy lại — không lo gửi trùng lặp.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SAFETY -->
+  <section class="safety">
+    <div class="safety-inner">
+      <div class="safety-label">LƯU Ý</div>
+      <p class="safety-text">Ứng dụng sử dụng <strong>API nội bộ / chưa công bố</strong> của website bằng chính tài khoản được cấp phép của bạn. Mọi request đều tuần tự và có điều tiết. Chỉ dùng khi được phép.</p>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <span class="footer-tagline">Công cụ đẩy dữ liệu khám sức khoẻ · Mã nguồn mở</span>
+    <span class="footer-host">hososuckhoe.com.vn</span>
+  </footer>
+
+</div>
+
+<script>
+  const video = document.getElementById('intro-video');
+  const btn   = document.getElementById('play-btn');
+
+  btn.addEventListener('click', () => {
+    video.play();
+    btn.style.display = 'none';
+  });
+
+  video.addEventListener('pause',  () => { btn.style.display = 'flex'; });
+  video.addEventListener('ended',  () => { btn.style.display = 'flex'; });
+</script>
+</body>
+</html>
