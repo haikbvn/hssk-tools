@@ -13,7 +13,14 @@ import pytest
 
 from hssk.pipeline.results import Status
 from hssk_gui.i18n import set_language
-from hssk_gui.messages import _tr_coerce_msg, _tr_coerce_msgs, _tr_message, _tr_status
+from hssk_gui.messages import (
+    _tr_coerce_msg,
+    _tr_coerce_msgs,
+    _tr_log,
+    _tr_login_status,
+    _tr_message,
+    _tr_status,
+)
 from hssk_gui.workers import ValidationSummary
 
 
@@ -74,6 +81,32 @@ def test_message_bare_compound_coerce_errors() -> None:
     assert out == "thiếu cột bắt buộc 'X'; 'Tuổi': không thể đọc 'a' thành int"
 
 
+def test_message_no_patient_found() -> None:
+    set_language("vi")
+    assert _tr_message("no patient found for '027xxx'") == ("không tìm thấy bệnh nhân với '027xxx'")
+
+
+def test_message_no_patient_id_field() -> None:
+    set_language("vi")
+    assert _tr_message("match for '027xxx' has no patientId field") == (
+        "khớp với '027xxx' không có trường patientId"
+    )
+
+
+def test_message_multi_match() -> None:
+    set_language("vi")
+    assert _tr_message("3 patients match '027xxx'") == "3 bệnh nhân khớp với '027xxx'"
+    assert _tr_message("3 patients match '027xxx'; skipping") == (
+        "3 bệnh nhân khớp với '027xxx'; bỏ qua"
+    )
+
+
+def test_message_patient_english_passthrough() -> None:
+    set_language("en")
+    assert _tr_message("no patient found for '027xxx'") == "no patient found for '027xxx'"
+    assert _tr_message("3 patients match '027xxx'") == "3 patients match '027xxx'"
+
+
 def test_message_raw_text_passes_through() -> None:
     set_language("vi")
     raw = "PatientNotFound: no match for 123"
@@ -127,6 +160,61 @@ def test_coerce_msgs_mixed_error_and_warning() -> None:
     set_language("vi")
     out = _tr_coerce_msgs("missing required column 'X'; ⚠ pulse=200 outside expected range 30–220")
     assert out == "thiếu cột bắt buộc 'X'; ⚠ pulse=200 nằm ngoài phạm vi 30–220"
+
+
+# -- _tr_log: engine on_log strings ----------------------------------------------------
+
+
+def test_log_first_search_response() -> None:
+    set_language("vi")
+    assert _tr_log("Logged first search response for inspection.") == (
+        "Đã ghi phản hồi tìm kiếm đầu tiên để kiểm tra."
+    )
+    set_language("en")
+    assert _tr_log("Logged first search response for inspection.") == (
+        "Logged first search response for inspection."
+    )
+
+
+def test_log_retry_translated() -> None:
+    set_language("vi")
+    assert _tr_log("retry in 2.5s (attempt 3)") == "thử lại sau 2.5s (lần 3)"
+
+
+def test_log_retry_english_passthrough() -> None:
+    set_language("en")
+    assert _tr_log("retry in 1.0s (attempt 2)") == "retry in 1.0s (attempt 2)"
+
+
+def test_log_unknown_passes_through() -> None:
+    set_language("vi")
+    raw = "some raw API diagnostic"
+    assert _tr_log(raw) == raw
+
+
+# -- _tr_login_status: browser-login progress strings -----------------------------------
+
+
+def test_login_status_known_strings() -> None:
+    set_language("vi")
+    assert _tr_login_status("Please log in in the browser window…") == (
+        "Vui lòng đăng nhập trong cửa sổ trình duyệt…"
+    )
+    assert _tr_login_status("Token captured.") == "Đã lấy token."
+
+
+def test_login_status_english_passthrough() -> None:
+    set_language("en")
+    assert _tr_login_status("Please log in in the browser window…") == (
+        "Please log in in the browser window…"
+    )
+    assert _tr_login_status("Token captured.") == "Token captured."
+
+
+def test_login_status_unknown_passes_through() -> None:
+    set_language("vi")
+    raw = "Some unexpected engine message"
+    assert _tr_login_status(raw) == raw
 
 
 # -- ValidationSummary contract ---------------------------------------------------------
