@@ -12,7 +12,9 @@ from PySide6.QtGui import (
     QDragEnterEvent,
     QDragLeaveEvent,
     QDropEvent,
+    QFontMetrics,
     QKeySequence,
+    QResizeEvent,
 )
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -25,6 +27,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -40,10 +43,43 @@ from hssk.pipeline.results import RunSummary, Status
 
 from . import theme
 from .i18n import tr
+from .messages import _tr_log, _tr_login_status
 from .preferences_dialog import PreferencesDialog
 from .results_panel import ResultsPanel
 from .settings import UiSettings
 from .workers import LoginWorker, RunWorker, ValidateWorker, ValidationSummary
+
+
+class _ElidingLabel(QLabel):
+    """QLabel that middle-elides its text instead of forcing the window wider.
+
+    The full text is available via tooltip when truncation occurs.
+    """
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full_text = text
+        # Ignored horizontal policy: text width contributes no minimum, so it
+        # can never force the parent window to grow.
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._apply_elision()
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._full_text = text
+        self._apply_elision()
+
+    def text(self) -> str:  # noqa: N802
+        return self._full_text
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._apply_elision()
+
+    def _apply_elision(self) -> None:
+        metrics = QFontMetrics(self.font())
+        elided = metrics.elidedText(self._full_text, Qt.TextElideMode.ElideMiddle, self.width())
+        super().setText(elided)
+        self.setToolTip(self._full_text if elided != self._full_text else "")
 
 
 class MainWindow(QMainWindow):
@@ -204,7 +240,7 @@ class MainWindow(QMainWindow):
         self.choose_btn = QPushButton(tr("btn_choose_excel"))
         self.choose_btn.setShortcut(QKeySequence.StandardKey.Open)  # Ctrl/Cmd+O
         self.choose_btn.clicked.connect(self._choose_excel)
-        self.file_label = QLabel(tr("lbl_no_file"))
+        self.file_label = _ElidingLabel(tr("lbl_no_file"))
         self.file_label.setAccessibleName(tr("a11y_file_status"))
         self.template_btn = QPushButton(tr("btn_template"))
         self.template_btn.clicked.connect(self._make_template)
@@ -333,6 +369,8 @@ class MainWindow(QMainWindow):
         self.stop_btn.setText(tr("btn_stop"))
         self.token_label.setAccessibleName(tr("a11y_token_status"))
         self.file_label.setAccessibleName(tr("a11y_file_status"))
+        if self._excel_path is None:
+            self.file_label.setText(tr("lbl_no_file"))
         self._apply_control_tooltips()
         self._render_footer_link()
         self.menuBar().clear()
@@ -410,7 +448,9 @@ class MainWindow(QMainWindow):
         self._login_worker = LoginWorker()
         self._login_worker.moveToThread(self._login_thread)
         self._login_thread.started.connect(self._login_worker.run)
-        self._login_worker.status.connect(lambda m: self._set_token_label(m, "info"))
+        self._login_worker.status.connect(
+            lambda m: self._set_token_label(_tr_login_status(m), "info")
+        )
         # Stop the thread first, then update UI; only drop our references once the thread has
         # fully finished (dropping a running QThread is a fatal crash).
         self._login_worker.finished.connect(self._login_thread.quit)
@@ -629,14 +669,15 @@ class MainWindow(QMainWindow):
                 msg = tr("msg_not_validated_warn") + msg
             elif self._validated_invalid > 0:
                 msg = tr("msg_validation_had_errors").format(n=self._validated_invalid) + msg
-            confirm = QMessageBox.question(
-                self,
-                tr("dlg_confirm_push"),
-                msg,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if confirm != QMessageBox.StandardButton.Yes:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setWindowTitle(tr("dlg_confirm_push"))
+            box.setText(msg)
+            yes_btn = box.addButton(tr("btn_yes"), QMessageBox.ButtonRole.YesRole)
+            no_btn = box.addButton(tr("btn_no"), QMessageBox.ButtonRole.NoRole)
+            box.setDefaultButton(no_btn)
+            box.exec()
+            if box.clickedButton() is not yes_btn:
                 return
 
         try:
@@ -679,7 +720,7 @@ class MainWindow(QMainWindow):
         self._run_thread.started.connect(self._run_worker.run)
         self._run_worker.progress.connect(self.results.set_progress)
         self._run_worker.row.connect(self.results.add_row)
-        self._run_worker.log.connect(self.results.append_log)
+        self._run_worker.log.connect(lambda m: self.results.append_log(_tr_log(m)))
         # Stop the thread first, then run the UI handlers; drop references only after the thread
         # has fully finished — destroying a running QThread aborts the process.
         self._run_worker.finished.connect(self._run_thread.quit)

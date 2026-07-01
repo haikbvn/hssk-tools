@@ -22,6 +22,38 @@ def _tr_status(status: Status) -> str:
 # Engine-authored row messages from hssk/pipeline/runner.py. Anything not matched here
 # (raw API/exception text, per-cell coercion detail) is shown as-is — it is server or
 # diagnostic content we don't control. Keep these prefixes in sync with the runner.
+# Engine log strings emitted via Callbacks.on_log (runner.py + api/client.py).
+_LOG_EXACT: dict[str, str] = {
+    "Logged first search response for inspection.": "log_first_search_response",
+}
+
+
+def _tr_log(msg: str) -> str:
+    """Translate known engine log strings; pass diagnostic/API detail through unchanged."""
+    exact = _LOG_EXACT.get(msg)
+    if exact is not None:
+        return tr(exact)
+    # "retry in 2.5s (attempt 3)" from api/client.py — translate the two fixed phrases
+    if msg.startswith("retry in "):
+        msg = msg.replace("retry in ", tr("log_retry_in"), 1)
+        msg = msg.replace(" (attempt ", tr("log_retry_attempt"), 1)
+        return msg
+    return msg
+
+
+# Browser-login progress strings emitted by hssk/auth/browser_login.py.
+_LOGIN_STATUS_KEYS: dict[str, str] = {
+    "Please log in in the browser window…": "lbl_login_waiting",
+    "Token captured.": "lbl_login_captured",
+}
+
+
+def _tr_login_status(msg: str) -> str:
+    """Translate a browser-login progress string; pass unknown strings through unchanged."""
+    key = _LOGIN_STATUS_KEYS.get(msg)
+    return tr(key) if key else msg
+
+
 _MSG_EXACT = {
     "already processed": "msg_row_already",
     "identifier is blank": "msg_row_id_blank",
@@ -80,6 +112,20 @@ def _tr_message(message: str) -> str:
     # "fetch detail: <diagnostic tail>" — translate prefix, diagnostic passes through
     if message.startswith("fetch detail: "):
         return tr("msg_row_fetch") + message[len("fetch detail: ") :]
+    # "no patient found for 'QUERY'" — patients.resolve / PatientNotFound
+    if message.startswith("no patient found for "):
+        return tr("msg_no_patient_for") + message[len("no patient found for ") :]
+    # "match for 'QUERY' has no patientId field" — malformed API response
+    if message.startswith("match for ") and message.endswith(" has no patientId field"):
+        identifier = message[len("match for ") : -len(" has no patientId field")]
+        return tr("msg_match_for") + identifier + tr("msg_no_patient_id")
+    # "N patients match 'QUERY'" or "N patients match 'QUERY'; skipping" — MultiMatch
+    if " patients match " in message:
+        count, rest = message.split(" patients match ", 1)
+        skipping = rest.endswith("; skipping")
+        identifier = rest[: -len("; skipping")] if skipping else rest
+        out = count + tr("msg_patients_match") + identifier
+        return (out + tr("msg_multi_match_skip")) if skipping else out
     # Bare/compound coerce errors (runner joins coerced.errors with "; " — no prefix).
     # _tr_coerce_msgs only substitutes a few distinctive fixed phrases, so raw API/exception
     # text is left intact in practice (a server string containing e.g. " is before " could

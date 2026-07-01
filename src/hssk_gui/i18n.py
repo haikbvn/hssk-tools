@@ -24,6 +24,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Opening browser… log in in the window that appears.",
         "vi": "Đang mở trình duyệt… đăng nhập trong cửa sổ hiện ra.",
     },
+    "lbl_login_waiting": {
+        "en": "Please log in in the browser window…",
+        "vi": "Vui lòng đăng nhập trong cửa sổ trình duyệt…",
+    },
+    "lbl_login_captured": {"en": "Token captured.", "vi": "Đã lấy token."},
     "lbl_token_expired": {
         "en": "Token expired — please log in again",
         "vi": "Token đã hết hạn — vui lòng đăng nhập lại",
@@ -179,6 +184,12 @@ _STRINGS: dict[str, dict[str, str]] = {
     "msg_row_recordid_blank": {"en": "medicalRecordId is blank", "vi": "medicalRecordId trống"},
     "msg_row_coercion": {"en": "Coercion error: ", "vi": "Lỗi chuyển đổi: "},
     "msg_row_fetch": {"en": "Fetch detail: ", "vi": "Lỗi lấy chi tiết: "},
+    # patient-search error fragments (variable parts are the quoted identifier or count)
+    "msg_no_patient_for": {"en": "no patient found for ", "vi": "không tìm thấy bệnh nhân với "},
+    "msg_match_for": {"en": "match for ", "vi": "khớp với "},
+    "msg_no_patient_id": {"en": " has no patientId field", "vi": " không có trường patientId"},
+    "msg_patients_match": {"en": " patients match ", "vi": " bệnh nhân khớp với "},
+    "msg_multi_match_skip": {"en": "; skipping", "vi": "; bỏ qua"},
     # individual coerce error/warning fragments (variable tails are field names / raw values)
     "msg_coerce_missing_col": {
         "en": "missing required column ",
@@ -256,8 +267,6 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "eta_min_sec": {"en": "~{m}m {s}s left", "vi": "còn ~{m}m {s}s"},
     "eta_sec": {"en": "~{s}s left", "vi": "còn ~{s}s"},
-    # run complete
-    "dlg_run_complete": {"en": "Run complete", "vi": "Hoàn thành"},
     "msg_token_expired_abort": {
         "en": (
             "Your login token expired.\n\n"
@@ -344,6 +353,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "⛔ Login token expired — please log in again.",
         "vi": "⛔ Token đăng nhập đã hết hạn — vui lòng đăng nhập lại.",
     },
+    "log_first_search_response": {
+        "en": "Logged first search response for inspection.",
+        "vi": "Đã ghi phản hồi tìm kiếm đầu tiên để kiểm tra.",
+    },
+    "log_retry_in": {"en": "retry in ", "vi": "thử lại sau "},
+    "log_retry_attempt": {"en": " (attempt ", "vi": " (lần "},
     # close while running
     "dlg_still_stopping": {
         "en": "Operation still stopping",
@@ -454,6 +469,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "tab_security": {"en": "Security", "vi": "Bảo mật"},
     "btn_accept": {"en": "Accept", "vi": "Chấp nhận"},
     "btn_decline": {"en": "Decline", "vi": "Từ chối"},
+    "btn_yes": {"en": "Yes", "vi": "Có"},
+    "btn_no": {"en": "No", "vi": "Không"},
     # preferences — record default field labels
     "rec_normal_desc_value": {"en": "Normal description", "vi": "Mô tả bình thường"},
     "rec_doctorName": {"en": "Doctor (default)", "vi": "Bác sĩ (mặc định)"},
