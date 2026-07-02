@@ -8,6 +8,7 @@ No dedicated healthfacilitiesId field exists; it is embedded in the username as
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -16,6 +17,10 @@ from typing import Any
 
 from ..config import Settings, profile_path
 from ..config import settings as default_settings
+
+# DEBUG-level only: with no handler configured these records drop silently (the engine never
+# prints), but a developer can logging.basicConfig(level=DEBUG) to see the swallowed tracebacks.
+logger = logging.getLogger(__name__)
 
 _FACILITY_ID_RE = re.compile(r"_(\d+)_")
 _PROFILE_ENDPOINT = "/api/v1/resource/sys-users/"
@@ -61,6 +66,7 @@ def parse_profile(raw: Any) -> ProfileData | None:
             captured_at=time.time(),
         )
     except Exception:
+        logger.debug("could not parse profile response", exc_info=True)
         return None
 
 
@@ -121,5 +127,5 @@ def fetch_profile(token: str, settings: Settings | None = None) -> ProfileData |
         if resp.status_code == 200:
             return parse_profile(resp.json())
     except Exception:
-        pass
+        logger.debug("profile fetch failed", exc_info=True)
     return None

@@ -34,6 +34,9 @@ class RowOutcome:
     record_id: Any = None
     message: str = ""
     warnings: list[str] = field(default_factory=list)
+    # ISO-8601 local time, stamped by the runner when the outcome is recorded. Kept last so
+    # positional construction of the fields above keeps working.
+    timestamp: str = ""
 
 
 @dataclass

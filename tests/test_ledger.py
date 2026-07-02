@@ -56,6 +56,8 @@ def test_load_skips_malformed_lines(tmp_path):
     assert led.done("GOOD|2024-01-01")
     assert led.done("ALSO_GOOD|2024-01-01")
     assert len(led) == 2
+    # Only the unparseable line counts as corrupt — the blank line does not.
+    assert led.corrupt_lines == 1
 
 
 def test_load_skips_records_without_key(tmp_path):
@@ -63,6 +65,16 @@ def test_load_skips_records_without_key(tmp_path):
     path.write_text('{"recordId": 1, "ts": 0}\n', encoding="utf-8")
     led = Ledger.load(path)
     assert len(led) == 0
+    # Valid JSON without a "key" is skipped but is not corrupt.
+    assert led.corrupt_lines == 0
+
+
+def test_corrupt_lines_zero_on_clean_or_missing_ledger(tmp_path):
+    assert Ledger.load(tmp_path / "missing.jsonl").corrupt_lines == 0
+    path = tmp_path / "ledger.jsonl"
+    led = Ledger.load(path)
+    led.mark_done("MIC001|01/01/2024 00:00:00", 1)
+    assert Ledger.load(path).corrupt_lines == 0
 
 
 def test_reset_clears_memory_and_file(tmp_path):

@@ -35,19 +35,34 @@ from PySide6.QtWidgets import (
 
 from hssk.auth.profile import load_profile
 from hssk.auth.token_store import TokenData, load_token
-from hssk.config import ensure_mapping_file, ensure_update_overlay_file
+from hssk.config import ensure_mapping_file, ensure_update_overlay_file, output_dir
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
 from hssk.mapping import load_mapping
 from hssk.pipeline.results import RunSummary, Status
 
 from . import theme
+from .banner import NoticeBanner
 from .i18n import tr
 from .messages import _tr_log, _tr_login_status
 from .preferences_dialog import PreferencesDialog
 from .results_panel import ResultsPanel
 from .settings import UiSettings
-from .workers import LoginWorker, RunWorker, ValidateWorker, ValidationSummary
+from .update_check import is_newer
+from .workers import (
+    LoginWorker,
+    RunWorker,
+    UpdateCheckWorker,
+    ValidateWorker,
+    ValidationSummary,
+)
+
+
+def _with_shortcut(text: str, button: QPushButton) -> str:
+    """Append the button's shortcut to a tooltip, rendered natively (⌘O on macOS, Ctrl+O
+    elsewhere) so no chord ever needs hardcoding in a translatable string."""
+    rendered = button.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
+    return f"{text} ({rendered})" if rendered else text
 
 
 class _ElidingLabel(QLabel):
@@ -110,8 +125,11 @@ class MainWindow(QMainWindow):
         self._validate_worker: ValidateWorker | None = None
         self._run_thread: QThread | None = None
         self._run_worker: RunWorker | None = None
+        self._update_thread: QThread | None = None
+        self._update_worker: UpdateCheckWorker | None = None
 
         self._build_ui()
+        self.results.restore_splitter(self._ui.results_splitter)
         self.setAcceptDrops(True)
         self._restore_prefs()
         self._refresh_token_status()
@@ -122,11 +140,23 @@ class MainWindow(QMainWindow):
         self._token_timer.timeout.connect(self._tick_token)
         self._token_timer.start()
 
+        if self._ui.check_updates:
+            self._start_update_check()
+
     # -- UI construction ----------------------------------------------------------------
 
     def _build_ui(self) -> None:
         self._central = QWidget()
         root = QVBoxLayout(self._central)
+        root.setSpacing(10)
+        root.setContentsMargins(12, 10, 12, 6)
+        # Inline error surface — errors show here instead of modal popups so the log pane
+        # underneath stays readable. Distinct from self.banner (the production warning).
+        self.error_banner = NoticeBanner()
+        root.addWidget(self.error_banner)
+        # Separate instance for the newer-version hint so an error never overwrites it.
+        self.update_banner = NoticeBanner()
+        root.addWidget(self.update_banner)
         root.addWidget(self._build_login_box())
         root.addWidget(self._build_data_box())
         root.addWidget(self._build_run_box())
@@ -155,6 +185,17 @@ class MainWindow(QMainWindow):
         )
 
     def _build_menu(self) -> None:
+        # No Ctrl+O on any action here: choose_btn already owns it, and a duplicate
+        # QKeySequence makes the shortcut ambiguous (Qt then fires neither).
+        file_menu = self.menuBar().addMenu(tr("menu_file"))
+        self._recent_menu = file_menu.addMenu(tr("menu_open_recent"))
+        self._populate_recent_menu()
+        file_menu.addSeparator()
+        reports_action = QAction(tr("menu_open_reports_root"), self)
+        reports_action.setMenuRole(QAction.MenuRole.NoRole)
+        reports_action.triggered.connect(self._open_reports_root)
+        file_menu.addAction(reports_action)
+
         settings_menu = self.menuBar().addMenu(tr("menu_settings"))
         prefs_action = QAction(tr("menu_settings_action"), self)
         prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
@@ -199,6 +240,38 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
+    def _populate_recent_menu(self) -> None:
+        """(Re)fill the Open-recent submenu; callable on its own so _set_excel can refresh it."""
+        self._recent_menu.clear()
+        recent = self._ui.recent_files
+        if not recent:
+            empty = QAction(tr("menu_recent_empty"), self)
+            empty.setEnabled(False)
+            self._recent_menu.addAction(empty)
+            return
+        for p in recent:
+            act = QAction(p, self)
+            act.setMenuRole(QAction.MenuRole.NoRole)
+            act.triggered.connect(lambda _checked=False, p=p: self._open_recent(p))
+            self._recent_menu.addAction(act)
+
+    def _open_recent(self, path_str: str) -> None:
+        p = Path(path_str)
+        if p.exists():
+            self._set_excel(p)
+            return
+        self.error_banner.show_message(tr("msg_recent_missing").format(path=path_str))
+        self._ui.recent_files = [x for x in self._ui.recent_files if x != path_str]
+        self._populate_recent_menu()
+
+    def _open_reports_root(self) -> None:
+        # Same root the runner writes into (runner.py _run_batch out_base) — the panel's
+        # buttons cover the current run; this reaches every past run.
+        s = engine_settings()
+        base = (s.data_dir / "output") if s.data_dir else output_dir()
+        base.mkdir(parents=True, exist_ok=True)  # openUrl fails silently on a missing path
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(base)))
+
     def _show_guide(self) -> None:
         from .guide_dialog import GuideDialog
 
@@ -242,6 +315,9 @@ class MainWindow(QMainWindow):
         self.choose_btn.clicked.connect(self._choose_excel)
         self.file_label = _ElidingLabel(tr("lbl_no_file"))
         self.file_label.setAccessibleName(tr("a11y_file_status"))
+        # Muted so the (long) path doesn't visually dominate its row; re-applied on
+        # theme change because the token value differs between light and dark.
+        self.file_label.setStyleSheet(f"color: {theme.color('muted')};")
         self.template_btn = QPushButton(tr("btn_template"))
         self.template_btn.clicked.connect(self._make_template)
         self.mapping_btn = QPushButton(tr("btn_open_mapping"))
@@ -318,6 +394,9 @@ class MainWindow(QMainWindow):
         self.delay_spin.setToolTip(tr("tip_delay"))
         self.limit_spin.setToolTip(tr("tip_limit"))
         self.dryrun_check.setToolTip(tr("tip_dryrun"))
+        self.choose_btn.setToolTip(_with_shortcut(tr("tip_choose_excel"), self.choose_btn))
+        self.validate_btn.setToolTip(_with_shortcut(tr("tip_validate"), self.validate_btn))
+        self.stop_btn.setToolTip(_with_shortcut(tr("tip_stop"), self.stop_btn))
 
     # -- preferences --------------------------------------------------------------------
 
@@ -373,6 +452,8 @@ class MainWindow(QMainWindow):
             self.file_label.setText(tr("lbl_no_file"))
         self._apply_control_tooltips()
         self._render_footer_link()
+        self.error_banner.retranslate()
+        self.update_banner.retranslate()
         self.menuBar().clear()
         self._build_menu()
         self.results.retranslate()
@@ -384,6 +465,9 @@ class MainWindow(QMainWindow):
         """Re-colour the programmatically-styled chrome after a Light/Dark switch."""
         self._refresh_run_controls()
         self._render_token_label()
+        self.file_label.setStyleSheet(f"color: {theme.color('muted')};")
+        self.error_banner.refresh_theme()
+        self.update_banner.refresh_theme()
         self.results.on_theme_changed()
 
     # -- login --------------------------------------------------------------------------
@@ -442,6 +526,7 @@ class MainWindow(QMainWindow):
         self.token_label.setStyleSheet(theme.label_qss(token))
 
     def _do_login(self) -> None:
+        self.error_banner.clear()
         self.login_btn.setEnabled(False)
         self._set_token_label(tr("lbl_opening_browser"), "info")
         self._login_thread = QThread()
@@ -470,19 +555,59 @@ class MainWindow(QMainWindow):
     def _on_login_failed(self, message: str) -> None:
         self.login_btn.setEnabled(True)
         self._refresh_token_status()
-        QMessageBox.warning(self, tr("dlg_login_failed"), message)
+        self.error_banner.show_message(f"{tr('dlg_login_failed')}: {message}")
 
     def _on_login_thread_finished(self) -> None:
         self._login_thread = None
         self._login_worker = None
 
+    # -- update notification --------------------------------------------------------------
+
+    def _start_update_check(self) -> None:
+        self._update_thread = QThread()
+        self._update_worker = UpdateCheckWorker()
+        self._update_worker.moveToThread(self._update_thread)
+        self._update_thread.started.connect(self._update_worker.run)
+        # Same lifecycle as the login worker: quit first, then UI handler, deleteLater and
+        # reference drops only once the thread has fully finished.
+        self._update_worker.finished.connect(self._update_thread.quit)
+        self._update_worker.failed.connect(self._update_thread.quit)
+        self._update_worker.finished.connect(self._on_update_check_finished)
+        self._update_thread.finished.connect(self._update_worker.deleteLater)
+        self._update_thread.finished.connect(self._update_thread.deleteLater)
+        self._update_thread.finished.connect(self._on_update_thread_finished)
+        self._update_thread.start()
+
+    def _on_update_check_finished(self, result: object) -> None:
+        from hssk import __version__
+
+        if not (isinstance(result, tuple) and len(result) == 2):
+            return  # network failure / rate limit / malformed payload / cancelled → silent
+        tag, url = result
+        if is_newer(tag, __version__):
+            self.update_banner.show_message(
+                tr("update_available").format(version=tag.lstrip("vV")),
+                severity="info",
+                link_text=tr("update_link"),
+                link_url=url,
+            )
+
+    def _on_update_thread_finished(self) -> None:
+        self._update_thread = None
+        self._update_worker = None
+
     # -- data ---------------------------------------------------------------------------
 
     def _choose_excel(self) -> None:
+        start = self._ui.last_file or ""
+        if start and not Path(start).exists():
+            # The last file was moved/deleted — at least open its folder if that survives.
+            parent = Path(start).parent
+            start = str(parent) if parent.exists() else ""
         path, _ = QFileDialog.getOpenFileName(
             self,
             tr("dlg_choose_excel_title"),
-            self._ui.last_file or "",
+            start,
             tr("filter_excel_multi"),
         )
         if path:
@@ -494,6 +619,8 @@ class MainWindow(QMainWindow):
         self._validated_invalid = 0
         self.file_label.setText(str(path))
         self._ui.last_file = str(path)
+        self._ui.add_recent_file(str(path))
+        self._populate_recent_menu()
         self._update_start_enabled()
 
     def _make_template(self) -> None:
@@ -538,19 +665,18 @@ class MainWindow(QMainWindow):
     def _validate(self) -> None:
         if self._excel_path is None:
             return
+        self.error_banner.clear()
         try:
             mapping = self._load_mapping(update=self._is_update_mode())
         except (ConfigError, HsskError) as exc:
-            QMessageBox.critical(self, tr("dlg_validation"), str(exc))
+            self.error_banner.show_message(f"{tr('dlg_validation')}: {exc}")
             return
         from hssk.payload import builder  # deferred: loads openpyxl/API stack on first use
 
         bad_targets = builder.validate_targets(mapping)
         if bad_targets:
-            QMessageBox.critical(
-                self,
-                tr("dlg_validation"),
-                tr("msg_bad_targets").format(targets=bad_targets),
+            self.error_banner.show_message(
+                f"{tr('dlg_validation')}: {tr('msg_bad_targets').format(targets=bad_targets)}"
             )
             return
         # Re-validating: the old verdict is stale (file may have changed on disk). Drop it
@@ -578,19 +704,16 @@ class MainWindow(QMainWindow):
     def _on_validate_finished(self, summary: ValidationSummary) -> None:
         if summary.invalid == 0 and summary.warns == 0:
             self.results.set_status(tr("msg_no_issues"))
-            counter_color = theme.label_qss("success")
         else:
-            self.results.set_status(
-                tr("msg_validation_summary").format(
-                    valid=summary.valid,
-                    invalid=summary.invalid,
-                    warns=summary.warns,
-                    total=summary.total,
-                )
-            )
-            counter_color = ""
-        self.results.set_counter(
-            f"✓ {summary.valid}   ⚠ {summary.warns}   ✗ {summary.invalid}", counter_color
+            # Just the phase + row total — the per-kind numbers live in the colored
+            # counter right beside this label, so repeating them here reads as a duplicate.
+            self.results.set_status(tr("msg_validation_done").format(total=summary.total))
+        self.results.set_counts(
+            [
+                (tr("counter_valid"), summary.valid, "success"),
+                (tr("counter_warns"), summary.warns, "warning"),
+                (tr("counter_invalid"), summary.invalid, "danger"),
+            ]
         )
         # Only a pass that checked every row counts as validated. A stopped pass reports
         # partial counts (invalid may be 0 simply because the bad rows weren't reached),
@@ -601,7 +724,7 @@ class MainWindow(QMainWindow):
 
     def _on_validate_failed(self, message: str) -> None:
         self.results.set_status(tr("lbl_error"))
-        QMessageBox.critical(self, tr("dlg_validation"), message)
+        self.error_banner.show_message(f"{tr('dlg_validation')}: {message}")
 
     def _on_validate_thread_finished(self) -> None:
         self._validate_thread = None
@@ -656,11 +779,12 @@ class MainWindow(QMainWindow):
             return tr("tip_start_need_login")
         if need_file:
             return tr("tip_start_need_file")
-        return ""  # enabled — no tooltip
+        return _with_shortcut(tr("tip_start_ready"), self.start_btn)  # enabled
 
     def _start_run(self) -> None:
         if self._excel_path is None or self._token is None:
             return
+        self.error_banner.clear()
         dry_run = self.dryrun_check.isChecked()
         update_mode = self.mode_combo.currentIndex() == 1
         if not dry_run:
@@ -683,16 +807,14 @@ class MainWindow(QMainWindow):
         try:
             mapping = self._load_mapping(update=update_mode)
         except (ConfigError, HsskError) as exc:
-            QMessageBox.critical(self, tr("dlg_mapping_error"), str(exc))
+            self.error_banner.show_message(f"{tr('dlg_mapping_error')}: {exc}")
             return
 
         if update_mode and not any(
             spec.target == "medicalRecordId" and spec.required for spec in mapping.columns.values()
         ):
-            QMessageBox.critical(
-                self,
-                tr("dlg_update_needs_record_id"),
-                tr("msg_update_needs_record_id"),
+            self.error_banner.show_message(
+                f"{tr('dlg_update_needs_record_id')}: {tr('msg_update_needs_record_id')}"
             )
             return
 
@@ -720,7 +842,7 @@ class MainWindow(QMainWindow):
         self._run_thread.started.connect(self._run_worker.run)
         self._run_worker.progress.connect(self.results.set_progress)
         self._run_worker.row.connect(self.results.add_row)
-        self._run_worker.log.connect(lambda m: self.results.append_log(_tr_log(m)))
+        self._run_worker.log.connect(self._on_run_log)
         # Stop the thread first, then run the UI handlers; drop references only after the thread
         # has fully finished — destroying a running QThread aborts the process.
         self._run_worker.finished.connect(self._run_thread.quit)
@@ -734,6 +856,13 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(True)
         self._update_start_enabled()  # _run_thread is set, so this also disables Start/Validate
         self._run_thread.start()
+
+    def _on_run_log(self, msg: str) -> None:
+        self.results.append_log(_tr_log(msg))
+        # The engine's pre-run token-lifetime estimate is easy to miss in the log pane —
+        # mirror it in the banner (wording matched in hssk_gui/messages.py).
+        if msg.startswith("token may expire before this batch finishes"):
+            self.error_banner.show_message(_tr_log(msg), severity="warning")
 
     def _stop_run(self) -> None:
         if self._run_worker is not None:
@@ -774,7 +903,7 @@ class MainWindow(QMainWindow):
 
     def _on_run_failed(self, message: str) -> None:
         self.results.set_status(tr("lbl_error"))
-        QMessageBox.critical(self, tr("dlg_run_failed"), message)
+        self.error_banner.show_message(f"{tr('dlg_run_failed')}: {message}")
 
     def _on_run_thread_finished(self) -> None:
         # Thread has fully stopped — now it is safe to drop references and re-enable Start.
@@ -826,6 +955,7 @@ class MainWindow(QMainWindow):
             (self._run_worker, self._run_thread),
             (self._validate_worker, self._validate_thread),
             (self._login_worker, self._login_thread),
+            (self._update_worker, self._update_thread),
         ):
             if worker is not None:
                 worker.cancel()
@@ -844,4 +974,5 @@ class MainWindow(QMainWindow):
             return
         self._token_timer.stop()
         self._ui.geometry = self.saveGeometry()
+        self._ui.results_splitter = self.results.save_splitter()
         event.accept()

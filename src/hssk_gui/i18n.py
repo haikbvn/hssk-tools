@@ -70,6 +70,17 @@ _STRINGS: dict[str, dict[str, str]] = {
     "col_record_id": {"en": "RecordId", "vi": "Mã hồ sơ"},
     "col_message": {"en": "Message", "vi": "Ghi chú"},
     # menu
+    "menu_file": {"en": "File", "vi": "Tệp"},
+    "menu_open_recent": {"en": "Open recent", "vi": "Mở gần đây"},
+    "menu_recent_empty": {"en": "(no recent files)", "vi": "(chưa có file nào)"},
+    "menu_open_reports_root": {
+        "en": "Open reports folder (all runs)",
+        "vi": "Mở thư mục báo cáo (tất cả các lần chạy)",
+    },
+    "msg_recent_missing": {
+        "en": "File no longer exists: {path}",
+        "vi": "File không còn tồn tại: {path}",
+    },
     "menu_settings": {"en": "Settings", "vi": "Cài đặt"},
     "menu_settings_action": {"en": "Settings…", "vi": "Cài đặt…"},
     "menu_help": {"en": "Help", "vi": "Trợ giúp"},
@@ -121,6 +132,9 @@ _STRINGS: dict[str, dict[str, str]] = {
     # Accessibility names for dynamic status labels (screen reader announces the role).
     "a11y_token_status": {"en": "Login status", "vi": "Trạng thái đăng nhập"},
     "a11y_file_status": {"en": "Selected file", "vi": "File đã chọn"},
+    # inline notice banner
+    "tip_dismiss_banner": {"en": "Dismiss", "vi": "Đóng thông báo"},
+    "a11y_error_banner": {"en": "Notification", "vi": "Thông báo"},
     # about dialog
     "about_title": {"en": "About HSSK Tools", "vi": "Về HSSK Tools"},
     "about_body": {
@@ -156,9 +170,9 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     # validation
     "dlg_validation": {"en": "Validation", "vi": "Kiểm tra"},
-    "msg_validation_summary": {
-        "en": "{valid} valid, {invalid} invalid, {warns} warnings ({total} rows).",
-        "vi": "{valid} hợp lệ, {invalid} không hợp lệ, {warns} cảnh báo ({total} hàng).",
+    "msg_validation_done": {
+        "en": "Validation finished ({total} rows).",
+        "vi": "Kiểm tra xong ({total} hàng).",
     },
     "msg_no_issues": {"en": "No issues found.", "vi": "Không có lỗi."},
     "val_status_invalid": {"en": "INVALID", "vi": "Không hợp lệ"},
@@ -359,6 +373,32 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "log_retry_in": {"en": "retry in ", "vi": "thử lại sau "},
     "log_retry_attempt": {"en": " (attempt ", "vi": " (lần "},
+    "log_no_record_id": {
+        "en": "row {row}: no record id in server response",
+        "vi": "dòng {row}: máy chủ không trả về mã hồ sơ",
+    },
+    "msg_no_record_id": {
+        "en": "no record id returned",
+        "vi": "không nhận được mã hồ sơ",
+    },
+    "log_ledger_corrupt": {
+        "en": "{n} unreadable ledger line(s) — those rows may be re-sent",
+        "vi": "{n} dòng nhật ký gửi (ledger) không đọc được — các hàng đó có thể bị gửi lại",
+    },
+    "log_saved_search_response": {
+        "en": "saved search response for row ",
+        "vi": "đã lưu phản hồi tìm kiếm cho dòng ",
+    },
+    "log_token_short_for_batch": {
+        "en": (
+            "token may expire before this batch finishes "
+            "(~{needed} min needed, ~{left} min left) — consider logging in again first"
+        ),
+        "vi": (
+            "⚠ Token có thể hết hạn trước khi chạy xong lô này "
+            "(cần ~{needed} phút, còn ~{left} phút) — nên đăng nhập lại trước khi chạy"
+        ),
+    },
     # close while running
     "dlg_still_stopping": {
         "en": "Operation still stopping",
@@ -384,6 +424,19 @@ _STRINGS: dict[str, dict[str, str]] = {
         "vi": "Chạy thử mặc định (không gửi)",
     },
     "lbl_language": {"en": "Language:", "vi": "Ngôn ngữ:"},
+    "chk_check_updates": {
+        "en": "Check for new versions at startup",
+        "vi": "Kiểm tra phiên bản mới khi khởi động",
+    },
+    "tip_check_updates": {
+        "en": "Quietly asks GitHub for the latest release once per launch. Nothing is installed.",
+        "vi": "Âm thầm hỏi GitHub về bản phát hành mới nhất mỗi lần mở. Không tự cài đặt gì.",
+    },
+    "update_available": {
+        "en": "A new version is available: {version}",
+        "vi": "Đã có phiên bản mới: {version}",
+    },
+    "update_link": {"en": "Download", "vi": "Tải về"},
     "note_record_defaults": {
         "en": (
             "These values are stamped on every uploaded record when the matching Excel "
@@ -442,9 +495,39 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "When ticked, nothing is sent — payloads are built and written for inspection only.",
         "vi": "Khi bật, không gửi gì cả — chỉ tạo và ghi dữ liệu để kiểm tra.",
     },
+    "tip_choose_excel": {
+        "en": "Choose the Excel file to upload.",
+        "vi": "Chọn file Excel cần tải lên.",
+    },
+    "tip_validate": {
+        "en": "Check the file offline — nothing is sent.",
+        "vi": "Kiểm tra file ngoại tuyến — không gửi gì cả.",
+    },
+    "tip_stop": {
+        "en": "Stop after the row currently being processed.",
+        "vi": "Dừng sau dòng đang xử lý.",
+    },
+    "tip_start_ready": {
+        "en": "Start processing the selected file.",
+        "vi": "Bắt đầu xử lý file đã chọn.",
+    },
+    # labeled result counters (progress row); short words — they sit next to the ETA
+    "counter_ok": {"en": "ok", "vi": "thành công"},
+    "counter_skipped": {"en": "skipped", "vi": "bỏ qua"},
+    "counter_failed": {"en": "failed", "vi": "lỗi"},
+    "counter_aborted": {"en": "aborted", "vi": "dừng"},
+    "counter_valid": {"en": "valid", "vi": "hợp lệ"},
+    "counter_warns": {"en": "warnings", "vi": "cảnh báo"},
+    "counter_invalid": {"en": "invalid", "vi": "không hợp lệ"},
     # results filter / table tools
     "ph_filter": {"en": "Filter rows…", "vi": "Lọc dòng…"},
     "chk_problems_only": {"en": "Problems only", "vi": "Chỉ dòng có vấn đề"},
+    "filter_all_statuses": {"en": "All statuses", "vi": "Tất cả trạng thái"},
+    "tip_status_filter": {
+        "en": "Show only rows with this status.",
+        "vi": "Chỉ hiện các dòng có trạng thái này.",
+    },
+    "btn_clear_log": {"en": "Clear log", "vi": "Xoá nhật ký"},
     "empty_results": {
         "en": "Choose an Excel file and Validate, or Start a dry-run.",
         "vi": "Chọn file Excel rồi Kiểm tra, hoặc Chạy thử.",

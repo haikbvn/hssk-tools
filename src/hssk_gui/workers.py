@@ -55,6 +55,29 @@ class LoginWorker(QObject):
             self.failed.emit(str(exc))
 
 
+class UpdateCheckWorker(QObject):
+    """Fetch the latest GitHub release tag in the background (startup notification)."""
+
+    finished = Signal(object)  # (tag, html_url) tuple or None
+    failed = Signal(str)  # never emitted in practice; kept for lifecycle symmetry
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._cancel = False
+
+    def cancel(self) -> None:
+        self._cancel = True
+
+    @Slot()
+    def run(self) -> None:
+        from .update_check import fetch_latest_release
+
+        # fetch_latest_release cannot raise, so `finished` fires on every path and the
+        # thread's quit is always triggered.
+        result = fetch_latest_release()
+        self.finished.emit(None if self._cancel else result)
+
+
 class ValidateWorker(QObject):
     progress = Signal(int, int)  # done, total
     problem = Signal(object)  # ValidationProblem

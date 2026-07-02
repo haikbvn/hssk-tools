@@ -11,6 +11,7 @@ thread) because it uses Playwright's sync API.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import Callable
@@ -21,6 +22,9 @@ from ..config import settings as default_settings
 from ..errors import AuthExpired, HsskError
 from .profile import fetch_profile, save_profile
 from .token_store import TokenData, decode_exp, save_token
+
+# DEBUG-level only — see auth/profile.py; the engine never prints.
+logger = logging.getLogger(__name__)
 
 _JWT_RE = re.compile(r"^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$")
 
@@ -97,7 +101,7 @@ def capture_token(
                     if _token_unexpired(tok):
                         captured["token"] = tok
         except Exception:
-            pass
+            logger.debug("ignored request while sniffing token", exc_info=True)
 
     with sync_playwright() as pw:
         try:

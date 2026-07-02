@@ -68,6 +68,19 @@ def test_message_head_with_name_keeps_detail() -> None:
     assert _tr_message("payload built (not sent) — Le C") == "Đã dựng dữ liệu (chưa gửi) — Le C"
 
 
+def test_message_no_record_id_suffix() -> None:
+    set_language("vi")
+    assert _tr_message("created — Nguyễn A (no record id returned)") == (
+        "Đã tạo — Nguyễn A (không nhận được mã hồ sơ)"
+    )
+    # who-less variant: the suffix must be stripped before head matching
+    assert _tr_message("created (no record id returned)") == ("Đã tạo (không nhận được mã hồ sơ)")
+    set_language("en")
+    assert _tr_message("created — A (no record id returned)") == (
+        "Created — A (no record id returned)"
+    )
+
+
 def test_message_coercion_prefix() -> None:
     set_language("vi")
     out = _tr_message("coercion error: missing required column 'Ngày khám'")
@@ -186,6 +199,53 @@ def test_log_retry_english_passthrough() -> None:
     assert _tr_log("retry in 1.0s (attempt 2)") == "retry in 1.0s (attempt 2)"
 
 
+def test_log_no_record_id() -> None:
+    set_language("vi")
+    assert _tr_log("row 5: no record id in server response") == (
+        "dòng 5: máy chủ không trả về mã hồ sơ"
+    )
+    set_language("en")
+    assert _tr_log("row 5: no record id in server response") == (
+        "row 5: no record id in server response"
+    )
+
+
+def test_log_ledger_corrupt() -> None:
+    set_language("vi")
+    assert _tr_log("2 unreadable ledger line(s) — those rows may be re-sent") == (
+        "2 dòng nhật ký gửi (ledger) không đọc được — các hàng đó có thể bị gửi lại"
+    )
+    set_language("en")
+    assert _tr_log("2 unreadable ledger line(s) — those rows may be re-sent") == (
+        "2 unreadable ledger line(s) — those rows may be re-sent"
+    )
+
+
+def test_log_saved_search_response() -> None:
+    set_language("vi")
+    assert _tr_log("saved search response for row 3 (search_response_row_3.json)") == (
+        "đã lưu phản hồi tìm kiếm cho dòng 3 (search_response_row_3.json)"
+    )
+    set_language("en")
+    assert _tr_log("saved search response for row 3 (search_response_row_3.json)") == (
+        "saved search response for row 3 (search_response_row_3.json)"
+    )
+
+
+def test_log_token_short_for_batch() -> None:
+    msg = (
+        "token may expire before this batch finishes "
+        "(~7 min needed, ~2 min left) — consider logging in again first"
+    )
+    set_language("vi")
+    assert _tr_log(msg) == (
+        "⚠ Token có thể hết hạn trước khi chạy xong lô này "
+        "(cần ~7 phút, còn ~2 phút) — nên đăng nhập lại trước khi chạy"
+    )
+    set_language("en")
+    assert _tr_log(msg) == msg
+
+
 def test_log_unknown_passes_through() -> None:
     set_language("vi")
     raw = "some raw API diagnostic"
@@ -215,6 +275,67 @@ def test_login_status_unknown_passes_through() -> None:
     set_language("vi")
     raw = "Some unexpected engine message"
     assert _tr_login_status(raw) == raw
+
+
+# -- v1.4.0 keys resolve in both languages ----------------------------------------------
+
+_V140_KEYS = [
+    "msg_no_record_id",
+    "log_no_record_id",
+    "log_ledger_corrupt",
+    "log_saved_search_response",
+    "log_token_short_for_batch",
+    "tip_dismiss_banner",
+    "a11y_error_banner",
+    "filter_all_statuses",
+    "btn_clear_log",
+    "tip_status_filter",
+    "menu_file",
+    "menu_open_recent",
+    "menu_recent_empty",
+    "menu_open_reports_root",
+    "msg_recent_missing",
+    "tip_choose_excel",
+    "tip_validate",
+    "tip_stop",
+    "tip_start_ready",
+    "update_available",
+    "update_link",
+    "chk_check_updates",
+    "tip_check_updates",
+]
+
+
+def test_v140_keys_resolve_in_both_languages() -> None:
+    from hssk_gui.i18n import tr
+
+    for lang in ("vi", "en"):
+        set_language(lang)
+        for key in _V140_KEYS:
+            assert tr(key) != key, f"missing {lang} entry for {key}"
+
+
+# -- UI-polish round: labeled counter keys ------------------------------------------------
+
+_UI_POLISH_KEYS = [
+    "counter_ok",
+    "counter_skipped",
+    "counter_failed",
+    "counter_aborted",
+    "counter_valid",
+    "counter_warns",
+    "counter_invalid",
+    "msg_validation_done",
+]
+
+
+def test_ui_polish_keys_resolve_in_both_languages() -> None:
+    from hssk_gui.i18n import tr
+
+    for lang in ("vi", "en"):
+        set_language(lang)
+        for key in _UI_POLISH_KEYS:
+            assert tr(key) != key, f"missing {lang} entry for {key}"
 
 
 # -- ValidationSummary contract ---------------------------------------------------------

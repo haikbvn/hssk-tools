@@ -78,6 +78,18 @@ def test_parse_profile_camelcase_fullname():
     assert p.healthfacilities_id == "12345"
 
 
+def test_parse_profile_failure_is_logged_at_debug(caplog):
+    import logging
+
+    class _Boom(dict):
+        def get(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise RuntimeError("boom")
+
+    with caplog.at_level(logging.DEBUG, logger="hssk.auth.profile"):
+        assert parse_profile(_Boom()) is None
+    assert "could not parse profile response" in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # identity_label
 # ---------------------------------------------------------------------------

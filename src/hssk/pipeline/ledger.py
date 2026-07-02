@@ -19,6 +19,9 @@ class Ledger:
     def __init__(self, path: Path) -> None:
         self.path = path
         self._done: dict[str, Any] = {}
+        # Lines load() could not parse as JSON (e.g. truncated by a crash mid-write). Those
+        # entries are lost, so the rows they recorded may be re-sent — the runner warns.
+        self.corrupt_lines: int = 0
 
     @staticmethod
     def make_key(identifier: str | None, exam_date: str | None) -> str:
@@ -43,6 +46,9 @@ class Ledger:
                 try:
                     rec = json.loads(line)
                 except ValueError:
+                    # Blank lines and valid-JSON-without-"key" records are not counted —
+                    # only text that fails to parse at all.
+                    led.corrupt_lines += 1
                     continue
                 if "key" in rec:
                     led._done[rec["key"]] = rec.get("recordId")

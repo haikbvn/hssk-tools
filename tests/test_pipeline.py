@@ -176,6 +176,7 @@ def test_no_patient(mapping, tmp_path):
     _mock_search(found=False)
     xlsx = _two_row_xlsx(tmp_path)
     s = _settings(tmp_path)
+    logs: list[str] = []
     summary = runner.run(
         xlsx,
         mapping,
@@ -183,8 +184,35 @@ def test_no_patient(mapping, tmp_path):
         dry_run=False,
         settings=s,
         ledger=Ledger(tmp_path / "l.jsonl"),
+        callbacks=runner.Callbacks(on_log=logs.append),
     )
     assert summary.counts.get(Status.NO_PATIENT) == 1
+    # The failed lookup's exact server response is kept for debugging.
+    assert (summary.run_dir / "search_response_row_2.json").exists()
+    assert any(m.startswith("saved search response for row 2") for m in logs)
+
+
+@respx.mock
+def test_multi_match_response_is_dumped(mapping, tmp_path):
+    content = [
+        {"patientId": 1, "medicalIdentifierCode": "A"},
+        {"patientId": 2, "medicalIdentifierCode": "B"},
+    ]
+    respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
+        return_value=httpx.Response(200, json={"data": {"content": content}})
+    )
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    summary = runner.run(
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=True,
+        settings=s,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+    )
+    assert summary.counts.get(Status.MULTI_MATCH) == 1
+    assert (summary.run_dir / "search_response_row_2.json").exists()
 
 
 @respx.mock
@@ -233,6 +261,51 @@ def test_unexpected_coercion_error_yields_invalid_not_crash(mapping, tmp_path, m
 
 
 @respx.mock
+def test_corrupt_ledger_line_warns_on_run(mapping, tmp_path):
+    """A truncated/corrupt ledger line surfaces a warning — those rows may be re-sent."""
+    _mock_search(found=True)
+    ledger_file = tmp_path / "ledger.jsonl"
+    ledger_file.write_text('{"key": "truncated by a crash', encoding="utf-8")
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    logs: list[str] = []
+    runner.run(
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=True,
+        settings=s,
+        ledger=Ledger.load(ledger_file),
+        callbacks=runner.Callbacks(on_log=logs.append),
+    )
+    assert any("1 unreadable ledger line(s)" in m for m in logs)
+
+
+@respx.mock
+def test_create_without_record_id_still_created_but_warns(mapping, tmp_path):
+    """A create response with no recognisable id succeeds but flags the missing id."""
+    _mock_search(found=True)
+    respx.post(f"{BASE}{exams.CREATE_PATH}").mock(return_value=httpx.Response(200, json={}))
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    logs: list[str] = []
+    summary = runner.run(
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=False,
+        settings=s,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        callbacks=runner.Callbacks(on_log=logs.append),
+    )
+    assert summary.created == 1
+    outcome = next(o for o in summary.outcomes if o.status is Status.CREATED)
+    assert outcome.record_id is None
+    assert outcome.message.endswith(" (no record id returned)")
+    assert any("no record id in server response" in m for m in logs)
+
+
+@respx.mock
 def test_dry_run_writes_payload_and_does_not_create(mapping, tmp_path):
     _mock_search(found=True)
     create_route = respx.post(f"{BASE}{exams.CREATE_PATH}").mock(
@@ -250,5 +323,13 @@ def test_dry_run_writes_payload_and_does_not_create(mapping, tmp_path):
     )
     assert summary.counts.get(Status.DRY_RUN_OK) == 1
     assert create_route.call_count == 0
+    # Every emitted outcome carries a parseable recording timestamp.
+    from datetime import datetime
+
+    for o in summary.outcomes:
+        assert o.timestamp
+        datetime.fromisoformat(o.timestamp)
     assert (summary.run_dir / "payloads" / "row_2.json").exists()
     assert (summary.run_dir / "results.xlsx").exists()
+    # No failed lookups → no per-row search-response dumps.
+    assert not list(summary.run_dir.glob("search_response_row_*.json"))
