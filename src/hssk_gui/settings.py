@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import json
+
 from PySide6.QtCore import QByteArray, QSettings
 
 _ORG = "hssk-tools"
 _APP = "hssk-gui"
+
+_RECENT_FILES_LIMIT = 5
+
+
+def add_recent(paths: list[str], path: str, limit: int = _RECENT_FILES_LIMIT) -> list[str]:
+    """Move-to-front dedupe for the recent-files list (pure, so it unit-tests headless)."""
+    out = [path] + [p for p in paths if p != path]
+    return out[:limit]
 
 
 class UiSettings:
@@ -69,6 +79,14 @@ class UiSettings:
         self._s.setValue("update_mode", value)
 
     @property
+    def check_updates(self) -> bool:
+        return bool(self._s.value("check_updates", True, type=bool))
+
+    @check_updates.setter
+    def check_updates(self, value: bool) -> None:
+        self._s.setValue("check_updates", value)
+
+    @property
     def geometry(self) -> QByteArray:
         value = self._s.value("geometry", QByteArray(), type=QByteArray)
         return value if isinstance(value, QByteArray) else QByteArray()
@@ -76,3 +94,30 @@ class UiSettings:
     @geometry.setter
     def geometry(self, value: QByteArray) -> None:
         self._s.setValue("geometry", value)
+
+    # Stored as one JSON-encoded string: QSettings round-trips a 1-element list as a plain
+    # str on some backends, so a native list type is a trap.
+    @property
+    def recent_files(self) -> list[str]:
+        raw = str(self._s.value("recent_files", "[]", type=str))
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            return []
+        return [p for p in value if isinstance(p, str)] if isinstance(value, list) else []
+
+    @recent_files.setter
+    def recent_files(self, value: list[str]) -> None:
+        self._s.setValue("recent_files", json.dumps(value, ensure_ascii=False))
+
+    def add_recent_file(self, path: str) -> None:
+        self.recent_files = add_recent(self.recent_files, path)
+
+    @property
+    def results_splitter(self) -> QByteArray:
+        value = self._s.value("results_splitter", QByteArray(), type=QByteArray)
+        return value if isinstance(value, QByteArray) else QByteArray()
+
+    @results_splitter.setter
+    def results_splitter(self, value: QByteArray) -> None:
+        self._s.setValue("results_splitter", value)

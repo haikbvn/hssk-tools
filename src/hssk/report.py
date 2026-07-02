@@ -14,7 +14,16 @@ from openpyxl import Workbook
 if TYPE_CHECKING:
     from .pipeline.runner import RowOutcome
 
-_COLUMNS = ["row", "identifier", "status", "patientId", "recordId", "message", "warnings"]
+_COLUMNS = [
+    "row",
+    "identifier",
+    "status",
+    "patientId",
+    "recordId",
+    "message",
+    "warnings",
+    "timestamp",
+]
 
 
 def new_run_dir(base: Path, *, dry_run: bool) -> Path:
@@ -35,6 +44,7 @@ def _row(outcome: RowOutcome) -> list[Any]:
         outcome.record_id if outcome.record_id is not None else "",
         outcome.message,
         "; ".join(outcome.warnings),
+        outcome.timestamp,
     ]
 
 

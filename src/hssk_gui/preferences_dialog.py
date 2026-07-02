@@ -106,6 +106,11 @@ class PreferencesDialog(QDialog):
         self._dryrun_check.setChecked(self._ui.dry_run)
         form.addRow("", self._dryrun_check)
 
+        self._updates_check = QCheckBox(tr("chk_check_updates"))
+        self._updates_check.setToolTip(tr("tip_check_updates"))
+        self._updates_check.setChecked(self._ui.check_updates)
+        form.addRow("", self._updates_check)
+
         self._lang_combo = QComboBox()
         self._lang_combo.addItem("Tiếng Việt", "vi")
         self._lang_combo.addItem("English", "en")
@@ -230,6 +235,7 @@ class PreferencesDialog(QDialog):
         self._ui.delay = self._delay_spin.value()
         self._ui.limit = self._limit_spin.value()
         self._ui.dry_run = self._dryrun_check.isChecked()
+        self._ui.check_updates = self._updates_check.isChecked()
 
         # Save language selection and apply it immediately; MainWindow re-translates live on
         # accept (it compares the stored language before/after), so no restart is needed.

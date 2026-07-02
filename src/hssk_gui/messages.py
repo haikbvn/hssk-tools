@@ -28,6 +28,18 @@ _LOG_EXACT: dict[str, str] = {
 }
 
 
+# "row N: no record id in server response" — runner warns when a create response had no id.
+_NO_RID_LOG_SUFFIX = ": no record id in server response"
+
+# "N unreadable ledger line(s) — those rows may be re-sent" — runner warns on corrupt ledger.
+_LEDGER_CORRUPT_SUFFIX = " unreadable ledger line(s) — those rows may be re-sent"
+
+# "token may expire before this batch finishes (~X min needed, ~Y min left) — consider…"
+_TOKEN_SHORT_HEAD = "token may expire before this batch finishes (~"
+_TOKEN_SHORT_MID = " min needed, ~"
+_TOKEN_SHORT_TAIL = " min left) — consider logging in again first"
+
+
 def _tr_log(msg: str) -> str:
     """Translate known engine log strings; pass diagnostic/API detail through unchanged."""
     exact = _LOG_EXACT.get(msg)
@@ -38,6 +50,18 @@ def _tr_log(msg: str) -> str:
         msg = msg.replace("retry in ", tr("log_retry_in"), 1)
         msg = msg.replace(" (attempt ", tr("log_retry_attempt"), 1)
         return msg
+    if msg.startswith("row ") and msg.endswith(_NO_RID_LOG_SUFFIX):
+        return tr("log_no_record_id").format(row=msg[len("row ") : -len(_NO_RID_LOG_SUFFIX)])
+    if msg.endswith(_LEDGER_CORRUPT_SUFFIX):
+        return tr("log_ledger_corrupt").format(n=msg[: -len(_LEDGER_CORRUPT_SUFFIX)])
+    # "saved search response for row N (search_response_row_N.json)" — keep the filename tail
+    if msg.startswith("saved search response for row "):
+        return tr("log_saved_search_response") + msg[len("saved search response for row ") :]
+    if msg.startswith(_TOKEN_SHORT_HEAD) and msg.endswith(_TOKEN_SHORT_TAIL):
+        body = msg[len(_TOKEN_SHORT_HEAD) : -len(_TOKEN_SHORT_TAIL)]
+        needed, sep, left = body.partition(_TOKEN_SHORT_MID)
+        if sep:
+            return tr("log_token_short_for_batch").format(needed=needed, left=left)
     return msg
 
 
@@ -94,10 +118,18 @@ def _tr_coerce_msgs(compound: str) -> str:
     return "; ".join(result)
 
 
+# Appended by the runner when a create succeeded but no record id could be extracted.
+# Must be stripped before head matching (it defeats both the exact and "head — " forms).
+_NO_RID_MSG_SUFFIX = " (no record id returned)"
+
+
 def _tr_message(message: str) -> str:
     """Localize engine-authored row messages; pass diagnostic detail through unchanged."""
     if not message:
         return ""
+    if message.endswith(_NO_RID_MSG_SUFFIX):
+        base = _tr_message(message[: -len(_NO_RID_MSG_SUFFIX)])
+        return f"{base} ({tr('msg_no_record_id')})"
     exact = _MSG_EXACT.get(message)
     if exact is not None:
         return tr(exact)

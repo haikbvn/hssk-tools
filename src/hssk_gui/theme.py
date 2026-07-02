@@ -37,6 +37,25 @@ _TOKENS: dict[str, dict[str, str]] = {
     # production banner
     "banner_bg": {"light": "#cf222e", "dark": "#da3633"},
     "banner_fg": {"light": "#ffffff", "dark": "#ffffff"},
+    # inline notice banner (subtle Primer alert palettes: bg / fg / border per severity)
+    "notice_danger_bg": {"light": "#ffebe9", "dark": "#442726"},
+    "notice_danger_fg": {"light": "#82071e", "dark": "#ffdcd7"},
+    "notice_danger_border": {"light": "#ffb1a8", "dark": "#8a3a36"},
+    "notice_warning_bg": {"light": "#fff8c5", "dark": "#3a3117"},
+    "notice_warning_fg": {"light": "#9a6700", "dark": "#f0d867"},
+    "notice_warning_border": {"light": "#eed888", "dark": "#6e5c1f"},
+    "notice_info_bg": {"light": "#ddf4ff", "dark": "#12283b"},
+    "notice_info_fg": {"light": "#0a3069", "dark": "#a5d6ff"},
+    "notice_info_border": {"light": "#a5d6ff", "dark": "#204a72"},
+    # status pill backgrounds (results table Trạng thái column); pill TEXT reuses the base
+    # accent tokens above (success/info/warning/danger/muted), same as STATUS_COLOR_TOKENS.
+    "pill_success_bg": {"light": "#dafbe1", "dark": "#12351f"},
+    "pill_info_bg": {"light": "#ddf4ff", "dark": "#12283b"},
+    "pill_warning_bg": {"light": "#fff8c5", "dark": "#3a3117"},
+    "pill_danger_bg": {"light": "#ffebe9", "dark": "#442726"},
+    "pill_muted_bg": {"light": "#eaeef2", "dark": "#30363d"},
+    # the log/table splitter grip (a soft bar so operators discover it's draggable)
+    "splitter_grip": {"light": "#d0d7de", "dark": "#30363d"},
 }
 
 # Status -> token name; replaces the old literal _STATUS_COLORS map in results_panel.
@@ -95,6 +114,33 @@ QPushButton:disabled {{
     background: {color("danger_btn_disabled_bg")};
     color: {color("danger_btn_disabled_fg")};
 }}
+"""
+
+
+def splitter_qss() -> str:
+    """Scoped stylesheet making the log/table splitter handle visible (set on that splitter).
+
+    A soft full-width bar — no fixed horizontal margins, which would break at small widths.
+    """
+    return (
+        f"QSplitter::handle:vertical {{ background: {color('splitter_grip')}; "
+        "height: 4px; border-radius: 2px; margin: 1px 0; }"
+    )
+
+
+def notice_qss(severity: str) -> str:
+    """Scoped stylesheet for a NoticeBanner container, themed by a severity token triple."""
+    bg = color(f"notice_{severity}_bg")
+    fg = color(f"notice_{severity}_fg")
+    border = color(f"notice_{severity}_border")
+    return f"""
+QWidget#noticeBanner {{
+    background: {bg};
+    border: 1px solid {border};
+    border-radius: 4px;
+}}
+QLabel {{ color: {fg}; background: transparent; border: none; }}
+QToolButton {{ color: {fg}; background: transparent; border: none; font-weight: bold; }}
 """
 
 

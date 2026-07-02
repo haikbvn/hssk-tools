@@ -12,11 +12,23 @@ import csv
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
+from PySide6.QtCore import (
+    QByteArray,
+    QEvent,
+    QModelIndex,
+    QObject,
+    QPersistentModelIndex,
+    QPoint,
+    QRect,
+    QSize,
+    Qt,
+    QUrl,
+)
+from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -28,6 +40,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSplitter,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -62,8 +77,15 @@ _PROBLEM_STATUSES = frozenset(
 # Qt item-data roles for our own bookkeeping on each row.
 # _ROLE_TOKEN: theme token for the status cell, so rows re-colour on a Light/Dark switch.
 # _ROLE_PROBLEM: bool, whether the row is a "problem" (for the problems-only filter).
+# _ROLE_STATUS: the raw Status enum on the status cell (for the status dropdown filter).
 _ROLE_TOKEN = Qt.ItemDataRole.UserRole
 _ROLE_PROBLEM = Qt.ItemDataRole.UserRole + 1
+_ROLE_STATUS = Qt.ItemDataRole.UserRole + 2
+
+# Pseudo status keys for validation rows (deliberately NOT Status values) so the status
+# dropdown can filter invalid-vs-warning findings during validation too.
+_VAL_KIND_INVALID = "VAL_INVALID"
+_VAL_KIND_WARNING = "VAL_WARNING"
 
 _TABLE_COL_KEYS = [
     "col_row",
@@ -75,10 +97,85 @@ _TABLE_COL_KEYS = [
 ]
 
 
+class _StatusPillDelegate(QStyledItemDelegate):
+    """Paints the status cell as a subtle rounded pill (GitHub-label style).
+
+    Background comes from ``pill_<token>_bg``, text from the base accent token — both resolved
+    at paint time, so a Light/Dark switch only needs a viewport repaint. Cells without a
+    ``_ROLE_TOKEN`` fall back to plain text.
+    """
+
+    _H_PAD = 8  # horizontal padding inside the pill
+    _V_PAD = 2  # vertical padding inside the pill
+    _MARGIN = 4  # pill offset from the cell's left edge
+
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        text = opt.text
+        # Native background pass (selection / zebra / focus) with the text blanked out;
+        # calling super().paint() later would double-draw the background.
+        opt.text = ""
+        style = opt.widget.style() if opt.widget else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
+        if not text:
+            return
+        painter.save()
+        token = index.data(_ROLE_TOKEN)
+        if not token:
+            painter.setPen(opt.palette.text().color())
+            painter.drawText(
+                opt.rect.adjusted(self._MARGIN, 0, -self._MARGIN, 0),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                text,
+            )
+            painter.restore()
+            return
+        fm = opt.fontMetrics
+        pill_h = min(fm.height() + 2 * self._V_PAD, opt.rect.height() - 2)
+        pill_w = min(
+            fm.horizontalAdvance(text) + 2 * self._H_PAD,
+            opt.rect.width() - 2 * self._MARGIN,
+        )
+        rect = QRect(
+            opt.rect.left() + self._MARGIN,
+            opt.rect.top() + (opt.rect.height() - pill_h) // 2,
+            pill_w,
+            pill_h,
+        )
+        radius = pill_h / 2
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(theme.color(f"pill_{token}_bg")))
+        painter.drawRoundedRect(rect, radius, radius)
+        painter.setPen(QColor(theme.color(token)))
+        painter.drawText(
+            rect,
+            Qt.AlignmentFlag.AlignCenter,
+            fm.elidedText(text, Qt.TextElideMode.ElideRight, rect.width() - self._H_PAD),
+        )
+        painter.restore()
+
+    def sizeHint(
+        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> QSize:
+        s = super().sizeHint(option, index)
+        return QSize(
+            s.width() + 2 * (self._H_PAD + self._MARGIN),
+            max(s.height(), option.fontMetrics.height() + 10),
+        )
+
+
 class ResultsPanel(QGroupBox):
     def __init__(self) -> None:
         super().__init__(tr("group_results"))
         self._counts: dict[Status, int] = {}
+        self._counter_parts: list[tuple[str, int, str]] = []  # (label, count, theme token)
         self._run_start: float = 0.0
         self._last_run_dir: Path | None = None
         self._last_results_file: Path | None = None
@@ -88,8 +185,11 @@ class ResultsPanel(QGroupBox):
         prog_row = QHBoxLayout()
         self.progress = QProgressBar()
         self.progress.setAccessibleName(tr("col_status"))
+        # Idle look: a "0%" label on an empty bar reads like a broken input — show the
+        # percentage only once a run/validation actually starts (set_progress).
+        self.progress.setTextVisible(False)
         self.status_label = QLabel("")
-        self.counter_label = QLabel("—")
+        self.counter_label = QLabel("")
         self.counter_label.setAccessibleName(tr("col_status"))
         prog_row.addWidget(self.progress, stretch=1)
         prog_row.addWidget(self.status_label)
@@ -101,34 +201,60 @@ class ResultsPanel(QGroupBox):
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.setPlaceholderText(tr("ph_filter"))
         self.filter_edit.textChanged.connect(self._apply_filter)
+        self.status_combo = QComboBox()
+        self.status_combo.setToolTip(tr("tip_status_filter"))
+        self._populate_status_combo(for_validation=False)
+        self.status_combo.currentIndexChanged.connect(self._apply_filter)
         self.problems_check = QCheckBox(tr("chk_problems_only"))
         self.problems_check.stateChanged.connect(self._apply_filter)
+        self.clear_log_btn = QPushButton(tr("btn_clear_log"))
+        self.clear_log_btn.clicked.connect(self._clear_log)
         filter_row.addWidget(self.filter_edit, stretch=1)
+        filter_row.addWidget(self.status_combo)
         filter_row.addWidget(self.problems_check)
+        filter_row.addWidget(self.clear_log_btn)
         lay.addLayout(filter_row)
 
         # Log pane and table share a resizable splitter so operators can drag the log taller
-        # to read recovery guidance after a run.
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # to read recovery guidance after a run. Its layout persists across sessions
+        # (save_splitter/restore_splitter, wired by MainWindow).
+        self._splitter = QSplitter(Qt.Orientation.Vertical)
+        self._splitter.setHandleWidth(6)
+        self._splitter.setStyleSheet(theme.splitter_qss())
         self.log_pane = QPlainTextEdit()
         self.log_pane.setReadOnly(True)
         self.log_pane.setPlaceholderText(tr("log_placeholder"))
-        splitter.addWidget(self.log_pane)
+        self._splitter.addWidget(self.log_pane)
 
         self.table = QTableWidget(0, len(_TABLE_COL_KEYS))
         self.table.setHorizontalHeaderLabels([tr(k) for k in _TABLE_COL_KEYS])
-        self.table.horizontalHeader().setSectionResizeMode(
-            len(_TABLE_COL_KEYS) - 1, QHeaderView.ResizeMode.Stretch
-        )
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(len(_TABLE_COL_KEYS) - 1, QHeaderView.ResizeMode.Stretch)
+        # Row and Status hug their content (the status column used to truncate); the pill
+        # delegate's sizeHint feeds column 2 so pills are never clipped.
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        # Our first column already numbers the Excel rows — Qt's built-in row numbers next
+        # to it were pure confusion. The hidden header still drives row height; +6px gives
+        # the pills breathing room.
+        vh = self.table.verticalHeader()
+        vh.setVisible(False)
+        vh.setDefaultSectionSize(vh.defaultSectionSize() + 6)
+        self.table.setAlternatingRowColors(True)
+        self.table.setItemDelegateForColumn(2, _StatusPillDelegate(self.table))
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
+        self.table.setSortingEnabled(True)
+        # setRowHidden is positional: a re-sort moves items but not hidden flags, so
+        # visibility must be recomputed after every sort change.
+        self.table.horizontalHeader().sortIndicatorChanged.connect(self._apply_filter)
         QShortcut(QKeySequence.StandardKey.Copy, self.table, self._copy_selection)
-        splitter.addWidget(self.table)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([80, 400])
-        lay.addWidget(splitter, stretch=1)
+        self._splitter.addWidget(self.table)
+        self._splitter.setStretchFactor(0, 0)
+        self._splitter.setStretchFactor(1, 1)
+        self._splitter.setSizes([80, 400])
+        lay.addWidget(self._splitter, stretch=1)
 
         # Empty-state overlay centred over the table's viewport.
         self._empty_label = QLabel(tr("empty_results"), self.table.viewport())
@@ -157,9 +283,17 @@ class ResultsPanel(QGroupBox):
 
     def reset(self, for_validation: bool = False) -> None:
         self.table.setRowCount(0)
+        # Back to insertion order; a user-chosen sort from the previous run must not
+        # scatter the incoming rows.
+        self.table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        # Swap the filter's vocabulary to match the incoming rows (run statuses vs the two
+        # validation kinds); repopulating also resets the selection to "all".
+        self._populate_status_combo(for_validation)
         self.progress.setValue(0)
+        self.progress.setTextVisible(False)
         self._counts = {}
-        self.counter_label.setText("—")
+        self._counter_parts = []
+        self.counter_label.setText("")
         self.counter_label.setStyleSheet("")
         self.status_label.setText("")
         self.log_pane.clear()
@@ -173,6 +307,7 @@ class ResultsPanel(QGroupBox):
         self._refresh_empty_state()
 
     def set_progress(self, done: int, total: int) -> None:
+        self.progress.setTextVisible(True)
         self.progress.setMaximum(max(total, 1))
         self.progress.setValue(done)
         if done == 0:
@@ -202,7 +337,12 @@ class ResultsPanel(QGroupBox):
             _tr_message(outcome.message),
         ]
         token = theme.STATUS_COLOR_TOKENS.get(outcome.status)
-        self._append_row(cells, token, is_problem=outcome.status in _PROBLEM_STATUSES)
+        self._append_row(
+            cells,
+            token,
+            is_problem=outcome.status in _PROBLEM_STATUSES,
+            status_key=outcome.status.value,
+        )
         self._update_counter_label()
         self.export_btn.setEnabled(True)
 
@@ -217,25 +357,66 @@ class ResultsPanel(QGroupBox):
             "",
             _tr_coerce_msgs(problem.message),
         ]
-        self._append_row(cells, token, is_problem=True)
+        self._append_row(
+            cells,
+            token,
+            is_problem=True,
+            status_key=_VAL_KIND_INVALID if problem.has_errors else _VAL_KIND_WARNING,
+        )
         self.export_btn.setEnabled(True)
 
-    def _append_row(self, cells: list[str], token: str | None, *, is_problem: bool) -> None:
+    def _append_row(
+        self,
+        cells: list[str],
+        token: str | None,
+        *,
+        is_problem: bool,
+        status_key: str | None = None,
+    ) -> None:
+        # Inserting while sortingEnabled scatters cells across rows — classic Qt pitfall.
+        sorting = self.table.isSortingEnabled()
+        self.table.setSortingEnabled(False)
         r = self.table.rowCount()
         self.table.insertRow(r)
         items = [QTableWidgetItem(text) for text in cells]
+        # An int DisplayRole makes the Row column sort numerically (text() still yields the
+        # string for copy/CSV). Must start from an EMPTY item: setData(DisplayRole, 2) on an
+        # item constructed with "2" is a silent no-op (QVariant('2') == QVariant(2) in Qt).
+        items[0] = QTableWidgetItem()
+        items[0].setData(Qt.ItemDataRole.DisplayRole, int(cells[0]))
+        # Full text on hover — the message column truncates for long diagnostics.
+        for c, item in enumerate(items):
+            if cells[c]:
+                item.setToolTip(cells[c])
         if token is not None:
-            items[2].setForeground(QColor(theme.color(token)))
+            # The pill delegate paints from this token; no per-item foreground needed.
             items[2].setData(_ROLE_TOKEN, token)
+        if status_key is not None:
+            items[2].setData(_ROLE_STATUS, status_key)
         items[0].setData(_ROLE_PROBLEM, is_problem)
         for c, item in enumerate(items):
             self.table.setItem(r, c, item)
-        self._set_row_visible(r)
-        self.table.scrollToBottom()
+        self.table.setSortingEnabled(sorting)
+        if sorting and not self._is_default_sort():
+            # Re-enabling sorting moved the new row somewhere in the middle; hidden flags
+            # are positional, so recompute them all (rows arrive throttled ≥0.2 s apart,
+            # so O(rows) per insert is negligible). Don't fight the user's chosen sort
+            # with a scroll.
+            self._apply_filter()
+        else:
+            self._set_row_visible(r)
+            self.table.scrollToBottom()
         self._refresh_empty_state()
 
+    def _is_default_sort(self) -> bool:
+        header = self.table.horizontalHeader()
+        return (
+            header.sortIndicatorSection() == 0
+            and header.sortIndicatorOrder() == Qt.SortOrder.AscendingOrder
+        )
+
     def _update_counter_label(self) -> None:
-        created = (
+        ok = (
             self._counts.get(Status.CREATED, 0)
             + self._counts.get(Status.UPDATED, 0)
             + self._counts.get(Status.DRY_RUN_OK, 0)
@@ -248,17 +429,58 @@ class ResultsPanel(QGroupBox):
         aborted = self._counts.get(Status.AUTH_EXPIRED, 0) + self._counts.get(
             Status.RATE_LIMITED, 0
         )
-        text = f"✓ {created}   ↷ {skipped}   ✗ {failed}"
-        if aborted:
-            text += f"   ⛔ {aborted}"
-        self.counter_label.setText(text)
+        self.set_counts(
+            [
+                (tr("counter_ok"), ok, "success"),
+                (tr("counter_skipped"), skipped, "muted"),
+                (tr("counter_failed"), failed, "danger"),
+                (tr("counter_aborted"), aborted, "warning"),
+            ]
+        )
+
+    def set_counts(self, parts: list[tuple[str, int, str]]) -> None:
+        """Show labeled, colored counts. ``parts`` = (translated label, count, theme token)."""
+        self._counter_parts = list(parts)
+        self._render_counter()
+
+    def _render_counter(self) -> None:
+        spans = [
+            f'<span style="color:{theme.color(token)}; font-weight:600;">{count} {label}</span>'
+            for label, count, token in self._counter_parts
+            if count
+        ]
+        self.counter_label.setText("&nbsp;·&nbsp;".join(spans))
 
     # -- filtering ----------------------------------------------------------------------
+
+    def _populate_status_combo(self, for_validation: bool) -> None:
+        """Fill the status filter for the upcoming pass (validation kinds vs run statuses).
+
+        userData holds plain str keys (Status is a StrEnum and QVariant round-trips it as
+        str anyway); item 0 is always "all" (userData None), so repopulating resets the
+        selection.
+        """
+        combo = self.status_combo
+        combo.blockSignals(True)  # clear() would fire currentIndexChanged mid-reset
+        combo.clear()
+        combo.addItem(tr("filter_all_statuses"), None)
+        if for_validation:
+            combo.addItem(tr("val_status_invalid"), _VAL_KIND_INVALID)
+            combo.addItem(tr("val_status_warning"), _VAL_KIND_WARNING)
+        else:
+            for status in Status:
+                combo.addItem(_tr_status(status), status.value)
+        combo.blockSignals(False)
 
     def _row_matches(self, r: int) -> bool:
         if self.problems_check.isChecked():
             first = self.table.item(r, 0)
             if first is None or not first.data(_ROLE_PROBLEM):
+                return False
+        wanted = self.status_combo.currentData()
+        if wanted is not None:
+            status_item = self.table.item(r, 2)
+            if status_item is None or status_item.data(_ROLE_STATUS) != wanted:
                 return False
         needle = self.filter_edit.text().strip().lower()
         if not needle:
@@ -365,6 +587,9 @@ class ResultsPanel(QGroupBox):
     def append_log(self, message: str) -> None:
         self.log_pane.appendPlainText(message)
 
+    def _clear_log(self) -> None:
+        self.log_pane.clear()
+
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)
         self._announce(text)
@@ -384,12 +609,33 @@ class ResultsPanel(QGroupBox):
         self.open_report_btn.setEnabled(True)
         self.open_results_btn.setEnabled(self._last_results_file.exists())
 
+    # -- splitter persistence (wired by MainWindow next to window geometry) --------------
+
+    def save_splitter(self) -> QByteArray:
+        return self._splitter.saveState()
+
+    def restore_splitter(self, state: QByteArray) -> None:
+        if not state.isEmpty():
+            self._splitter.restoreState(state)
+
     # -- live re-translation / theming --------------------------------------------------
 
     def retranslate(self) -> None:
         self.setTitle(tr("group_results"))
         self.table.setHorizontalHeaderLabels([tr(k) for k in _TABLE_COL_KEYS])
         self.filter_edit.setPlaceholderText(tr("ph_filter"))
+        # Rewrite combo item texts in place so the current selection index is preserved.
+        self.status_combo.setItemText(0, tr("filter_all_statuses"))
+        for i in range(1, self.status_combo.count()):
+            value = self.status_combo.itemData(i)
+            if value == _VAL_KIND_INVALID:
+                self.status_combo.setItemText(i, tr("val_status_invalid"))
+            elif value == _VAL_KIND_WARNING:
+                self.status_combo.setItemText(i, tr("val_status_warning"))
+            elif value is not None:
+                self.status_combo.setItemText(i, _tr_status(Status(value)))
+        self.status_combo.setToolTip(tr("tip_status_filter"))
+        self.clear_log_btn.setText(tr("btn_clear_log"))
         self.problems_check.setText(tr("chk_problems_only"))
         self.log_pane.setPlaceholderText(tr("log_placeholder"))
         self._empty_label.setText(tr("empty_results"))
@@ -398,14 +644,10 @@ class ResultsPanel(QGroupBox):
         self.open_report_btn.setText(tr("btn_open_report"))
 
     def on_theme_changed(self) -> None:
-        """Re-colour the status cells of existing rows after a Light/Dark switch."""
-        for r in range(self.table.rowCount()):
-            item = self.table.item(r, 2)
-            if item is None:
-                continue
-            token = item.data(_ROLE_TOKEN)
-            if token:
-                item.setForeground(QColor(theme.color(token)))
+        """Re-colour themed chrome after a Light/Dark switch."""
+        self._splitter.setStyleSheet(theme.splitter_qss())
+        self._render_counter()  # colored spans embed resolved token colors
+        self.table.viewport().update()  # the pill delegate resolves colors at paint time
 
     # -- Open buttons -------------------------------------------------------------------
 

@@ -11,7 +11,9 @@ a ``process_row`` closure for the part that differs (resolve-vs-fetch, ledger, w
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +23,7 @@ from .. import report as report_mod
 from ..api import exams, patients, records
 from ..api.client import ApiClient
 from ..auth.profile import load_profile
+from ..auth.token_store import decode_exp
 from ..config import Settings, output_dir
 from ..config import settings as default_settings
 from ..errors import ApiError, AuthExpired, ConfigError, MultiMatch, PatientNotFound, RateLimited
@@ -64,6 +67,37 @@ class _Proceed:
 # It may raise AuthExpired / RateLimited; _run_batch catches those to abort cleanly.
 ProcessRow = Callable[[ApiClient, int, RowResult, Callable[[Any], None]], "RowOutcome | _Proceed"]
 
+_REQUEST_OVERHEAD_S = 0.8  # rough per-request network+server time (heuristic)
+_REQUESTS_PER_ROW = 2  # create: search + create; update: fetch-detail + update
+
+
+def estimate_batch_seconds(rows: int, settings: Settings) -> float:
+    """Rough upper bound on batch duration (ledger-skipped rows cost ~0, so it over-estimates)."""
+    per_request = settings.request_delay + settings.jitter / 2 + _REQUEST_OVERHEAD_S
+    return rows * _REQUESTS_PER_ROW * per_request
+
+
+def token_expiry_warning(
+    token: str, rows: int, settings: Settings, *, now: float | None = None
+) -> str | None:
+    """Warning string when the token likely expires before ``rows`` finish, else None.
+
+    Undecodable tokens return None — same stance as ``TokenData.is_valid`` (assume usable and
+    let a 401 catch it). Keep the wording stable: the GUI matches on it (hssk_gui/messages.py).
+    """
+    exp = decode_exp(token)
+    if exp is None:
+        return None
+    remaining = exp - (now if now is not None else time.time())
+    needed = estimate_batch_seconds(rows, settings)
+    if remaining >= needed:
+        return None
+    return (
+        "token may expire before this batch finishes "
+        f"(~{needed / 60:.0f} min needed, ~{max(remaining, 0) / 60:.0f} min left) — "
+        "consider logging in again first"
+    )
+
 
 def _run_batch(
     input_path: str | Path,
@@ -85,6 +119,11 @@ def _run_batch(
         rows = rows[:limit]
     total = len(rows)
 
+    if not dry_run:
+        expiry_warning = token_expiry_warning(token, total, s)
+        if expiry_warning:
+            cb.on_log(expiry_warning)
+
     out_base = (s.data_dir / "output") if s.data_dir else output_dir()
     out_base.mkdir(parents=True, exist_ok=True)
     run_dir = report_mod.new_run_dir(out_base, dry_run=dry_run)
@@ -97,14 +136,18 @@ def _run_batch(
     logged_raw = False
 
     def emit(outcome: RowOutcome) -> None:
+        outcome.timestamp = dt.datetime.now().isoformat(timespec="seconds")
         outcomes.append(outcome)
         counts[outcome.status] = counts.get(outcome.status, 0) + 1
         cb.on_row(outcome)
 
+    last_raw: Any = None
+
     with ApiClient(token, s, on_log=cb.on_log) as client:
 
         def raw_logger(data: Any) -> None:
-            nonlocal logged_raw
+            nonlocal logged_raw, last_raw
+            last_raw = data
             if not logged_raw:
                 logged_raw = True
                 (run_dir / "first_search_response.json").write_text(
@@ -117,6 +160,7 @@ def _run_batch(
                 aborted, abort_reason = True, "cancelled by user"
                 break
             cb.on_progress(i - 1, total)
+            last_raw = None
             try:
                 coerced = coerce_row(raw, mapping, row_index)
             except Exception as exc:
@@ -148,6 +192,15 @@ def _run_batch(
                 break
 
             if isinstance(step, RowOutcome):
+                if step.status in (Status.NO_PATIENT, Status.MULTI_MATCH) and last_raw is not None:
+                    # Keep the exact server response for the row whose lookup failed — the
+                    # case where debugging actually needs it (PII stays in the run dir,
+                    # same as first_search_response.json).
+                    name = f"search_response_row_{row_index}.json"
+                    (run_dir / name).write_text(
+                        json.dumps(last_raw, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
+                    cb.on_log(f"saved search response for row {row_index} ({name})")
                 emit(step)
                 continue
 
@@ -194,6 +247,14 @@ def _run_batch(
 
             if step.on_commit is not None:
                 step.on_commit(rid)
+            message = f"{step.success_verb} — {step.who}".strip(" —")
+            if rid is None and step.dryrun_record_id is None:
+                # Create mode with an unrecognised response shape: the record exists on the
+                # server but we could not learn its id (update mode falls back to the known
+                # medicalRecordId, so no warning there). Keep the suffix literal: the GUI
+                # matches on it (hssk_gui/messages.py).
+                cb.on_log(f"row {row_index}: no record id in server response")
+                message += " (no record id returned)"
             emit(
                 RowOutcome(
                     row_index,
@@ -201,7 +262,7 @@ def _run_batch(
                     step.success_status,
                     patient_id=step.patient_id,
                     record_id=rid or step.dryrun_record_id,
-                    message=f"{step.success_verb} — {step.who}".strip(" —"),
+                    message=message,
                     warnings=coerced.warnings,
                 )
             )
@@ -238,6 +299,10 @@ def run(
     profile = load_profile()
     payload_base = builder.prepare_base(mapping)
     led = ledger if ledger is not None else Ledger.load()
+    cb = callbacks or Callbacks()
+    if led.corrupt_lines:
+        # Keep the wording stable: the GUI matches on the suffix (hssk_gui/messages.py).
+        cb.on_log(f"{led.corrupt_lines} unreadable ledger line(s) — those rows may be re-sent")
 
     def process_row(
         client: ApiClient,
@@ -311,7 +376,7 @@ def run(
         dry_run=dry_run,
         limit=limit,
         settings=settings,
-        callbacks=callbacks,
+        callbacks=cb,
         should_cancel=should_cancel,
         process_row=process_row,
     )

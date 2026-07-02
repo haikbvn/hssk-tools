@@ -75,7 +75,16 @@ def test_xlsx_has_header_and_data_rows(tmp_path):
     wb = openpyxl.load_workbook(run_dir / "results.xlsx")
     ws = wb.active
     header = [c.value for c in ws[1]]
-    assert header == ["row", "identifier", "status", "patientId", "recordId", "message", "warnings"]
+    assert header == [
+        "row",
+        "identifier",
+        "status",
+        "patientId",
+        "recordId",
+        "message",
+        "warnings",
+        "timestamp",
+    ]
     data = [c.value for c in ws[2]]
     assert data[0] == 1  # row_index
     assert data[4] == 7  # recordId
@@ -89,6 +98,23 @@ def test_warnings_joined_with_semicolon(tmp_path):
     with (run_dir / "results.csv").open(encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
     assert rows[0]["warnings"] == "height missing; BMI not computed"
+
+
+def test_timestamp_round_trips_all_formats(tmp_path):
+    run_dir = new_run_dir(tmp_path, dry_run=False)
+    o = _outcome(timestamp="2026-07-02T10:30:00")
+    write_report(run_dir, [o], dry_run=False)
+
+    with (run_dir / "results.csv").open(encoding="utf-8-sig") as f:
+        assert list(csv.DictReader(f))[0]["timestamp"] == "2026-07-02T10:30:00"
+    rec = json.loads((run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["timestamp"] == "2026-07-02T10:30:00"
+    ws = openpyxl.load_workbook(run_dir / "results.xlsx").active
+    assert [c.value for c in ws[2]][-1] == "2026-07-02T10:30:00"
+
+
+def test_timestamp_defaults_to_empty():
+    assert _outcome().timestamp == ""
 
 
 def test_empty_run_writes_header_only(tmp_path):
