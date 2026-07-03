@@ -12,6 +12,7 @@ import datetime as dt
 import math
 import re
 from dataclasses import dataclass, field
+from functools import cache
 from typing import Any
 
 from dateutil import parser as date_parser
@@ -31,6 +32,16 @@ _RANGES: dict[str, tuple[float, float]] = {
 
 _EXCEL_EPOCH = dt.datetime(1899, 12, 30)
 _LIST_SPLIT_RE = re.compile(r"[;\n]+")
+
+
+@cache
+def _parse_default_time(value: str) -> dt.time:
+    """Parse a mapping's ``default_time`` string once (distinct values are bounded by config).
+
+    functools.cache does not cache exceptions, so a malformed value still raises ``ValueError``
+    on every call — caught by ``coerce_row`` as a row error, exactly as before this was hoisted.
+    """
+    return dt.datetime.strptime(value, "%H:%M:%S").time()
 
 
 @dataclass
@@ -113,7 +124,7 @@ def _coerce_one(value: Any, spec: ColumnSpec) -> Any:
     if t == "datetime":
         d = _to_datetime(value)
         if spec.default_time and d.time() == dt.time(0, 0, 0):
-            ht = dt.datetime.strptime(spec.default_time, "%H:%M:%S").time()
+            ht = _parse_default_time(spec.default_time)
             d = d.replace(hour=ht.hour, minute=ht.minute, second=ht.second)
         return d.strftime(spec.out_format)
     if t == "list":

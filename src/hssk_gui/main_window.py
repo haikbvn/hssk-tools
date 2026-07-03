@@ -702,6 +702,7 @@ class MainWindow(QMainWindow):
         self._validate_thread.start()
 
     def _on_validate_finished(self, summary: ValidationSummary) -> None:
+        self.results.flush_now()  # ensure every buffered row is in the table before summarising
         if summary.invalid == 0 and summary.warns == 0:
             self.results.set_status(tr("msg_no_issues"))
         else:
@@ -723,6 +724,7 @@ class MainWindow(QMainWindow):
             self._validated_invalid = summary.invalid
 
     def _on_validate_failed(self, message: str) -> None:
+        self.results.flush_now()
         self.results.set_status(tr("lbl_error"))
         self.error_banner.show_message(f"{tr('dlg_validation')}: {message}")
 
@@ -872,6 +874,7 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(False)
 
     def _on_run_finished(self, summary: RunSummary) -> None:
+        self.results.flush_now()  # ensure every buffered row is in the table before summarising
         self.results.record_run(summary.run_dir)
         self._refresh_token_status()
 
@@ -902,6 +905,7 @@ class MainWindow(QMainWindow):
         self.results.append_log("\n" + "\n".join(parts))
 
     def _on_run_failed(self, message: str) -> None:
+        self.results.flush_now()
         self.results.set_status(tr("lbl_error"))
         self.error_banner.show_message(f"{tr('dlg_run_failed')}: {message}")
 

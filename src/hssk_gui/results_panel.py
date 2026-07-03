@@ -22,6 +22,7 @@ from PySide6.QtCore import (
     QRect,
     QSize,
     Qt,
+    QTimer,
     QUrl,
 )
 from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QPainter, QShortcut
@@ -95,6 +96,17 @@ _TABLE_COL_KEYS = [
     "col_record_id",
     "col_message",
 ]
+
+# Rows can arrive far faster than 0.2 s apart (validation passes, ledger-skipped rows,
+# coercion-invalid rows), so incoming rows are buffered and inserted in one batch per tick
+# instead of doing O(rows) work per row. The filter is debounced so typing at 10k rows
+# doesn't rescan the table on every keystroke.
+_FLUSH_INTERVAL_MS = 120
+_FILTER_DEBOUNCE_MS = 200
+_LOG_MAX_BLOCKS = 5000  # cap the log document so long/repeated runs don't grow it unbounded
+
+# A buffered row awaiting insertion: (cells, status token, is_problem, status filter key).
+_PendingRow = tuple[list[str], "str | None", bool, "str | None"]
 
 
 class _StatusPillDelegate(QStyledItemDelegate):
@@ -180,6 +192,19 @@ class ResultsPanel(QGroupBox):
         self._last_run_dir: Path | None = None
         self._last_results_file: Path | None = None
 
+        # Row-streaming state: buffer incoming rows and flush them in batches (see _flush_pending).
+        self._pending_rows: list[_PendingRow] = []
+        self._visible_rows = 0  # live count of shown rows; replaces an O(rows)-per-insert scan
+        self._counter_dirty = False  # a run row arrived since the counter was last rendered
+        self._flush_timer = QTimer(self)
+        self._flush_timer.setSingleShot(True)
+        self._flush_timer.setInterval(_FLUSH_INTERVAL_MS)
+        self._flush_timer.timeout.connect(self._flush_pending)
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(_FILTER_DEBOUNCE_MS)
+        self._filter_timer.timeout.connect(self._apply_filter)
+
         lay = QVBoxLayout(self)
 
         prog_row = QHBoxLayout()
@@ -200,7 +225,7 @@ class ResultsPanel(QGroupBox):
         self.filter_edit = QLineEdit()
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.setPlaceholderText(tr("ph_filter"))
-        self.filter_edit.textChanged.connect(self._apply_filter)
+        self.filter_edit.textChanged.connect(self._on_filter_text_changed)
         self.status_combo = QComboBox()
         self.status_combo.setToolTip(tr("tip_status_filter"))
         self._populate_status_combo(for_validation=False)
@@ -223,6 +248,7 @@ class ResultsPanel(QGroupBox):
         self._splitter.setStyleSheet(theme.splitter_qss())
         self.log_pane = QPlainTextEdit()
         self.log_pane.setReadOnly(True)
+        self.log_pane.setMaximumBlockCount(_LOG_MAX_BLOCKS)  # bound growth over long runs
         self.log_pane.setPlaceholderText(tr("log_placeholder"))
         self._splitter.addWidget(self.log_pane)
 
@@ -282,7 +308,14 @@ class ResultsPanel(QGroupBox):
     # -- run/validate lifecycle ---------------------------------------------------------
 
     def reset(self, for_validation: bool = False) -> None:
+        # Drop any rows still buffered from a previous pass before clearing the table, so a
+        # late timer tick can never flush stale rows into the fresh run.
+        self._flush_timer.stop()
+        self._filter_timer.stop()
+        self._pending_rows.clear()
+        self._counter_dirty = False
         self.table.setRowCount(0)
+        self._visible_rows = 0
         # Back to insertion order; a user-chosen sort from the previous run must not
         # scatter the incoming rows.
         self.table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
@@ -337,14 +370,13 @@ class ResultsPanel(QGroupBox):
             _tr_message(outcome.message),
         ]
         token = theme.STATUS_COLOR_TOKENS.get(outcome.status)
-        self._append_row(
+        self._counter_dirty = True  # counter is re-rendered once per flush, not per row
+        self._enqueue_row(
             cells,
             token,
             is_problem=outcome.status in _PROBLEM_STATUSES,
             status_key=outcome.status.value,
         )
-        self._update_counter_label()
-        self.export_btn.setEnabled(True)
 
     def add_validation_row(self, problem: ValidationProblem) -> None:
         status_text = tr("val_status_invalid") if problem.has_errors else tr("val_status_warning")
@@ -357,15 +389,14 @@ class ResultsPanel(QGroupBox):
             "",
             _tr_coerce_msgs(problem.message),
         ]
-        self._append_row(
+        self._enqueue_row(
             cells,
             token,
             is_problem=True,
             status_key=_VAL_KIND_INVALID if problem.has_errors else _VAL_KIND_WARNING,
         )
-        self.export_btn.setEnabled(True)
 
-    def _append_row(
+    def _enqueue_row(
         self,
         cells: list[str],
         token: str | None,
@@ -373,11 +404,60 @@ class ResultsPanel(QGroupBox):
         is_problem: bool,
         status_key: str | None = None,
     ) -> None:
+        self._pending_rows.append((cells, token, is_problem, status_key))
+        if not self._flush_timer.isActive():
+            self._flush_timer.start()
+
+    def flush_now(self) -> None:
+        """Insert any buffered rows immediately.
+
+        Called by MainWindow's finish/fail handlers (so summaries reflect a complete table)
+        and before reading the table for Export/Copy-all.
+        """
+        self._flush_timer.stop()
+        self._flush_pending()
+
+    def _flush_pending(self) -> None:
+        if not self._pending_rows:
+            return
+        batch, self._pending_rows = self._pending_rows, []
         # Inserting while sortingEnabled scatters cells across rows — classic Qt pitfall.
+        # Do the whole batch with sorting and repaints off, then restore once.
         sorting = self.table.isSortingEnabled()
         self.table.setSortingEnabled(False)
-        r = self.table.rowCount()
-        self.table.insertRow(r)
+        self.table.setUpdatesEnabled(False)
+        first = self.table.rowCount()
+        try:
+            self.table.setRowCount(first + len(batch))
+            for offset, (cells, token, is_problem, status_key) in enumerate(batch):
+                self._insert_row_items(first + offset, cells, token, is_problem, status_key)
+        finally:
+            self.table.setUpdatesEnabled(True)
+            self.table.setSortingEnabled(sorting)  # re-sorts once if a user sort is active
+        if sorting and not self._is_default_sort():
+            # Re-enabling sorting moved the new rows somewhere in the middle; hidden flags
+            # are positional, so recompute them all. Don't fight the user's chosen sort
+            # with a scroll.
+            self._apply_filter()
+        else:
+            for r in range(first, first + len(batch)):
+                if self._set_row_visible(r):
+                    self._visible_rows += 1
+            self.table.scrollToBottom()
+            self._refresh_empty_state()
+        if self._counter_dirty:
+            self._counter_dirty = False
+            self._update_counter_label()
+        self.export_btn.setEnabled(True)
+
+    def _insert_row_items(
+        self,
+        r: int,
+        cells: list[str],
+        token: str | None,
+        is_problem: bool,
+        status_key: str | None,
+    ) -> None:
         items = [QTableWidgetItem(text) for text in cells]
         # An int DisplayRole makes the Row column sort numerically (text() still yields the
         # string for copy/CSV). Must start from an EMPTY item: setData(DisplayRole, 2) on an
@@ -396,17 +476,6 @@ class ResultsPanel(QGroupBox):
         items[0].setData(_ROLE_PROBLEM, is_problem)
         for c, item in enumerate(items):
             self.table.setItem(r, c, item)
-        self.table.setSortingEnabled(sorting)
-        if sorting and not self._is_default_sort():
-            # Re-enabling sorting moved the new row somewhere in the middle; hidden flags
-            # are positional, so recompute them all (rows arrive throttled ≥0.2 s apart,
-            # so O(rows) per insert is negligible). Don't fight the user's chosen sort
-            # with a scroll.
-            self._apply_filter()
-        else:
-            self._set_row_visible(r)
-            self.table.scrollToBottom()
-        self._refresh_empty_state()
 
     def _is_default_sort(self) -> bool:
         header = self.table.horizontalHeader()
@@ -493,22 +562,27 @@ class ResultsPanel(QGroupBox):
                 return True
         return False
 
-    def _set_row_visible(self, r: int) -> None:
-        self.table.setRowHidden(r, not self._row_matches(r))
+    def _on_filter_text_changed(self, _text: str) -> None:
+        # Debounce: restart the timer on each keystroke so a full-table rescan runs once the
+        # user pauses, not on every character (which is O(rows·cols) at 10k rows).
+        self._filter_timer.start()
+
+    def _set_row_visible(self, r: int) -> bool:
+        visible = self._row_matches(r)
+        self.table.setRowHidden(r, not visible)
+        return visible
 
     def _apply_filter(self) -> None:
-        for r in range(self.table.rowCount()):
-            self._set_row_visible(r)
+        self._visible_rows = sum(
+            1 for r in range(self.table.rowCount()) if self._set_row_visible(r)
+        )
         self._refresh_empty_state()
 
     # -- empty-state overlay ------------------------------------------------------------
 
-    def _visible_row_count(self) -> int:
-        return sum(1 for r in range(self.table.rowCount()) if not self.table.isRowHidden(r))
-
     def _refresh_empty_state(self) -> None:
         self._empty_label.setGeometry(self.table.viewport().rect())
-        self._empty_label.setVisible(self._visible_row_count() == 0)
+        self._empty_label.setVisible(self._visible_rows == 0)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if obj is self.table.viewport() and event.type() == QEvent.Type.Resize:
@@ -556,6 +630,7 @@ class ResultsPanel(QGroupBox):
             QApplication.clipboard().setText(self._all_visible_tsv())
 
     def _all_visible_tsv(self) -> str:
+        self.flush_now()  # include any buffered rows in a mid-stream Copy-all
         cols = self._visible_cols()
         lines = ["\t".join(self._header_text(c) for c in cols)]
         for r in range(self.table.rowCount()):
@@ -566,6 +641,7 @@ class ResultsPanel(QGroupBox):
     # -- CSV export ---------------------------------------------------------------------
 
     def _export_csv(self) -> None:
+        self.flush_now()  # include any buffered rows in a mid-stream export
         path, _ = QFileDialog.getSaveFileName(
             self, tr("dlg_export_csv_title"), "results.csv", tr("filter_csv")
         )

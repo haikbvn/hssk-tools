@@ -77,6 +77,7 @@ def main() -> int:
     w.results.reset()
     for outcome in FAKE_ROWS:
         w.results.add_row(outcome)
+    w.results.flush_now()  # rows are buffered + flushed on a timer; force it for the sync asserts
     w.results.set_progress(6, 120)
     assert w.results.progress.isTextVisible(), "running progress must show its % text"
     counter = w.results.counter_label.text()
@@ -93,6 +94,7 @@ def main() -> int:
 
     # insert while custom-sorted: no scattered cells, hidden flags recomputed
     w.results.add_row(RowOutcome(9, "E5", Status.CREATED, message="created — X"))
+    w.results.flush_now()
     assert [t.item(r, 0).text() for r in range(2)] == ["9", "7"]
     assert all(t.item(r, c) is not None for r in range(t.rowCount()) for c in range(6))
 
@@ -119,6 +121,7 @@ def main() -> int:
     w.results.add_validation_row(
         ValidationProblem(3, "B2", False, "pulse=200 outside expected range 30–220")
     )
+    w.results.flush_now()
     combo.setCurrentIndex(1)  # invalid
     visible = [r for r in range(t.rowCount()) if not t.isRowHidden(r)]
     assert len(visible) == 1 and t.item(visible[0], 1).text() == "A1"
