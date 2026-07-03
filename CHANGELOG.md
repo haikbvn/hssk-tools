@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.5.0 — 2026-07-03
+
+### Preferences dialog overhaul
+
+- **Apply button** — Settings can now be saved without closing the dialog. Apply and OK only
+  write what actually changed, instead of unconditionally rewriting `mapping.yaml` on every OK.
+- **Fixed a bug where a failed save could leave settings half-applied** — previously, if writing
+  record defaults failed, the run defaults and language switch had already been saved with no way
+  to undo them. The fallible write now happens first; on failure nothing else is touched and the
+  dialog stays open with your edits intact.
+- **Per-tab Reset button** whose label follows the visible tab ("Reset run settings" / "Reset
+  record defaults"), replacing a single ambiguous "Restore defaults" button.
+- **Unsaved-changes confirmation** on Cancel, Esc, or closing the window, instead of silently
+  discarding edits.
+- The success message is now a non-modal toast instead of a popup dialog, and the tab layout was
+  regrouped into **General** (run settings + application settings) and **Record defaults**.
+
+### Fixes
+
+- The drag-and-drop file highlight (the dashed border shown while dragging an Excel file onto the
+  window) now reliably appears on macOS. It previously relied on a Qt stylesheet border that the
+  native macOS style silently ignores on a plain widget; it's now custom-painted, which also let us
+  remove the app's global stylesheet — every widget keeps fully native rendering.
+
 ## v1.4.1 — 2026-07-03
 
 ### Performance
