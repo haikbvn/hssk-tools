@@ -1,10 +1,9 @@
-"""Centralised, dark-mode-aware colour tokens + a small global stylesheet.
+"""Centralised, dark-mode-aware colour tokens.
 
 Single source of truth for the accent colours the GUI paints programmatically (status text,
-the production banner, the live-PUSH button) plus a conservative app-wide stylesheet (focus
-outlines on form inputs, the drag-drop highlight). Native push-button/group-box rendering is
-left untouched on purpose — only widgets we already custom-style are themed here, so the app
-keeps its platform-native look in both light and dark mode.
+the production banner, the live-PUSH button, the drag-drop border). No app-wide stylesheet is
+installed — every widget keeps its platform-native look in both light and dark mode; only the
+handful of surfaces we already custom-paint read their colours from here.
 
 Colours follow GitHub Primer's light/dark accent ramps, which are tuned for contrast on either
 background. ``apply_app_theme`` wires ``QStyleHints.colorSchemeChanged`` so a system Light/Dark
@@ -47,6 +46,9 @@ _TOKENS: dict[str, dict[str, str]] = {
     "notice_info_bg": {"light": "#ddf4ff", "dark": "#12283b"},
     "notice_info_fg": {"light": "#0a3069", "dark": "#a5d6ff"},
     "notice_info_border": {"light": "#a5d6ff", "dark": "#204a72"},
+    "notice_success_bg": {"light": "#dafbe1", "dark": "#12351f"},
+    "notice_success_fg": {"light": "#1a7f37", "dark": "#3fb950"},
+    "notice_success_border": {"light": "#aceebb", "dark": "#2ea043"},
     # status pill backgrounds (results table Trạng thái column); pill TEXT reuses the base
     # accent tokens above (success/info/warning/danger/muted), same as STATUS_COLOR_TOKENS.
     "pill_success_bg": {"light": "#dafbe1", "dark": "#12351f"},
@@ -157,33 +159,13 @@ def label_qss(token: str) -> str:
     return f"color:{color(token)}; font-weight:bold;"
 
 
-def app_qss() -> str:
-    """Conservative app-wide stylesheet: focus outlines on inputs + the drag-drop highlight.
-
-    Deliberately avoids styling QPushButton/QGroupBox so native rendering is preserved on
-    macOS/Windows. Only form inputs (which already render with a border) get a focus accent.
-    """
-    accent = color("info")
-    return f"""
-QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus {{
-    border: 1px solid {accent};
-}}
-QWidget[dropTarget="true"] {{
-    border: 2px dashed {accent};
-    border-radius: 6px;
-}}
-"""
-
-
 def apply_app_theme(app: QApplication, on_change: Callable[[], None] | None = None) -> None:
-    """Apply the global stylesheet and re-apply (plus call ``on_change``) on a Light/Dark switch."""
-    app.setStyleSheet(app_qss())
+    """Call ``on_change`` whenever the system switches Light/Dark, so the app re-themes live.
+
+    No app-wide stylesheet is installed: every widget keeps fully native rendering (and native
+    focus indication). The few custom-painted surfaces (banners, the drag-drop border, status
+    text) read their colours from ``color()`` at paint time and repaint via ``on_change``.
+    """
     hints = app.styleHints()
-    if hints is not None:
-
-        def _refresh() -> None:
-            app.setStyleSheet(app_qss())
-            if on_change is not None:
-                on_change()
-
-        hints.colorSchemeChanged.connect(lambda _scheme: _refresh())
+    if hints is not None and on_change is not None:
+        hints.colorSchemeChanged.connect(lambda _scheme: on_change())

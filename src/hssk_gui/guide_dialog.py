@@ -140,11 +140,12 @@ record's id in Excel; if your header differs from <b>Mã hồ sơ</b>, edit
 <code>mapping.update.yaml</code>.</p>
 
 <a name="prefs"></a><h3>11 · Preferences</h3>
-<p>Open <b>Settings → Settings…</b>. Under <b>Run defaults</b> you can set the delay between rows,
-a default row limit, whether Dry-run starts ticked, and the <b>Language</b> (Vietnamese / English —
-the change applies on the next launch). Under <b>Record defaults</b> you can set values that are
-stamped onto a record only when the matching Excel cell is blank — per-row Excel values always
-win.</p>
+<p>Open <b>Settings → Settings…</b>. On the <b>General</b> tab you can set the delay between rows,
+a default row limit, whether Dry-run starts ticked, update checking, and the <b>Language</b>
+(Vietnamese / English — the change applies immediately when you press Apply or OK). On the
+<b>Record defaults</b> tab you can set values that are stamped onto a record only when the matching
+Excel cell is blank — per-row Excel values always win. <b>Apply</b> saves without closing; each tab
+has its own <b>Reset</b> button to restore that tab's factory values.</p>
 
 <a name="mapping"></a><h3>12 · Column mapping</h3>
 <p>The mapping links your Excel column names to the API fields. Click <b>Open mapping</b> to edit
@@ -297,11 +298,12 @@ cho cập nhật đã có sẵn cột này. Bạn vẫn cần điền mã hồ s
 cột của bạn khác <b>Mã hồ sơ</b>, hãy sửa <code>mapping.update.yaml</code>.</p>
 
 <a name="prefs"></a><h3>11 · Cài đặt</h3>
-<p>Mở <b>Cài đặt → Cài đặt…</b>. Trong tab <b>Cài đặt chạy</b> bạn có thể đặt độ trễ giữa các hàng,
-giới hạn hàng mặc định, có bật Chạy thử sẵn hay không, và <b>Ngôn ngữ</b> (Tiếng Việt / English —
-thay đổi áp dụng ở lần khởi động sau). Trong tab <b>Cài đặt hồ sơ</b> bạn có thể đặt các giá trị chỉ
-được gán vào hồ sơ khi ô Excel tương ứng để trống — giá trị từng hàng trong Excel luôn được ưu
-tiên.</p>
+<p>Mở <b>Cài đặt → Cài đặt…</b>. Trong tab <b>Chung</b> bạn có thể đặt độ trễ giữa các hàng,
+giới hạn hàng mặc định, có bật Chạy thử sẵn hay không, kiểm tra cập nhật, và <b>Ngôn ngữ</b>
+(Tiếng Việt / English — thay đổi áp dụng ngay khi bấm Áp dụng hoặc OK). Trong tab <b>Cài đặt hồ
+sơ</b> bạn có thể đặt các giá trị chỉ được gán vào hồ sơ khi ô Excel tương ứng để trống — giá trị
+từng hàng trong Excel luôn được ưu tiên. <b>Áp dụng</b> lưu mà không đóng; mỗi tab có nút <b>Khôi
+phục</b> riêng để đặt lại giá trị gốc của tab đó.</p>
 
 <a name="mapping"></a><h3>12 · File mapping cột</h3>
 <p>File mapping liên kết tên cột Excel của bạn với các trường API. Nhấn <b>Mở file mapping</b> để
