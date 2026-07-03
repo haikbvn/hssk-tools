@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Performance
+
+- **Large-batch results table no longer freezes the UI** — rows streaming into the
+  results table are now buffered and inserted in batches (~120 ms) instead of one at a
+  time. This removes the per-row full-table rescans (visibility, empty-state, re-sort)
+  that made streaming O(n²): an offscreen benchmark that took **~72 s to stream 1,000
+  rows now streams 10,000 rows in ~1 s**. The visible-row count is tracked incrementally
+  rather than recomputed on every insert, and the filter box is debounced (~200 ms) so
+  typing over a full table rescans once instead of per keystroke.
+- **Progress updates throttled to ~10 Hz** — validation and run workers no longer emit a
+  progress signal per row across the thread boundary (the terminal 100 % update always
+  fires), cutting event-loop churn on big batches.
+- **Log pane is now bounded** (5,000 blocks) so long or repeated runs don't grow the
+  document without limit.
+- **`results.xlsx` written in streaming (write-only) mode** — lower memory/time when
+  reports carry thousands of rows.
+- **Excel coercion** caches the parsed `default_time` instead of re-parsing it for every
+  datetime cell.
+
+  *Minor behaviour deltas from the batching:* the Export CSV button enables within ~120 ms
+  of the first row (was instant), and the success/failure counter updates ~8×/s during a
+  run instead of on every row.
+
 ## v1.3.6 — 2026-06-27
 
 ### Changes

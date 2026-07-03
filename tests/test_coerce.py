@@ -2,12 +2,28 @@ from __future__ import annotations
 
 import datetime as dt
 
-from hssk.excel.coerce import _coerce_one, coerce_row
+import pytest
+
+from hssk.excel.coerce import _coerce_one, _parse_default_time, coerce_row
 from hssk.mapping import ColumnSpec
 
 
 def _spec(**kw) -> ColumnSpec:
     return ColumnSpec(**kw)
+
+
+def test_parse_default_time_returns_time_and_caches():
+    _parse_default_time.cache_clear()
+    assert _parse_default_time("07:00:00") == dt.time(7, 0, 0)
+    _parse_default_time("07:00:00")  # second call is a cache hit, not a re-parse
+    assert _parse_default_time.cache_info().hits >= 1
+
+
+def test_parse_default_time_reraises_bad_value_each_call():
+    # lru_cache does not cache exceptions, so a malformed value keeps raising (row error path).
+    for _ in range(2):
+        with pytest.raises(ValueError):
+            _parse_default_time("not-a-time")
 
 
 # Minimal set of values that satisfies all required columns in the example mapping.

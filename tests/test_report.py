@@ -117,6 +117,18 @@ def test_timestamp_defaults_to_empty():
     assert _outcome().timestamp == ""
 
 
+def test_xlsx_many_rows_round_trip(tmp_path):
+    # Guards the write_only workbook ordering/contents at scale.
+    run_dir = new_run_dir(tmp_path, dry_run=False)
+    outcomes = [_outcome(row_index=i, record_id=i) for i in range(1, 201)]
+    write_report(run_dir, outcomes, dry_run=False)
+
+    ws = openpyxl.load_workbook(run_dir / "results.xlsx").active
+    assert ws.max_row == 201  # header + 200 rows
+    assert [c.value for c in ws[2]][0] == 1
+    assert [c.value for c in ws[201]][0] == 200
+
+
 def test_empty_run_writes_header_only(tmp_path):
     run_dir = new_run_dir(tmp_path, dry_run=True)
     write_report(run_dir, [], dry_run=True)

@@ -65,10 +65,11 @@ def write_report(run_dir: Path, outcomes: Iterable[RowOutcome], *, dry_run: bool
             record = dict(zip(_COLUMNS, _row(o), strict=True))
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    # XLSX
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Results"
+    # XLSX. write_only streams rows to disk instead of holding the whole sheet in memory,
+    # which matters at 10k+ rows. Such workbooks have no default sheet, so create one; it
+    # reloads as the active sheet, keeping the read contract in test_report.py.
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet("Results")
     ws.append(_COLUMNS)
     for o in outcomes:
         ws.append(_row(o))

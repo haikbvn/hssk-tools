@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +12,33 @@ from PySide6.QtCore import QObject, Signal, Slot
 from hssk.auth.token_store import TokenData
 from hssk.config import Settings
 from hssk.mapping import MappingConfig
+
+_PROGRESS_INTERVAL_S = 0.1  # ~10 Hz cap on progress signals crossing the thread boundary
+
+
+class ProgressThrottle:
+    """Rate-limit progress updates: ``allow()`` returns True at most once per interval.
+
+    The first call always passes (so the "starting…" update at done==0 is never dropped);
+    the injectable ``clock`` keeps it unit-testable without sleeping. Callers still emit the
+    terminal done==total update unconditionally so the bar always lands on 100%.
+    """
+
+    def __init__(
+        self,
+        interval_s: float = _PROGRESS_INTERVAL_S,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._interval = interval_s
+        self._clock = clock
+        self._last: float | None = None
+
+    def allow(self) -> bool:
+        now = self._clock()
+        if self._last is None or now - self._last >= self._interval:
+            self._last = now
+            return True
+        return False
 
 
 @dataclass
@@ -103,11 +132,13 @@ class ValidateWorker(QObject):
             total = len(rows)
             valid = invalid = warns = 0
             cancelled = False
+            throttle = ProgressThrottle()
             for i, (idx, raw) in enumerate(rows):
                 if self._cancel:
                     cancelled = True
                     break
-                self.progress.emit(i, total)
+                if throttle.allow():
+                    self.progress.emit(i, total)
                 r = coerce_row(raw, self._mapping, idx)
                 if r.ok:
                     valid += 1
@@ -160,9 +191,16 @@ class RunWorker(QObject):
     def run(self) -> None:
         from hssk.pipeline import runner
 
+        throttle = ProgressThrottle()
+
+        def on_progress(done: int, total: int) -> None:
+            # Always emit the terminal update so the bar lands on 100%; rate-limit the rest.
+            if done >= total or throttle.allow():
+                self.progress.emit(done, total)
+
         try:
             cb = runner.Callbacks(
-                on_progress=lambda d, t: self.progress.emit(d, t),
+                on_progress=on_progress,
                 on_row=lambda o: self.row.emit(o),
                 on_log=lambda m: self.log.emit(m),
             )
