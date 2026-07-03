@@ -8,12 +8,16 @@ from PySide6.QtCore import Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
+    QColor,
     QDesktopServices,
     QDragEnterEvent,
     QDragLeaveEvent,
     QDropEvent,
     QFontMetrics,
     QKeySequence,
+    QPainter,
+    QPaintEvent,
+    QPen,
     QResizeEvent,
 )
 from PySide6.QtWidgets import (
@@ -97,6 +101,36 @@ class _ElidingLabel(QLabel):
         self.setToolTip(self._full_text if elided != self._full_text else "")
 
 
+class _DropArea(QWidget):
+    """Central widget that paints its own dashed drop-target border.
+
+    We draw the highlight in ``paintEvent`` rather than via a Qt Style Sheet ``border`` rule:
+    under the native macOS style a plain ``QWidget`` ignores a QSS box border, so the stylesheet
+    approach never showed. Manual painting is style-independent and works everywhere.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._drop_active = False
+
+    def set_drop_active(self, on: bool) -> None:
+        if on != self._drop_active:
+            self._drop_active = on
+            self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        super().paintEvent(event)
+        if not self._drop_active:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(theme.color("info")), 2, Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        # Inset by the pen half-width so the 2px stroke stays inside the widget bounds.
+        rect = self.rect().adjusted(1, 1, -2, -2)
+        painter.drawRoundedRect(rect, 6, 6)
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -146,7 +180,7 @@ class MainWindow(QMainWindow):
     # -- UI construction ----------------------------------------------------------------
 
     def _build_ui(self) -> None:
-        self._central = QWidget()
+        self._central = _DropArea()
         root = QVBoxLayout(self._central)
         root.setSpacing(10)
         root.setContentsMargins(12, 10, 12, 6)
@@ -352,7 +386,7 @@ class MainWindow(QMainWindow):
         self.delay_spin.setSingleStep(0.5)
         self.delay_spin.setValue(1.0)
         self._delay_lbl = QLabel(tr("lbl_delay"))
-        self._delay_lbl.setBuddy(self.delay_spin)
+        # self._delay_lbl.setBuddy(self.delay_spin)
         controls.addWidget(self._delay_lbl)
         controls.addWidget(self.delay_spin)
 
@@ -410,14 +444,18 @@ class MainWindow(QMainWindow):
         self._refresh_run_controls()
 
     def _show_preferences(self) -> None:
-        prev_lang = self._ui.language
         dlg = PreferencesDialog(self)
-        if dlg.exec() == PreferencesDialog.DialogCode.Accepted:
-            self.delay_spin.setValue(self._ui.delay)
-            self.limit_spin.setValue(self._ui.limit)
-            self.dryrun_check.setChecked(self._ui.dry_run)
-            if self._ui.language != prev_lang:
-                self.retranslate()
+        dlg.applied.connect(self._on_prefs_applied)
+        dlg.exec()
+
+    def _on_prefs_applied(self, language_changed: bool) -> None:
+        # Fires on each Apply (and on OK), so the main window tracks live rather than only
+        # syncing once on accept.
+        self.delay_spin.setValue(self._ui.delay)
+        self.limit_spin.setValue(self._ui.limit)
+        self.dryrun_check.setChecked(self._ui.dry_run)
+        if language_changed:
+            self.retranslate()
 
     # -- live re-translation / theming --------------------------------------------------
 
@@ -929,11 +967,7 @@ class MainWindow(QMainWindow):
         return None
 
     def _set_drop_highlight(self, on: bool) -> None:
-        self._central.setProperty("dropTarget", on)
-        # Re-polish so the [dropTarget="true"] stylesheet rule (theme.app_qss) takes effect.
-        style = self._central.style()
-        style.unpolish(self._central)
-        style.polish(self._central)
+        self._central.set_drop_active(on)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         idle = self._run_thread is None and self._validate_thread is None

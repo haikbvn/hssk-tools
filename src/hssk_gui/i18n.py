@@ -410,12 +410,13 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     # preferences dialog
     "dlg_prefs_title": {"en": "Preferences", "vi": "Cài đặt"},
-    "tab_run_defaults": {"en": "Run defaults", "vi": "Cài đặt chạy"},
+    "tab_general": {"en": "General", "vi": "Chung"},
     "tab_record_defaults": {"en": "Record defaults", "vi": "Cài đặt hồ sơ"},
     "grp_run_defaults": {
-        "en": "Saved run defaults (applied on each launch)",
-        "vi": "Cài đặt chạy mặc định (áp dụng mỗi lần khởi động)",
+        "en": "Default run settings (loaded at startup)",
+        "vi": "Cài đặt chạy mặc định (nạp khi khởi động)",
     },
+    "grp_app_settings": {"en": "Application", "vi": "Ứng dụng"},
     "lbl_delay_rows": {"en": "Delay between rows:", "vi": "Độ trễ giữa các hàng:"},
     "lbl_row_limit": {"en": "Row limit:", "vi": "Giới hạn hàng:"},
     "spin_all_rows": {"en": "0 (all rows)", "vi": "0 (tất cả hàng)"},
@@ -424,6 +425,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "vi": "Chạy thử mặc định (không gửi)",
     },
     "lbl_language": {"en": "Language:", "vi": "Ngôn ngữ:"},
+    "tip_language": {
+        "en": "Changes the interface language immediately when you press Apply or OK.",
+        "vi": "Đổi ngôn ngữ giao diện ngay khi bấm Áp dụng hoặc OK.",
+    },
     "chk_check_updates": {
         "en": "Check for new versions at startup",
         "vi": "Kiểm tra phiên bản mới khi khởi động",
@@ -453,31 +458,68 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "msg_mapping_error_prefs": {
         "en": (
-            "Cannot load mapping file: {exc}\n\n"
-            "Record defaults cannot be edited until the mapping is valid.\n"
-            "Click 'Restore defaults' to recover from the bundled example."
+            "Cannot load the mapping file: {exc}\n\n"
+            "Record defaults cannot be edited until the mapping file is valid. "
+            "Fix it via 'Open mapping' in the main window, or delete the file so the app "
+            "recreates it from the bundled example on the next start."
         ),
         "vi": (
             "Không thể tải file mapping: {exc}\n\n"
-            "Không thể chỉnh sửa giá trị mặc định hồ sơ cho đến khi mapping hợp lệ.\n"
-            "Nhấn 'Khôi phục mặc định' để khôi phục từ file mẫu đi kèm."
+            "Chưa thể chỉnh sửa giá trị mặc định hồ sơ cho đến khi file mapping hợp lệ. "
+            "Hãy sửa file bằng nút 'Mở file mapping' ở cửa sổ chính, hoặc xoá file đó để "
+            "ứng dụng tạo lại từ file mẫu ở lần mở tiếp theo."
         ),
     },
-    "btn_restore_defaults": {"en": "Restore defaults", "vi": "Khôi phục mặc định"},
-    "dlg_run_defaults_saved": {"en": "Run defaults saved", "vi": "Đã lưu cài đặt chạy"},
-    "msg_run_defaults_saved": {
+    "tip_facility_locked": {
+        "en": "Locked to the logged-in account — it cannot be edited here.",
+        "vi": "Gắn theo tài khoản đang đăng nhập — không thể sửa tại đây.",
+    },
+    "btn_ok": {"en": "OK", "vi": "OK"},
+    "btn_cancel": {"en": "Cancel", "vi": "Hủy"},
+    "btn_apply": {"en": "Apply", "vi": "Áp dụng"},
+    "btn_restore_run_defaults": {"en": "Reset run settings", "vi": "Khôi phục cài đặt chạy"},
+    "btn_restore_record_defaults": {"en": "Reset record defaults", "vi": "Khôi phục cài đặt hồ sơ"},
+    "tip_restore_run": {
         "en": (
-            "Run defaults were saved.\n\n"
-            "Record defaults could not be saved because the mapping file is unreadable. "
-            "Click 'Restore defaults' to recover from the bundled example."
+            "Reset delay, row limit, dry-run and update check on this tab to factory values. "
+            "Language is kept. Nothing is saved until you press Apply or OK."
         ),
         "vi": (
-            "Đã lưu cài đặt chạy.\n\n"
-            "Không thể lưu giá trị mặc định hồ sơ vì file mapping không đọc được. "
-            "Nhấn 'Khôi phục mặc định' để khôi phục từ file mẫu đi kèm."
+            "Đặt lại độ trễ, giới hạn hàng, chạy thử và kiểm tra cập nhật trong tab này về "
+            "giá trị gốc. Ngôn ngữ được giữ nguyên. Chưa có gì được lưu cho đến khi bấm "
+            "Áp dụng hoặc OK."
         ),
     },
-    "dlg_save_error": {"en": "Save error", "vi": "Lỗi lưu"},
+    "tip_restore_record": {
+        "en": (
+            "Reload the values on this tab from the bundled example file. "
+            "Nothing is saved until you press Apply or OK."
+        ),
+        "vi": (
+            "Nạp lại các giá trị trong tab này từ file mẫu đi kèm. "
+            "Chưa có gì được lưu cho đến khi bấm Áp dụng hoặc OK."
+        ),
+    },
+    "msg_prefs_applied": {"en": "Settings saved.", "vi": "Đã lưu cài đặt."},
+    "msg_prefs_save_failed": {
+        "en": (
+            "Could not save record defaults: {exc}\n"
+            "Your edits are still here — fix the problem and press Apply again, "
+            "or press Cancel to discard."
+        ),
+        "vi": (
+            "Không thể lưu giá trị mặc định hồ sơ: {exc}\n"
+            "Các thay đổi vẫn còn ở đây — hãy khắc phục rồi bấm Áp dụng lại, "
+            "hoặc bấm Hủy để bỏ."
+        ),
+    },
+    "dlg_discard_title": {"en": "Unsaved changes", "vi": "Thay đổi chưa lưu"},
+    "msg_discard_changes": {
+        "en": "You have unsaved changes in Settings.\nDiscard them?",
+        "vi": "Bạn có thay đổi chưa lưu trong Cài đặt.\nBỏ các thay đổi này?",
+    },
+    "btn_discard": {"en": "Discard changes", "vi": "Bỏ thay đổi"},
+    "btn_keep_editing": {"en": "Keep editing", "vi": "Tiếp tục chỉnh sửa"},
     # run-control tooltips
     "tip_mode": {
         "en": "Create new records, or Update existing ones (needs a medicalRecordId column).",

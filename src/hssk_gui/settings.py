@@ -19,6 +19,14 @@ def add_recent(paths: list[str], path: str, limit: int = _RECENT_FILES_LIMIT) ->
 
 
 class UiSettings:
+    # Factory defaults, shared with the preferences dialog so its "Reset" action and the
+    # getters below can't drift apart.
+    DELAY_DEFAULT = 1.0
+    LIMIT_DEFAULT = 0
+    DRY_RUN_DEFAULT = True
+    CHECK_UPDATES_DEFAULT = True
+    LANGUAGE_DEFAULT = "vi"
+
     def __init__(self) -> None:
         self._s = QSettings(_ORG, _APP)
 
@@ -32,7 +40,7 @@ class UiSettings:
 
     @property
     def delay(self) -> float:
-        return float(self._s.value("delay", 1.0, type=float))  # type: ignore[arg-type]
+        return float(self._s.value("delay", self.DELAY_DEFAULT, type=float))  # type: ignore[arg-type]
 
     @delay.setter
     def delay(self, value: float) -> None:
@@ -40,7 +48,7 @@ class UiSettings:
 
     @property
     def dry_run(self) -> bool:
-        return bool(self._s.value("dry_run", True, type=bool))
+        return bool(self._s.value("dry_run", self.DRY_RUN_DEFAULT, type=bool))
 
     @dry_run.setter
     def dry_run(self, value: bool) -> None:
@@ -48,7 +56,7 @@ class UiSettings:
 
     @property
     def limit(self) -> int:
-        return int(self._s.value("limit", 0, type=int))  # type: ignore[call-overload]
+        return int(self._s.value("limit", self.LIMIT_DEFAULT, type=int))  # type: ignore[call-overload]
 
     @limit.setter
     def limit(self, value: int) -> None:
@@ -64,7 +72,7 @@ class UiSettings:
 
     @property
     def language(self) -> str:
-        return str(self._s.value("language", "vi", type=str))
+        return str(self._s.value("language", self.LANGUAGE_DEFAULT, type=str))
 
     @language.setter
     def language(self, value: str) -> None:
@@ -80,7 +88,7 @@ class UiSettings:
 
     @property
     def check_updates(self) -> bool:
-        return bool(self._s.value("check_updates", True, type=bool))
+        return bool(self._s.value("check_updates", self.CHECK_UPDATES_DEFAULT, type=bool))
 
     @check_updates.setter
     def check_updates(self, value: bool) -> None:
