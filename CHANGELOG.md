@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.5.1 — 2026-07-04
+
+### Excel template hardening
+
+- Identifier, text, and list columns across the whole 1000-row data region are now formatted as
+  Text, so Excel no longer strips leading zeros from CCCD numbers or flips long numbers to
+  scientific notation. Date columns get a consistent `dd/mm/yyyy hh:mm` display format and integer
+  columns display as whole numbers. Numeric/decimal columns (weight, height, BMI, temperature) are
+  left as General so their existing range validation keeps working.
+- The guide sheet is now easier to find (amber tab color, referenced from the identifier column's
+  comment), and every example row is now clearly marked for deletion before a real run.
+
+### Mapping & reader diagnostics
+
+- The reader now warns (instead of silently ignoring) when the Excel file has columns that aren't
+  in the mapping — a common source of silently-lost data from a typo'd mapping key. Surfaced in the
+  CLI, the run/update log, and the GUI's Validate results.
+- Duplicate mapped column headers in an Excel file now raise a clear error instead of silently
+  keeping only the last column's data.
+- A missing update-mode overlay file (`mapping.update.yaml`) now raises a clear error naming the
+  file, instead of failing later with a confusing "medicalRecordId column missing" message.
+- Documented three trap-prone mapping behaviors in the example YAMLs: the automatic
+  `diagnosesDischarge` → `diagnosesDischargeList` mirror, `multi_match: skip` silently skipping
+  rows with more than one matching patient, and why weight/height/BMI are stored as strings.
+
 ## v1.5.0 — 2026-07-03
 
 ### Preferences dialog overhaul
