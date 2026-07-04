@@ -65,6 +65,8 @@ columns:
 
   # --- diagnosis / treatment (-> medicalRecordInfo) ---
   "Chẩn đoán": { target: diagnosesDischarge, type: str, required: true }
+  # Leave blank and the payload builder mirrors "Chẩn đoán" (diagnosesDischarge) into this list
+  # automatically; fill only for extra diagnoses (one per line, or ';'-separated).
   "Bệnh kèm theo": { target: diagnosesDischargeList, type: list }
   "Bệnh theo dõi": { target: noteDisease, type: str }
   "Tư vấn điều trị": { target: treatmentDirection, type: str }
@@ -81,7 +83,9 @@ columns:
   "HA tối đa": { target: bloodPressureMax, type: int }
   "HA tối thiểu": { target: bloodPressureMin, type: int }
   "Nhịp thở": { target: breath, type: int }
-  "Cân nặng": { target: weight, type: str_num } # API sends weight/height/bmi as strings
+  # str_num: the API expects weight/height/bmi as strings ("55", "55.5"), not JSON numbers —
+  # the tool converts numeric or text cells (comma or dot decimals) to that form.
+  "Cân nặng": { target: weight, type: str_num }
   "Chiều cao": { target: height, type: str_num }
   "BMI": { target: bmi, type: str_num } # leave blank in Excel to auto-calculate
   "Vòng bụng": { target: waistCircumference, type: int }
@@ -101,7 +105,11 @@ search:
   profileStatus: "1"
   page: 1
   size: 20
-  multi_match: skip # skip | first | error  — what to do when >1 patient matches
+  # What to do when the identifier matches MORE THAN ONE patient:
+  #   skip  = row is skipped (status MULTI_MATCH in the report — NOT sent; check the report!)
+  #   first = take the first match (risky — may push to the wrong patient)
+  #   error = abort the whole batch
+  multi_match: skip
 
 defaults:
   normal_desc_value: "Bình thường" # fanned out to every *Desc organ field

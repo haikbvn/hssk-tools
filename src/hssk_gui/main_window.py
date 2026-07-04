@@ -386,7 +386,7 @@ class MainWindow(QMainWindow):
         self.delay_spin.setSingleStep(0.5)
         self.delay_spin.setValue(1.0)
         self._delay_lbl = QLabel(tr("lbl_delay"))
-        # self._delay_lbl.setBuddy(self.delay_spin)
+        self._delay_lbl.setBuddy(self.delay_spin)
         controls.addWidget(self._delay_lbl)
         controls.addWidget(self.delay_spin)
 

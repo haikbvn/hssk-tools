@@ -132,16 +132,22 @@ def _merge_overlay_columns(base_raw: dict[str, Any], overlay_raw: dict[str, Any]
 def load_mapping(path: str | Path, *, overlay_path: str | Path | None = None) -> MappingConfig:
     """Read and validate a mapping YAML file, raising ConfigError with a readable message.
 
-    When ``overlay_path`` is given and the file exists, its ``columns`` are merged onto the base
-    mapping (base wins on collision) before validation, so the merged result is validated as a
-    single whole (the identifier rule and ``extra='forbid'`` still apply).
+    When ``overlay_path`` is given, its ``columns`` are merged onto the base mapping (base wins on
+    collision) before validation, so the merged result is validated as a single whole (the
+    identifier rule and ``extra='forbid'`` still apply). A missing overlay file raises ConfigError
+    rather than silently loading the base, so update mode fails loudly and clearly.
     """
     p = Path(path)
     raw = _read_yaml(p)
     if overlay_path is not None:
         op = Path(overlay_path)
-        if op.exists():
-            _merge_overlay_columns(raw, _read_yaml(op))
+        if not op.exists():
+            raise ConfigError(
+                f"Update overlay mapping not found: {op}. It is normally created from the bundled "
+                "config/mapping.update.example.yaml on first use of update mode — restore the file "
+                "or reinstall the app."
+            )
+        _merge_overlay_columns(raw, _read_yaml(op))
     try:
         return MappingConfig.model_validate(raw)
     except ValidationError as exc:

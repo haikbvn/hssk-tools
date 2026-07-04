@@ -13,7 +13,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
-from ..mapping import MappingConfig
+from ..mapping import ColumnSpec, MappingConfig
 from .coerce import _RANGES  # single source of truth for vital soft-ranges
 
 # ── Shared fill + text-color constants (reused by guide-sheet legend) ────────
@@ -35,6 +35,28 @@ _BORDER_HEADER = Border(left=_SIDE_THIN, right=_SIDE_THIN, top=_SIDE_THIN, botto
 
 # Rows 2..(1+_DATA_ROWS) are the editable data block (unlocked + validated).
 _DATA_ROWS = 1000
+
+# Per-column cell number formats for the data region (guard against Excel mangling input).
+_FMT_TEXT = "@"  # keep as text: preserves leading zeros (CCCD) and avoids scientific notation
+_FMT_DATETIME = "dd/mm/yyyy hh:mm"
+_FMT_INT = "0"
+
+
+def _number_format(spec: ColumnSpec, *, is_identifier: bool) -> str | None:
+    """Data-region number format for a column; None keeps Excel's General format.
+
+    float/str_num deliberately stay General: those columns carry ``decimal`` data-validation rules,
+    and a Text format would store every entry as a string and trip the DV popup. Coercion already
+    accepts both numeric cells and VN comma-decimal strings, so nothing is lost.
+    """
+    if is_identifier or spec.type in ("str", "list"):
+        return _FMT_TEXT
+    if spec.type == "datetime":
+        return _FMT_DATETIME
+    if spec.type == "int":
+        return _FMT_INT
+    return None
+
 
 # API targets that are integer codes (full valid sets unknown → whole-number STOP only)
 _CODE_INT_TARGETS = {"typeOfExamination", "reasonCode", "treatmentResultId", "dischargeStatusId"}
@@ -188,7 +210,8 @@ _GUIDE = [
     "• Cột 'BMI': để TRỐNG, ứng dụng tự tính từ cân nặng và chiều cao.",
     "• Mẫu hỗ trợ tối đa 1000 dòng dữ liệu có kiểm tra (validation). "
     "Để nhập thêm: chọn Review → Unprotect Sheet.",
-    "• XOÁ các dòng ví dụ (nền vàng nhạt) trước khi chạy thật.",
+    "⚠️ XOÁ các dòng ví dụ (nền vàng nhạt) trước khi chạy thật — nếu không, chúng sẽ bị "
+    "đẩy lên hệ thống như bệnh nhân thật.",
     "• Di chuột vào ô tiêu đề để xem chú thích và ví dụ từng cột.",
     "",
     f"• Khoảng tham chiếu sinh hiệu (cảnh báo nếu ngoài khoảng, không chặn): {_RANGES_LINE}.",
@@ -207,16 +230,22 @@ def _fmt_example(value: object) -> str | None:
     return str(value)
 
 
-def _style_data_block(ws: Worksheet, headers: list[str], *, protect: bool) -> None:
-    """Apply 12pt font, thin borders, and optional cell unlock to the data block."""
+def _style_data_block(
+    ws: Worksheet, mapping: MappingConfig, headers: list[str], *, protect: bool
+) -> None:
+    """Apply 12pt font, thin borders, per-column number format, and optional unlock to the block."""
     last_row = 1 + _DATA_ROWS
     font_12 = Font(size=12)
     unlocked = Protection(locked=False)
+    id_col = mapping.identifier.column
+    formats = [_number_format(mapping.columns[h], is_identifier=(h == id_col)) for h in headers]
     for row in range(2, last_row + 1):
-        for c_idx in range(1, len(headers) + 1):
+        for c_idx, fmt in enumerate(formats, start=1):
             cell = ws.cell(row=row, column=c_idx)
             cell.font = font_12
             cell.border = _BORDER_CELL
+            if fmt is not None:
+                cell.number_format = fmt
             if protect:
                 cell.protection = unlocked
 
@@ -406,6 +435,8 @@ def make_template(
         ex_val = _fmt_example((_EXAMPLE.get(spec.target) or [None])[0])
         if ex_val is not None:
             note += f"\nVí dụ: {ex_val}"
+        if header == id_col:
+            note += "\n\nXem sheet 'Hướng dẫn' (tab màu cam phía dưới) để biết cách điền."
         cell.comment = Comment(note, "hssk-tools")
 
         if spec.target == "examinationDate":
@@ -436,13 +467,17 @@ def make_template(
                 first_letter, last_letter, outline_level=1, hidden=False
             )
 
-    # ── Data block: 12pt font + borders + optional unlock ────────────────────
-    _style_data_block(ws, headers, protect=protect)
+    # ── Data block: 12pt font + borders + number formats + optional unlock ───
+    _style_data_block(ws, mapping, headers, protect=protect)
 
     # ── Example rows (override font to italic 12pt; border already set above) ─
     if examples:
         example_font = Font(italic=True, size=12, color="595959")
         example_fill = PatternFill("solid", fgColor="FFF2CC")
+        example_note = (
+            "DÒNG VÍ DỤ — XOÁ dòng này trước khi chạy thật. Nếu giữ lại, dữ liệu ví dụ "
+            "sẽ bị đẩy lên hệ thống như dữ liệu thật."
+        )
         n = len(next(iter(_EXAMPLE.values())))
         for i in range(n):
             row_idx = i + 2  # rows 2, 3, ...
@@ -452,12 +487,7 @@ def make_template(
                 cell = ws.cell(row=row_idx, column=c, value=value)
                 cell.font = example_font
                 cell.fill = example_fill
-                if isinstance(value, dt.datetime):
-                    cell.number_format = "dd/mm/yyyy hh:mm"
-            if i == 0:
-                ws.cell(row=row_idx, column=1).comment = Comment(
-                    "Dòng ví dụ — XOÁ trước khi chạy thật", "hssk-tools"
-                )
+            ws.cell(row=row_idx, column=1).comment = Comment(example_note, "hssk-tools")
 
     # ── Data validation ───────────────────────────────────────────────────────
     _add_validations(ws, mapping, headers, exam_date_col=exam_date_col)
@@ -468,6 +498,7 @@ def make_template(
 
     # ── Guide sheet ───────────────────────────────────────────────────────────
     guide = wb.create_sheet("Hướng dẫn")
+    guide.sheet_properties.tabColor = "FFC000"  # amber tab — matches identifier color family
     guide.column_dimensions["A"].width = 110
     guide.column_dimensions["B"].width = 30
 
@@ -476,6 +507,8 @@ def make_template(
         cell.alignment = Alignment(wrap_text=True, vertical="top")
         if r == 1:
             cell.font = Font(bold=True, size=14)
+        elif line.startswith("⚠️"):
+            cell.font = Font(bold=True, size=12, color=_COLOR_REQ)
         else:
             cell.font = Font(size=12)
 

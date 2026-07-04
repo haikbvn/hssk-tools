@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -19,8 +21,17 @@ def _is_blank(value: Any) -> bool:
     return value is None or (isinstance(value, str) and value.strip() == "")
 
 
-def read_rows(path: str | Path, mapping: MappingConfig) -> list[tuple[int, dict[str, Any]]]:
-    """Return ``[(excel_row_number, {header: value})]`` for every non-empty data row."""
+def read_rows(
+    path: str | Path,
+    mapping: MappingConfig,
+    *,
+    on_warning: Callable[[str], None] | None = None,
+) -> list[tuple[int, dict[str, Any]]]:
+    """Return ``[(excel_row_number, {header: value})]`` for every non-empty data row.
+
+    If ``on_warning`` is given, non-fatal header diagnostics (e.g. Excel columns not present in the
+    mapping, which are silently ignored) are reported through it. The return value is unaffected.
+    """
     p = Path(path)
     if not p.exists():
         raise ConfigError(f"Excel file not found: {p}")
@@ -49,7 +60,28 @@ def read_rows(path: str | Path, mapping: MappingConfig) -> list[tuple[int, dict[
     if not headers:
         raise ConfigError(f"No header row found at row {mapping.header_row} in {p}")
     _check_columns(headers, mapping, p)
+    if on_warning is not None:
+        for warning in check_headers(headers, mapping):
+            on_warning(warning)
     return rows
+
+
+def check_headers(headers: list[str], mapping: MappingConfig) -> list[str]:
+    """Non-fatal header diagnostics: Excel columns not in the mapping that will be ignored.
+
+    Returns at most one combined message (a stable shape the GUI matches on) so spreadsheets with
+    many decorative columns stay quiet in the log/table.
+    """
+    seen: set[str] = set()
+    extra: list[str] = []
+    for h in headers:
+        if h and h not in mapping.columns and h not in seen:
+            seen.add(h)
+            extra.append(h)
+    if not extra:
+        return []
+    cols = ", ".join(repr(h) for h in extra)
+    return [f"ignoring {len(extra)} unmapped Excel column(s): {cols}"]
 
 
 def _check_columns(headers: list[str], mapping: MappingConfig, path: Path) -> None:
@@ -58,4 +90,10 @@ def _check_columns(headers: list[str], mapping: MappingConfig, path: Path) -> No
     if missing:
         raise ConfigError(
             f"Excel {path.name} is missing mapped column(s): {missing}. Found headers: {headers}"
+        )
+    dups = [h for h, n in Counter(h for h in headers if h in mapping.columns).items() if n > 1]
+    if dups:
+        raise ConfigError(
+            f"Excel {path.name} has duplicate mapped column header(s): {dups}. "
+            "Only the right-most copy would be read — rename or remove the duplicates."
         )

@@ -6,6 +6,10 @@
 # `medicalRecordId` is the record's primary key on hososuckhoe.com.vn — the tool can't discover it
 # from a patient search, so you must supply it per row in your Excel (the "Mã hồ sơ" column below).
 # Change the column name on the LEFT to match your spreadsheet's header; leave `target` as-is.
+#
+# This file is seeded to your user config dir as `mapping.update.yaml` on first use of update mode.
+# If it is deleted and cannot be re-created from this bundled copy, update mode refuses to run
+# (with a clear error) rather than silently falling back to the create-only mapping.
 
 columns:
   "Mã hồ sơ": { target: medicalRecordId, type: int, required: true }

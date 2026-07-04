@@ -114,7 +114,7 @@ def _run_batch(
     s = settings or default_settings()
     cb = callbacks or Callbacks()
 
-    rows = reader.read_rows(input_path, mapping)
+    rows = reader.read_rows(input_path, mapping, on_warning=cb.on_log)
     if limit is not None:
         rows = rows[:limit]
     total = len(rows)

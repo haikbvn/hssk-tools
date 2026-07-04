@@ -128,9 +128,13 @@ class ValidateWorker(QObject):
         from hssk.excel.coerce import coerce_row
 
         try:
-            rows = reader.read_rows(self._input, self._mapping)
+            header_warnings: list[str] = []
+            rows = reader.read_rows(self._input, self._mapping, on_warning=header_warnings.append)
+            for w in header_warnings:
+                self.problem.emit(ValidationProblem(self._mapping.header_row, "", False, f"⚠ {w}"))
             total = len(rows)
-            valid = invalid = warns = 0
+            valid = invalid = 0
+            warns = len(header_warnings)
             cancelled = False
             throttle = ProgressThrottle()
             for i, (idx, raw) in enumerate(rows):

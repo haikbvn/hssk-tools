@@ -76,10 +76,11 @@ def test_bundled_overlay_adds_required_record_id():
     assert any(spec.target == "medicalRecordId" and spec.required for spec in m.columns.values())
 
 
-def test_overlay_missing_is_noop(tmp_path: Path):
-    """A non-existent overlay path loads the base unchanged (no error)."""
-    m = load_mapping(EXAMPLE_MAPPING, overlay_path=tmp_path / "nope.yaml")
-    assert not any(spec.target == "medicalRecordId" for spec in m.columns.values())
+def test_overlay_missing_raises(tmp_path: Path):
+    """A non-existent overlay path errors clearly instead of silently loading the base."""
+    with pytest.raises(ConfigError, match="nope.yaml") as exc:
+        load_mapping(EXAMPLE_MAPPING, overlay_path=tmp_path / "nope.yaml")
+    assert "mapping.update.example.yaml" in str(exc.value)
 
 
 def test_overlay_base_wins_on_collision(tmp_path: Path):
