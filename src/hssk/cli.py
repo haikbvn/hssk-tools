@@ -73,7 +73,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if bad:
         print(f"✗ Mapping uses unknown API field target(s): {bad}")
         return 1
-    rows = reader.read_rows(args.input, mapping)
+    rows = reader.read_rows(args.input, mapping, on_warning=lambda m: print(f"  ⚠ {m}"))
     valid = invalid = 0
     for idx, raw in rows:
         r = coerce_row(raw, mapping, idx)

@@ -219,6 +219,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "vi": " nằm ngoài phạm vi ",
     },
     "msg_coerce_date_before": {"en": " is before ", "vi": " trước "},
+    "msg_unmapped_columns": {
+        "en": "ignoring {n} unmapped Excel column(s): {cols}",
+        "vi": "bỏ qua {n} cột Excel không có trong file mapping: {cols}",
+    },
     # mode combo (run box)
     "lbl_mode": {"en": "Mode:", "vi": "Chế độ:"},
     "mode_create": {"en": "Create", "vi": "Tạo mới"},

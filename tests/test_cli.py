@@ -182,6 +182,21 @@ def test_cmd_validate_missing_input(tmp_path: Path):
     assert main(["validate", "-m", str(mapping_path), "-i", str(tmp_path / "no.xlsx")]) == 1
 
 
+def test_cmd_validate_warns_on_extra_column(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """An unmapped Excel column is reported as a warning without failing validation."""
+    mapping_path = _copy_mapping(tmp_path)
+    wb = Workbook()
+    ws = wb.active
+    ws.append([*_HEADERS, "Cột lạ"])
+    ws.append([*_VALID_ROW, "junk"])
+    xlsx = tmp_path / "data.xlsx"
+    wb.save(xlsx)
+    assert main(["validate", "-m", str(mapping_path), "-i", str(xlsx)]) == 0
+    out = capsys.readouterr().out
+    assert "Cột lạ" in out
+    assert "unmapped Excel column" in out
+
+
 def test_cmd_validate_bad_mapping(tmp_path: Path):
     bad_mapping = tmp_path / "bad.yaml"
     bad_mapping.write_text("not: valid: yaml: mapping\n", encoding="utf-8")

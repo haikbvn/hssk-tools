@@ -199,6 +199,26 @@ def test_log_retry_english_passthrough() -> None:
     assert _tr_log("retry in 1.0s (attempt 2)") == "retry in 1.0s (attempt 2)"
 
 
+# -- unmapped-columns warning (reader → validate table + run log) ----------------------
+
+_UNMAPPED_EN = "ignoring 2 unmapped Excel column(s): 'A', 'B'"
+_UNMAPPED_VI = "bỏ qua 2 cột Excel không có trong file mapping: 'A', 'B'"
+
+
+def test_unmapped_columns_via_coerce_msg() -> None:
+    set_language("vi")
+    assert _tr_coerce_msg(_UNMAPPED_EN) == _UNMAPPED_VI
+    set_language("en")
+    assert _tr_coerce_msg(_UNMAPPED_EN) == _UNMAPPED_EN
+
+
+def test_unmapped_columns_via_log() -> None:
+    set_language("vi")
+    assert _tr_log(_UNMAPPED_EN) == _UNMAPPED_VI
+    set_language("en")
+    assert _tr_log(_UNMAPPED_EN) == _UNMAPPED_EN
+
+
 def test_log_no_record_id() -> None:
     set_language("vi")
     assert _tr_log("row 5: no record id in server response") == (

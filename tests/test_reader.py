@@ -153,6 +153,47 @@ def test_missing_file_raises(tmp_path: Path):
         read_rows(tmp_path / "no_such.xlsx", mapping)
 
 
+# -- duplicate headers -----------------------------------------------------------------
+
+
+def test_duplicate_mapped_header_raises(tmp_path: Path):
+    # Two "Name" columns, both mapped — last-wins would silently drop data, so error out.
+    p = _write_xlsx(tmp_path, ["Mã định danh", "Name", "Name"], [["ID001", "A", "B"]])
+    mapping = _minimal_mapping(["Mã định danh", "Name"])
+    with pytest.raises(ConfigError, match="duplicate"):
+        read_rows(p, mapping)
+
+
+def test_duplicate_unmapped_header_ignored(tmp_path: Path):
+    # Duplicated "Extra" is not in the mapping, so it never reaches the row dict — no error.
+    p = _write_xlsx(tmp_path, ["Mã định danh", "Extra", "Extra"], [["ID001", "x", "y"]])
+    mapping = _minimal_mapping(["Mã định danh"])
+    result = read_rows(p, mapping)
+    assert len(result) == 1
+
+
+# -- unmapped-column warnings ----------------------------------------------------------
+
+
+def test_extra_header_warns(tmp_path: Path):
+    p = _write_xlsx(tmp_path, ["Mã định danh", "Extra"], [["ID001", "x"]])
+    mapping = _minimal_mapping(["Mã định danh"])
+    warnings: list[str] = []
+    result = read_rows(p, mapping, on_warning=warnings.append)
+    assert len(result) == 1  # return value unchanged
+    assert len(warnings) == 1
+    assert "'Extra'" in warnings[0]
+    assert "unmapped Excel column" in warnings[0]
+
+
+def test_no_callback_stays_silent(tmp_path: Path):
+    # Backward compat: extra columns without an on_warning callback must not error.
+    p = _write_xlsx(tmp_path, ["Mã định danh", "Extra"], [["ID001", "x"]])
+    mapping = _minimal_mapping(["Mã định danh"])
+    result = read_rows(p, mapping)
+    assert len(result) == 1
+
+
 # -- datetime values pass through ------------------------------------------------------
 
 

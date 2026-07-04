@@ -40,11 +40,26 @@ _TOKEN_SHORT_MID = " min needed, ~"
 _TOKEN_SHORT_TAIL = " min left) — consider logging in again first"
 
 
+_UNMAPPED_HEAD = "ignoring "
+_UNMAPPED_MID = " unmapped Excel column(s): "
+
+
+def _tr_unmapped(msg: str) -> str | None:
+    """Translate the reader's unmapped-columns warning; None if the message isn't that shape."""
+    if msg.startswith(_UNMAPPED_HEAD) and _UNMAPPED_MID in msg:
+        n, _, cols = msg[len(_UNMAPPED_HEAD) :].partition(_UNMAPPED_MID)
+        return tr("msg_unmapped_columns").format(n=n, cols=cols)
+    return None
+
+
 def _tr_log(msg: str) -> str:
     """Translate known engine log strings; pass diagnostic/API detail through unchanged."""
     exact = _LOG_EXACT.get(msg)
     if exact is not None:
         return tr(exact)
+    unmapped = _tr_unmapped(msg)
+    if unmapped is not None:
+        return unmapped
     # "retry in 2.5s (attempt 3)" from api/client.py — translate the two fixed phrases
     if msg.startswith("retry in "):
         msg = msg.replace("retry in ", tr("log_retry_in"), 1)
@@ -92,6 +107,9 @@ _MSG_HEADS = [  # "<head>" or "<head> — <name>"
 
 def _tr_coerce_msg(msg: str) -> str:
     """Translate a single coerce error/warning line from the engine (no ⚠ prefix)."""
+    unmapped = _tr_unmapped(msg)
+    if unmapped is not None:
+        return unmapped
     if msg.startswith("missing required column "):
         return tr("msg_coerce_missing_col") + msg[len("missing required column ") :]
     if ": cannot parse " in msg:
