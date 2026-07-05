@@ -64,6 +64,7 @@ _TOKENS: dict[str, dict[str, str]] = {
 STATUS_COLOR_TOKENS: dict[Status, str] = {
     Status.CREATED: "success",
     Status.UPDATED: "success",
+    Status.DELETED: "success",
     Status.DRY_RUN_OK: "info",
     Status.SKIPPED_ALREADY: "muted",
     Status.INVALID: "warning",

@@ -180,6 +180,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     # run result statuses (results table)
     "status_CREATED": {"en": "Created", "vi": "Đã tạo"},
     "status_UPDATED": {"en": "Updated", "vi": "Đã cập nhật"},
+    "status_DELETED": {"en": "Deleted", "vi": "Đã xoá"},
     "status_DRY_RUN_OK": {"en": "Dry-run OK", "vi": "Chạy thử OK"},
     "status_SKIPPED_ALREADY": {"en": "Skipped (already sent)", "vi": "Bỏ qua (đã gửi)"},
     "status_INVALID": {"en": "Invalid", "vi": "Không hợp lệ"},
@@ -192,6 +193,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     # per-cell coercion detail is passed through untranslated.
     "msg_row_created": {"en": "Created", "vi": "Đã tạo"},
     "msg_row_updated": {"en": "Updated", "vi": "Đã cập nhật"},
+    "msg_row_deleted": {"en": "Deleted", "vi": "Đã xoá"},
     "msg_row_dryrun": {"en": "Payload built (not sent)", "vi": "Đã dựng dữ liệu (chưa gửi)"},
     "msg_row_already": {"en": "Already processed", "vi": "Đã xử lý trước đó"},
     "msg_row_id_blank": {"en": "Identifier is blank", "vi": "Mã định danh trống"},
@@ -223,14 +225,40 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "ignoring {n} unmapped Excel column(s): {cols}",
         "vi": "bỏ qua {n} cột Excel không có trong file mapping: {cols}",
     },
+    "msg_missing_columns": {
+        "en": (
+            "Excel {name} is missing required column(s): {cols} — "
+            "use the Template button to generate a file for the selected mode."
+        ),
+        "vi": (
+            "File {name} thiếu cột bắt buộc: {cols} — "
+            "dùng nút 'Mẫu Excel…' để tạo file đúng chế độ đã chọn."
+        ),
+    },
+    "msg_duplicate_columns": {
+        "en": (
+            "Excel {name} has duplicate column header(s): {cols} — "
+            "only the right-most copy would be read; rename or remove the duplicates."
+        ),
+        "vi": (
+            "File {name} có tiêu đề cột bị trùng: {cols} — "
+            "chỉ cột ngoài cùng bên phải được đọc; hãy đổi tên hoặc xoá cột trùng."
+        ),
+    },
     # mode combo (run box)
     "lbl_mode": {"en": "Mode:", "vi": "Chế độ:"},
     "mode_create": {"en": "Create", "vi": "Tạo mới"},
     "mode_update": {"en": "Update", "vi": "Cập nhật"},
+    "mode_delete": {"en": "Delete", "vi": "Xoá"},
     "btn_start_update_live": {"en": "⚠  UPDATE live records", "vi": "⚠  CẬP NHẬT DỮ LIỆU THẬT"},
+    "btn_start_delete_live": {"en": "⚠  DELETE live records", "vi": "⚠  XOÁ HỒ SƠ THẬT"},
     "banner_production_update": {
         "en": "⚠️  PRODUCTION — this UPDATES LIVE medical records",
         "vi": "⚠️  PRODUCTION — đang CẬP NHẬT hồ sơ y tế THẬT",
+    },
+    "banner_production_delete": {
+        "en": "⚠️  PRODUCTION — this DELETES LIVE medical records",
+        "vi": "⚠️  PRODUCTION — đang XOÁ hồ sơ y tế THẬT",
     },
     # production confirm
     "dlg_confirm_push": {
@@ -245,6 +273,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "This will UPDATE LIVE medical records on hososuckhoe.com.vn.\n\nProceed?",
         "vi": "Thao tác này sẽ CẬP NHẬT hồ sơ y tế THẬT trên hososuckhoe.com.vn.\n\nTiếp tục?",
     },
+    "msg_confirm_push_delete": {
+        "en": ("This will PERMANENTLY DELETE medical records on hososuckhoe.com.vn.\n\nProceed?"),
+        "vi": ("Thao tác này sẽ XOÁ VĨNH VIỄN hồ sơ y tế trên hososuckhoe.com.vn.\n\nTiếp tục?"),
+    },
     "dlg_update_needs_record_id": {
         "en": "Update mode — mapping error",
         "vi": "Chế độ cập nhật — lỗi mapping",
@@ -257,6 +289,22 @@ _STRINGS: dict[str, dict[str, str]] = {
         ),
         "vi": (
             "Chế độ cập nhật cần cột medicalRecordId, nằm trong file mapping.update.yaml.\n\n"
+            "File này được tạo tự động; nếu thiếu cột, hãy kiểm tra mapping.update.yaml vẫn "
+            "ánh xạ một cột tới target: medicalRecordId, required: true."
+        ),
+    },
+    "dlg_delete_needs_record_id": {
+        "en": "Delete mode — mapping error",
+        "vi": "Chế độ xoá — lỗi mapping",
+    },
+    "msg_delete_needs_record_id": {
+        "en": (
+            "Delete mode needs the medicalRecordId column, which lives in mapping.update.yaml.\n\n"
+            "That file is created automatically; if the column is missing, check that "
+            "mapping.update.yaml still maps a column to target: medicalRecordId, required: true."
+        ),
+        "vi": (
+            "Chế độ xoá cần cột medicalRecordId, nằm trong file mapping.update.yaml.\n\n"
             "File này được tạo tự động; nếu thiếu cột, hãy kiểm tra mapping.update.yaml vẫn "
             "ánh xạ một cột tới target: medicalRecordId, required: true."
         ),
@@ -526,8 +574,13 @@ _STRINGS: dict[str, dict[str, str]] = {
     "btn_keep_editing": {"en": "Keep editing", "vi": "Tiếp tục chỉnh sửa"},
     # run-control tooltips
     "tip_mode": {
-        "en": "Create new records, or Update existing ones (needs a medicalRecordId column).",
-        "vi": "Tạo hồ sơ mới, hoặc Cập nhật hồ sơ có sẵn (cần cột medicalRecordId).",
+        "en": (
+            "Create new records, Update existing ones, or Delete existing ones "
+            "(Update/Delete need a medicalRecordId column)."
+        ),
+        "vi": (
+            "Tạo hồ sơ mới, Cập nhật hoặc Xoá hồ sơ có sẵn (Cập nhật/Xoá cần cột medicalRecordId)."
+        ),
     },
     "tip_delay": {
         "en": "Seconds to wait between rows. Increase this if the server rate-limits you.",

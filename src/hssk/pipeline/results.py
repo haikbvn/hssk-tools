@@ -15,6 +15,7 @@ from typing import Any
 class Status(StrEnum):
     CREATED = "CREATED"
     UPDATED = "UPDATED"
+    DELETED = "DELETED"
     DRY_RUN_OK = "DRY_RUN_OK"
     SKIPPED_ALREADY = "SKIPPED_ALREADY"
     INVALID = "INVALID"
@@ -55,6 +56,10 @@ class RunSummary:
     @property
     def updated(self) -> int:
         return self.counts.get(Status.UPDATED, 0)
+
+    @property
+    def deleted(self) -> int:
+        return self.counts.get(Status.DELETED, 0)
 
     @property
     def failed(self) -> int:

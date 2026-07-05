@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from hssk.errors import ConfigError
-from hssk.mapping import load_mapping
+from hssk.mapping import filter_for_delete, load_mapping
 
 
 def test_example_mapping_loads(mapping):
@@ -116,3 +116,43 @@ def test_overlay_result_is_validated_as_whole(tmp_path: Path):
     )
     with pytest.raises(ConfigError):
         load_mapping(EXAMPLE_MAPPING, overlay_path=overlay)
+
+
+# -- filter_for_delete -----------------------------------------------------------------
+
+
+def test_filter_for_delete_keeps_exactly_two_columns():
+    """Delete filtering keeps only the identifier + medicalRecordId columns."""
+    merged = load_mapping(EXAMPLE_MAPPING, overlay_path=EXAMPLE_OVERLAY)
+    filtered = filter_for_delete(merged)
+    id_col = merged.identifier.column
+    assert set(filtered.columns) == {id_col, "Mã hồ sơ"}
+    # identifier spec is preserved verbatim, so the identifier invariant still holds
+    assert filtered.columns[id_col].target == "medicalIdentifierCode"
+    assert filtered.identifier.column == id_col
+
+
+def test_filter_for_delete_without_record_id_raises():
+    """A base-only mapping (no medicalRecordId column) can't be used for delete."""
+    base = load_mapping(EXAMPLE_MAPPING)
+    with pytest.raises(ConfigError, match="medicalRecordId"):
+        filter_for_delete(base)
+
+
+def test_filter_for_delete_matches_renamed_record_id_header(tmp_path: Path):
+    """Selection is target-based, so a renamed record-id header still survives filtering."""
+    base = tmp_path / "base.yaml"
+    base.write_text(
+        textwrap.dedent(
+            """
+            identifier: { column: "Mã định danh" }
+            columns:
+              "Mã định danh": { target: medicalIdentifierCode, type: str, required: true }
+              "Record ID": { target: medicalRecordId, type: int, required: true }
+              "Cân nặng": { target: weight, type: float }
+            """
+        ),
+        encoding="utf-8",
+    )
+    filtered = filter_for_delete(load_mapping(base))
+    assert set(filtered.columns) == {"Mã định danh", "Record ID"}

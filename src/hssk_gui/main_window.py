@@ -42,13 +42,13 @@ from hssk.auth.token_store import TokenData, load_token
 from hssk.config import ensure_mapping_file, ensure_update_overlay_file, output_dir
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
-from hssk.mapping import load_mapping
+from hssk.mapping import filter_for_delete, load_mapping
 from hssk.pipeline.results import RunSummary, Status
 
 from . import theme
 from .banner import NoticeBanner
 from .i18n import tr
-from .messages import _tr_log, _tr_login_status
+from .messages import _tr_file_error, _tr_log, _tr_login_status
 from .preferences_dialog import PreferencesDialog
 from .results_panel import ResultsPanel
 from .settings import UiSettings
@@ -60,6 +60,9 @@ from .workers import (
     ValidateWorker,
     ValidationSummary,
 )
+
+# Run modes, indexed to match the mode combo (create=0, update=1, delete=2).
+_MODES = ("create", "update", "delete")
 
 
 def _with_shortcut(text: str, button: QPushButton) -> str:
@@ -374,6 +377,7 @@ class MainWindow(QMainWindow):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem(tr("mode_create"))
         self.mode_combo.addItem(tr("mode_update"))
+        self.mode_combo.addItem(tr("mode_delete"))
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self._mode_lbl = QLabel(tr("lbl_mode"))
         self._mode_lbl.setBuddy(self.mode_combo)
@@ -439,7 +443,9 @@ class MainWindow(QMainWindow):
             self._set_excel(Path(self._ui.last_file))
         self.delay_spin.setValue(self._ui.delay)
         self.limit_spin.setValue(self._ui.limit)
-        self.mode_combo.setCurrentIndex(1 if self._ui.update_mode else 0)
+        self.mode_combo.setCurrentIndex(
+            _MODES.index(self._ui.mode) if self._ui.mode in _MODES else 0
+        )
         self.dryrun_check.setChecked(self._ui.dry_run)
         self._refresh_run_controls()
 
@@ -480,6 +486,7 @@ class MainWindow(QMainWindow):
         self._mode_lbl.setText(tr("lbl_mode"))
         self.mode_combo.setItemText(0, tr("mode_create"))
         self.mode_combo.setItemText(1, tr("mode_update"))
+        self.mode_combo.setItemText(2, tr("mode_delete"))
         self._delay_lbl.setText(tr("lbl_delay"))
         self._limit_lbl.setText(tr("lbl_limit"))
         self.dryrun_check.setText(tr("chk_dryrun"))
@@ -678,7 +685,11 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".xlsx"):
             path += ".xlsx"
         try:
-            out = make_template(self._load_mapping(update=self._is_update_mode()), path)
+            mode = self._mode()
+            mapping = self._load_mapping(mode=mode)
+            if mode == "delete":
+                mapping = filter_for_delete(mapping)
+            out = make_template(mapping, path)
         except (ConfigError, HsskError) as exc:
             QMessageBox.critical(self, tr("dlg_template_error"), str(exc))
             return
@@ -693,19 +704,28 @@ class MainWindow(QMainWindow):
         path = ensure_mapping_file()
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
-    def _load_mapping(self, *, update: bool = False):
-        overlay = ensure_update_overlay_file() if update else None
+    def _load_mapping(self, *, mode: str = "create"):
+        """Load the merged (unfiltered) mapping for a mode.
+
+        Update and delete both need the update overlay (it carries the medicalRecordId column).
+        Delete-mode callers apply ``filter_for_delete`` afterwards, once the medicalRecordId
+        pre-check has run against the full merged mapping.
+        """
+        overlay = ensure_update_overlay_file() if mode in ("update", "delete") else None
         return load_mapping(ensure_mapping_file(), overlay_path=overlay)
 
-    def _is_update_mode(self) -> bool:
-        return self.mode_combo.currentIndex() == 1
+    def _mode(self) -> str:
+        return _MODES[self.mode_combo.currentIndex()]
 
     def _validate(self) -> None:
         if self._excel_path is None:
             return
         self.error_banner.clear()
         try:
-            mapping = self._load_mapping(update=self._is_update_mode())
+            mode = self._mode()
+            mapping = self._load_mapping(mode=mode)
+            if mode == "delete":
+                mapping = filter_for_delete(mapping)
         except (ConfigError, HsskError) as exc:
             self.error_banner.show_message(f"{tr('dlg_validation')}: {exc}")
             return
@@ -764,6 +784,11 @@ class MainWindow(QMainWindow):
     def _on_validate_failed(self, message: str) -> None:
         self.results.flush_now()
         self.results.set_status(tr("lbl_error"))
+        # A file-level structural error (missing/duplicate mapped column) is already shown as a
+        # synthetic INVALID row in the results table by ValidateWorker, so don't repeat it in the
+        # banner. Other validation failures have no table row, so they still surface in the banner.
+        if _tr_file_error(message) is not None:
+            return
         self.error_banner.show_message(f"{tr('dlg_validation')}: {message}")
 
     def _on_validate_thread_finished(self) -> None:
@@ -776,20 +801,26 @@ class MainWindow(QMainWindow):
 
     def _refresh_run_controls(self) -> None:
         dry = self.dryrun_check.isChecked()
-        update_mode = self.mode_combo.currentIndex() == 1
+        mode = self._mode()
+        banner_key = {
+            "create": "banner_production",
+            "update": "banner_production_update",
+            "delete": "banner_production_delete",
+        }[mode]
+        live_btn_key = {
+            "create": "btn_start_live",
+            "update": "btn_start_update_live",
+            "delete": "btn_start_delete_live",
+        }[mode]
         self.banner.setVisible(not dry)
         self.banner.setStyleSheet(theme.banner_qss())
         if not dry:
-            self.banner.setText(
-                tr("banner_production_update") if update_mode else tr("banner_production")
-            )
+            self.banner.setText(tr(banner_key))
         if dry:
             self.start_btn.setText(tr("btn_start_dryrun"))
             self.start_btn.setStyleSheet("")
         else:
-            self.start_btn.setText(
-                tr("btn_start_update_live") if update_mode else tr("btn_start_live")
-            )
+            self.start_btn.setText(tr(live_btn_key))
             self.start_btn.setStyleSheet(theme.danger_button_qss())
 
     def _on_dryrun_toggled(self) -> None:
@@ -826,9 +857,13 @@ class MainWindow(QMainWindow):
             return
         self.error_banner.clear()
         dry_run = self.dryrun_check.isChecked()
-        update_mode = self.mode_combo.currentIndex() == 1
+        mode = self._mode()
         if not dry_run:
-            msg = tr("msg_confirm_push_update") if update_mode else tr("msg_confirm_push")
+            msg = {
+                "create": tr("msg_confirm_push"),
+                "update": tr("msg_confirm_push_update"),
+                "delete": tr("msg_confirm_push_delete"),
+            }[mode]
             if self._validated_path != self._excel_path:
                 msg = tr("msg_not_validated_warn") + msg
             elif self._validated_invalid > 0:
@@ -845,24 +880,29 @@ class MainWindow(QMainWindow):
                 return
 
         try:
-            mapping = self._load_mapping(update=update_mode)
+            mapping = self._load_mapping(mode=mode)
         except (ConfigError, HsskError) as exc:
             self.error_banner.show_message(f"{tr('dlg_mapping_error')}: {exc}")
             return
 
-        if update_mode and not any(
+        if mode in ("update", "delete") and not any(
             spec.target == "medicalRecordId" and spec.required for spec in mapping.columns.values()
         ):
-            self.error_banner.show_message(
-                f"{tr('dlg_update_needs_record_id')}: {tr('msg_update_needs_record_id')}"
-            )
+            dlg_key, msg_key = {
+                "update": ("dlg_update_needs_record_id", "msg_update_needs_record_id"),
+                "delete": ("dlg_delete_needs_record_id", "msg_delete_needs_record_id"),
+            }[mode]
+            self.error_banner.show_message(f"{tr(dlg_key)}: {tr(msg_key)}")
             return
+
+        if mode == "delete":
+            mapping = filter_for_delete(mapping)
 
         # persist prefs
         self._ui.delay = self.delay_spin.value()
         self._ui.limit = self.limit_spin.value()
         self._ui.dry_run = dry_run
-        self._ui.update_mode = update_mode
+        self._ui.mode = mode
 
         settings = engine_settings().model_copy(update={"request_delay": self.delay_spin.value()})
         limit = self.limit_spin.value() or None
@@ -876,7 +916,7 @@ class MainWindow(QMainWindow):
             dry_run=dry_run,
             limit=limit,
             settings=settings,
-            update_mode=update_mode,
+            mode=mode,  # type: ignore[arg-type]
         )
         self._run_worker.moveToThread(self._run_thread)
         self._run_thread.started.connect(self._run_worker.run)
@@ -945,7 +985,8 @@ class MainWindow(QMainWindow):
     def _on_run_failed(self, message: str) -> None:
         self.results.flush_now()
         self.results.set_status(tr("lbl_error"))
-        self.error_banner.show_message(f"{tr('dlg_run_failed')}: {message}")
+        text = _tr_file_error(message) or message
+        self.error_banner.show_message(f"{tr('dlg_run_failed')}: {text}")
 
     def _on_run_thread_finished(self) -> None:
         # Thread has fully stopped — now it is safe to drop references and re-enable Start.

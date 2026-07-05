@@ -11,6 +11,8 @@ DETAIL_PATH = "/api/v1/medical-record/medical-record/health-examination/get-deta
 
 UPDATE_PATH = "/api/v1/medical-record/medical-record/health-examination/update"
 
+DELETE_PATH = "/api/v1/medical-record/medical-record/medical-record-object-information/delete"
+
 
 def extract_patient_ref(detail: Any) -> tuple[Any, str | None]:
     """Extract (patientId, medicalIdentifierCode) from a GET-detail response.
@@ -54,3 +56,15 @@ def update(client: ApiClient, payload: dict[str, Any]) -> tuple[Any, Any]:
     """POST the update payload. Returns ``(record_id_or_None, raw_response)``."""
     data = client.post(UPDATE_PATH, payload)
     return extract_record_id(data), data
+
+
+def delete(client: ApiClient, medical_record_id: Any) -> tuple[Any, Any]:
+    """POST the empty-body delete for one record. Returns ``(medical_record_id, raw_response)``.
+
+    The endpoint carries the id in the path and takes no body (``json=None`` → httpx sends no
+    content, matching the website's ``content-length: 0`` request). We return the known id as the
+    record id so the results table stays populated and ``_run_batch`` never warns about a missing
+    id in the response.
+    """
+    data = client.post(f"{DELETE_PATH}/{medical_record_id}", None)
+    return medical_record_id, data

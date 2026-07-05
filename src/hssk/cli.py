@@ -1,4 +1,7 @@
-"""Thin CLI for debugging the engine without the GUI: ``login``, ``validate``, ``run``."""
+"""Thin CLI for debugging the engine without the GUI.
+
+Subcommands: ``login``, ``template``, ``validate``, ``run`` (create), ``update``, ``delete``.
+"""
 
 from __future__ import annotations
 
@@ -10,16 +13,19 @@ from .config import ensure_mapping_file, ensure_update_overlay_file, settings
 from .errors import ConfigError, HsskError
 from .excel import reader
 from .excel.coerce import coerce_row
-from .mapping import load_mapping
+from .mapping import filter_for_delete, load_mapping
 from .payload import builder
 from .pipeline import runner
 from .pipeline.ledger import Ledger
 
 
-def _resolve_mapping(path: str | None, *, update: bool = False):
+def _resolve_mapping(path: str | None, *, update: bool = False, delete: bool = False):
     mapping_path = Path(path) if path else ensure_mapping_file()
-    overlay = ensure_update_overlay_file() if update else None
-    return load_mapping(mapping_path, overlay_path=overlay)
+    # Delete mode reuses the update overlay (it carries the medicalRecordId column), then keeps
+    # only the identifier + medicalRecordId columns so a slim 2-column Excel loads.
+    overlay = ensure_update_overlay_file() if (update or delete) else None
+    mapping = load_mapping(mapping_path, overlay_path=overlay)
+    return filter_for_delete(mapping) if delete else mapping
 
 
 def _confirm_production(action: str) -> bool:
@@ -59,7 +65,7 @@ def cmd_login(args: argparse.Namespace) -> int:
 def cmd_template(args: argparse.Namespace) -> int:
     from .excel.template import make_template
 
-    mapping = _resolve_mapping(args.mapping, update=args.update)
+    mapping = _resolve_mapping(args.mapping, update=args.update, delete=args.delete)
     out = make_template(
         mapping, args.output, examples=not args.no_examples, protect=not args.no_protect
     )
@@ -68,7 +74,7 @@ def cmd_template(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    mapping = _resolve_mapping(args.mapping)
+    mapping = _resolve_mapping(args.mapping, delete=args.delete)
     bad = builder.validate_targets(mapping)
     if bad:
         print(f"✗ Mapping uses unknown API field target(s): {bad}")
@@ -167,6 +173,43 @@ def cmd_update(args: argparse.Namespace) -> int:
     return 0 if not summary.aborted else 2
 
 
+def cmd_delete(args: argparse.Namespace) -> int:
+    from .auth.token_store import load_valid_token
+
+    token = load_valid_token()
+    mapping = _resolve_mapping(args.mapping, delete=True)
+    dry_run = not args.commit
+
+    s = settings()
+    if args.delay is not None:
+        s = s.model_copy(update={"request_delay": args.delay})
+
+    if not dry_run and not args.yes and not _confirm_production("PERMANENTLY DELETE"):
+        return 1
+
+    def on_row(o: runner.RowOutcome) -> None:
+        print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
+
+    cb = runner.Callbacks(on_row=on_row, on_log=lambda m: print(f"  · {m}"))
+    summary = runner.run_delete(
+        args.input,
+        mapping,
+        token=token,
+        dry_run=dry_run,
+        limit=args.limit,
+        settings=s,
+        callbacks=cb,
+    )
+
+    print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")
+    for status, count in sorted(summary.counts.items(), key=lambda kv: kv[0].value):
+        print(f"  {status.value:<16} {count}")
+    if summary.aborted:
+        print(f"⚠️  Aborted: {summary.abort_reason}")
+    print(f"Report: {summary.run_dir}")
+    return 0 if not summary.aborted else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="hssk", description="Push health-checkup data to hososuckhoe")
     sub = p.add_subparsers(dest="command", required=True)
@@ -180,16 +223,27 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("-m", "--mapping", help="Mapping YAML path (defaults to user config)")
     t.add_argument("--no-examples", action="store_true", help="Omit the example rows")
     t.add_argument("--no-protect", action="store_true", help="Skip header row protection")
-    t.add_argument(
+    t_mode = t.add_mutually_exclusive_group()
+    t_mode.add_argument(
         "--update",
         action="store_true",
         help="Template for `hssk update` (adds the medicalRecordId / 'Mã hồ sơ' column)",
+    )
+    t_mode.add_argument(
+        "--delete",
+        action="store_true",
+        help="Template for `hssk delete` (2 columns: 'Mã định danh' + 'Mã hồ sơ')",
     )
     t.set_defaults(func=cmd_template)
 
     v = sub.add_parser("validate", help="Offline mapping/data validation (no network)")
     v.add_argument("-i", "--input", required=True, help="Excel file path")
     v.add_argument("-m", "--mapping", help="Mapping YAML path (defaults to user config)")
+    v.add_argument(
+        "--delete",
+        action="store_true",
+        help="Validate a `hssk delete` file (2-column identifier + medicalRecordId mapping)",
+    )
     v.set_defaults(func=cmd_validate)
 
     r = sub.add_parser("run", help="Run the push (dry-run by default)")
@@ -213,6 +267,18 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--delay", type=float, help="Min seconds between requests")
     u.add_argument("--yes", action="store_true", help="Skip the production confirmation prompt")
     u.set_defaults(func=cmd_update)
+
+    d = sub.add_parser(
+        "delete",
+        help="Delete existing records by 'Mã hồ sơ' (dry-run by default); uses mapping.update.yaml",
+    )
+    d.add_argument("-i", "--input", required=True, help="Excel file path")
+    d.add_argument("-m", "--mapping", help="Mapping YAML path (defaults to user config)")
+    d.add_argument("--commit", action="store_true", help="Actually send (default is dry-run)")
+    d.add_argument("--limit", type=int, help="Process at most N rows")
+    d.add_argument("--delay", type=float, help="Min seconds between requests")
+    d.add_argument("--yes", action="store_true", help="Skip the production confirmation prompt")
+    d.set_defaults(func=cmd_delete)
 
     return p
 

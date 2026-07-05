@@ -305,3 +305,106 @@ def test_cmd_run_commit_aborts_on_non_interactive_stdin(
     assert result == 1
 
     _s.cache_clear()
+
+
+# -- delete ----------------------------------------------------------------------------
+
+
+def _make_delete_xlsx(tmp_path: Path, record_id: int = 388261169) -> Path:
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Mã định danh", "Mã hồ sơ"])
+    ws.append(["2700020596A", record_id])
+    p = tmp_path / "delete.xlsx"
+    wb.save(p)
+    return p
+
+
+def test_cmd_template_delete_two_columns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """`template --delete` generates exactly the identifier + Mã hồ sơ columns."""
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))  # overlay seeds here
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        mapping_path = _copy_mapping(tmp_path)
+        out = tmp_path / "delete_template.xlsx"
+        assert main(["template", "-m", str(mapping_path), "-o", str(out), "--delete"]) == 0
+        assert _header_row(out) == ["Mã định danh", "Mã hồ sơ"]
+    finally:
+        _s.cache_clear()
+
+
+def test_cmd_validate_delete_two_col_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        mapping_path = _copy_mapping(tmp_path)
+        xlsx = _make_delete_xlsx(tmp_path)
+        assert main(["validate", "-m", str(mapping_path), "-i", str(xlsx), "--delete"]) == 0
+    finally:
+        _s.cache_clear()
+
+
+@respx.mock
+def test_cmd_delete_dry_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """delete without --commit fetches detail but never calls the delete endpoint."""
+    from hssk.api import records
+
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("HSSK_BASE_URL", BASE)
+    monkeypatch.setenv("HSSK_REQUEST_DELAY", "0")
+    monkeypatch.setenv("HSSK_JITTER", "0")
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        respx.get(f"{BASE}{records.DETAIL_PATH}/388261169").mock(
+            return_value=httpx.Response(200, json={"medicalRecordInfo": {"patientId": 1}})
+        )
+        delete_route = respx.post(f"{BASE}{records.DELETE_PATH}/388261169").mock(
+            return_value=httpx.Response(200, json={})
+        )
+        mapping_path = _copy_mapping(tmp_path)
+        xlsx = _make_delete_xlsx(tmp_path)
+        monkeypatch.setattr("hssk.auth.token_store.load_valid_token", lambda **kw: "fake-token")
+
+        assert main(["delete", "-m", str(mapping_path), "-i", str(xlsx)]) == 0
+        assert delete_route.call_count == 0  # dry-run
+    finally:
+        _s.cache_clear()
+
+
+@respx.mock
+def test_cmd_delete_commit_yes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """delete --commit --yes calls the delete endpoint once."""
+    from hssk.api import records
+
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("HSSK_BASE_URL", BASE)
+    monkeypatch.setenv("HSSK_REQUEST_DELAY", "0")
+    monkeypatch.setenv("HSSK_JITTER", "0")
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        respx.get(f"{BASE}{records.DETAIL_PATH}/388261169").mock(
+            return_value=httpx.Response(200, json={"medicalRecordInfo": {"patientId": 1}})
+        )
+        delete_route = respx.post(f"{BASE}{records.DELETE_PATH}/388261169").mock(
+            return_value=httpx.Response(200, json={})
+        )
+        mapping_path = _copy_mapping(tmp_path)
+        xlsx = _make_delete_xlsx(tmp_path)
+        monkeypatch.setattr("hssk.auth.token_store.load_valid_token", lambda **kw: "fake-token")
+
+        assert main(["delete", "-m", str(mapping_path), "-i", str(xlsx), "--commit", "--yes"]) == 0
+        assert delete_route.call_count == 1
+    finally:
+        _s.cache_clear()

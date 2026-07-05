@@ -488,6 +488,7 @@ class ResultsPanel(QGroupBox):
         ok = (
             self._counts.get(Status.CREATED, 0)
             + self._counts.get(Status.UPDATED, 0)
+            + self._counts.get(Status.DELETED, 0)
             + self._counts.get(Status.DRY_RUN_OK, 0)
         )
         skipped = self._counts.get(Status.SKIPPED_ALREADY, 0)
