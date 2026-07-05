@@ -135,6 +135,21 @@ def test_is_valid_no_exp_assumed_valid():
     assert td.is_valid()
 
 
+def test_is_valid_explicit_skew():
+    td = TokenData(token="x", captured_at=0.0, exp=int(time.time()) + 200)
+    assert td.is_valid(skew=120)  # 200s left > 120s margin
+    assert not td.is_valid(skew=300)  # 200s left < 300s margin
+
+
+def test_is_valid_default_skew_from_settings(monkeypatch):
+    import hssk.auth.token_store as ts
+    from hssk.config import Settings
+
+    monkeypatch.setattr(ts, "default_settings", lambda: Settings(token_exp_skew=300))
+    td = TokenData(token="x", captured_at=0.0, exp=int(time.time()) + 200)
+    assert not td.is_valid()  # unspecified skew resolves to the (overridden) 300s setting
+
+
 def test_seconds_remaining():
     future = int(time.time()) + 600
     td = TokenData(token="x", captured_at=0.0, exp=future)

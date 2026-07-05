@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     connect_timeout: float = 10.0
     read_timeout: float = 30.0
 
+    # Treat a token as expired this many seconds before its actual ``exp`` (clock skew margin).
+    token_exp_skew: int = 120
+
     # Optional base-dir overrides (else platformdirs defaults). Useful for tests/dev.
     data_dir: Path | None = None
     config_dir: Path | None = None

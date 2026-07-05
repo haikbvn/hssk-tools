@@ -10,6 +10,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "HSSK Tools v{version} — Health checkup uploader",
         "vi": "HSSK Tools v{version} — Tải lên dữ liệu khám sức khoẻ",
     },
+    "msg_gui_already_running": {
+        "en": "HSSK Tools is already running. Please use the window that is already open.",
+        "vi": "HSSK Tools đang chạy. Vui lòng dùng cửa sổ đang mở.",
+    },
     "group_login": {"en": "1 · Login", "vi": "1 · Đăng nhập"},
     "group_data": {"en": "2 · Data", "vi": "2 · Dữ liệu"},
     "group_run": {"en": "3 · Run", "vi": "3 · Chạy"},

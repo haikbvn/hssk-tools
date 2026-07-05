@@ -91,6 +91,11 @@ outcome is a `Status` enum value surfaced in the GUI table and the written repor
 - **Resumable & dedup-safe.** `pipeline/ledger.py` is an append-only JSONL keyed by
   `(medicalIdentifierCode, examinationDate)`, written immediately after each successful create, so a
   re-run skips already-pushed rows.
+- **One batch at a time.** `pipeline/lock.py:RunLock` is a cross-process advisory lock held for the
+  whole batch (acquired in `_run_batch`), so a GUI + CLI (or two GUIs) can't race the ledger's
+  read-time `done()` check and double-send. A blocked acquire raises `AlreadyRunning`; the GUI also
+  takes a `QLockFile` at startup so a second window won't even open. Interruptible client waits
+  (`ApiClient(cancel=…)`) let Stop abort a long back-off promptly.
 - **Never guess between patients.** `patients.resolve` raises `MultiMatch` rather than picking one
   (unless the mapping's `search.multi_match` says otherwise).
 

@@ -11,6 +11,14 @@ class ConfigError(HsskError):
     """Invalid mapping / configuration."""
 
 
+class AlreadyRunning(HsskError):
+    """Another hssk batch already holds the run lock (guards the dedup ledger)."""
+
+
+class BatchCancelled(HsskError):
+    """The user cancelled the batch while the client was waiting (throttle/backoff)."""
+
+
 class AuthExpired(HsskError):
     """No valid token, or the server rejected the token (401)."""
 

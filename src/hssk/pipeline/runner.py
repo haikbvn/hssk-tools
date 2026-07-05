@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,12 +28,21 @@ from ..auth.profile import load_profile
 from ..auth.token_store import decode_exp
 from ..config import Settings, output_dir
 from ..config import settings as default_settings
-from ..errors import ApiError, AuthExpired, ConfigError, MultiMatch, PatientNotFound, RateLimited
+from ..errors import (
+    ApiError,
+    AuthExpired,
+    BatchCancelled,
+    ConfigError,
+    MultiMatch,
+    PatientNotFound,
+    RateLimited,
+)
 from ..excel import reader
 from ..excel.coerce import RowResult, coerce_row
 from ..mapping import MappingConfig
 from ..payload import builder, update_builder
 from .ledger import Ledger
+from .lock import RunLock
 from .results import RowOutcome, RunSummary, Status
 
 # Re-export so existing ``from hssk.pipeline.runner import Status`` imports keep working.
@@ -115,6 +125,37 @@ def _run_batch(
     callbacks: Callbacks | None,
     should_cancel: Callable[[], bool] | None,
     process_row: ProcessRow,
+    cancel: threading.Event | None = None,
+) -> RunSummary:
+    """Hold the single-batch lock, then run. The lock covers the whole batch (CLI and GUI),
+    closing the read-time dedup race where two instances both pass ``Ledger.done()``."""
+    with RunLock():
+        return _run_batch_locked(
+            input_path,
+            mapping,
+            token=token,
+            dry_run=dry_run,
+            limit=limit,
+            settings=settings,
+            callbacks=callbacks,
+            should_cancel=should_cancel,
+            process_row=process_row,
+            cancel=cancel,
+        )
+
+
+def _run_batch_locked(
+    input_path: str | Path,
+    mapping: MappingConfig,
+    *,
+    token: str,
+    dry_run: bool,
+    limit: int | None,
+    settings: Settings | None,
+    callbacks: Callbacks | None,
+    should_cancel: Callable[[], bool] | None,
+    process_row: ProcessRow,
+    cancel: threading.Event | None,
 ) -> RunSummary:
     s = settings or default_settings()
     cb = callbacks or Callbacks()
@@ -148,7 +189,7 @@ def _run_batch(
 
     last_raw: Any = None
 
-    with ApiClient(token, s, on_log=cb.on_log) as client:
+    with ApiClient(token, s, on_log=cb.on_log, cancel=cancel) as client:
 
         def raw_logger(data: Any) -> None:
             nonlocal logged_raw, last_raw
@@ -187,6 +228,9 @@ def _run_batch(
 
             try:
                 step = process_row(client, row_index, coerced, raw_logger)
+            except BatchCancelled:
+                aborted, abort_reason = True, "cancelled by user"
+                break
             except AuthExpired as exc:
                 emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
                 aborted, abort_reason = True, str(exc)
@@ -229,6 +273,9 @@ def _run_batch(
 
             try:
                 rid, _resp = step.send(client)
+            except BatchCancelled:
+                aborted, abort_reason = True, "cancelled by user"
+                break
             except AuthExpired as exc:
                 emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
                 aborted, abort_reason = True, str(exc)
@@ -296,6 +343,7 @@ def run(
     callbacks: Callbacks | None = None,
     ledger: Ledger | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    cancel: threading.Event | None = None,
 ) -> RunSummary:
     bad_targets = builder.validate_targets(mapping)
     if bad_targets:
@@ -384,6 +432,7 @@ def run(
         callbacks=cb,
         should_cancel=should_cancel,
         process_row=process_row,
+        cancel=cancel,
     )
 
 
@@ -397,6 +446,7 @@ def run_update(
     settings: Settings | None = None,
     callbacks: Callbacks | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    cancel: threading.Event | None = None,
 ) -> RunSummary:
     """Batch-update existing medical records by overlaying Excel row values onto fetched details.
 
@@ -480,6 +530,7 @@ def run_update(
         callbacks=callbacks,
         should_cancel=should_cancel,
         process_row=process_row,
+        cancel=cancel,
     )
 
 
@@ -493,6 +544,7 @@ def run_delete(
     settings: Settings | None = None,
     callbacks: Callbacks | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    cancel: threading.Event | None = None,
 ) -> RunSummary:
     """Batch-delete existing medical records by ``medicalRecordId``.
 
@@ -574,4 +626,5 @@ def run_delete(
         callbacks=callbacks,
         should_cancel=should_cancel,
         process_row=process_row,
+        cancel=cancel,
     )

@@ -32,8 +32,10 @@ StatusFn = Callable[[str], None]
 CancelFn = Callable[[], bool]
 
 
-def _token_unexpired(token: str, skew: int = 120) -> bool:
+def _token_unexpired(token: str, skew: int | None = None) -> bool:
     """Return True if token's exp is in the future (with skew), or if exp is undecodable."""
+    if skew is None:
+        skew = default_settings().token_exp_skew
     exp = decode_exp(token)
     return exp is None or exp > time.time() + skew
 

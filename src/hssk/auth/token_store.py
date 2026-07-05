@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..config import settings as default_settings
 from ..config import token_path
 from ..errors import AuthExpired
 
@@ -28,7 +29,9 @@ class TokenData:
             return None
         return int(self.exp - (now if now is not None else time.time()))
 
-    def is_valid(self, skew: int = 120, now: float | None = None) -> bool:
+    def is_valid(self, skew: int | None = None, now: float | None = None) -> bool:
+        if skew is None:
+            skew = default_settings().token_exp_skew
         rem = self.seconds_remaining(now)
         if rem is None:
             return True  # can't decode exp; assume usable and let a 401 catch it
@@ -82,7 +85,7 @@ def load_token(path: Path | None = None) -> TokenData | None:
         return None
 
 
-def load_valid_token(skew: int = 120, path: Path | None = None) -> str:
+def load_valid_token(skew: int | None = None, path: Path | None = None) -> str:
     data = load_token(path)
     if data is None:
         raise AuthExpired("No saved token — please log in.")

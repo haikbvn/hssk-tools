@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -200,9 +201,13 @@ class RunWorker(QObject):
         self._settings = settings
         self._mode = mode
         self._cancel = False
+        # Set alongside the flag so the client's throttle/backoff waits abort at once, not just
+        # between rows (a Stop during a long Retry-After backoff would otherwise hang).
+        self._cancel_event = threading.Event()
 
     def cancel(self) -> None:
         self._cancel = True
+        self._cancel_event.set()
 
     @Slot()
     def run(self) -> None:
@@ -235,6 +240,7 @@ class RunWorker(QObject):
                 settings=self._settings,
                 callbacks=cb,
                 should_cancel=lambda: self._cancel,
+                cancel=self._cancel_event,
             )
             self.finished.emit(summary)
         except Exception as exc:

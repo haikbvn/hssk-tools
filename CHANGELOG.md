@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.7.0 — 2026-07-05
+
+### Safety guardrails
+
+- **Single-instance lock.** Only one push can run at a time, across both the GUI and CLI. An
+  advisory OS lock is held for the whole batch, so two windows (or a window + a CLI run) can no
+  longer race the dedup ledger and double-send the same row. A second GUI launch now shows a
+  short "already running" notice instead of opening; a blocked CLI run exits with a clear message.
+- **Responsive Stop.** Pressing Stop during a long server-requested back-off (a `Retry-After`
+  wait) now aborts almost immediately, instead of appearing frozen until the wait elapsed.
+
+### Internal
+
+- The token clock-skew margin is now a single `HSSK_TOKEN_EXP_SKEW` setting (default 120s) rather
+  than a constant repeated in several places.
+
 ## v1.6.0 — 2026-07-05
 
 ### Delete mode
