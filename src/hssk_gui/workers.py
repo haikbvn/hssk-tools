@@ -6,11 +6,13 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from PySide6.QtCore import QObject, Signal, Slot
 
 from hssk.auth.token_store import TokenData
 from hssk.config import Settings
+from hssk.errors import ConfigError
 from hssk.mapping import MappingConfig
 
 _PROGRESS_INTERVAL_S = 0.1  # ~10 Hz cap on progress signals crossing the thread boundary
@@ -129,7 +131,18 @@ class ValidateWorker(QObject):
 
         try:
             header_warnings: list[str] = []
-            rows = reader.read_rows(self._input, self._mapping, on_warning=header_warnings.append)
+            try:
+                rows = reader.read_rows(
+                    self._input, self._mapping, on_warning=header_warnings.append
+                )
+            except ConfigError as exc:
+                # A file-level structural error (missing/duplicate mapped column) means no rows
+                # can be read. Surface it as a synthetic INVALID row in the results table (where
+                # operators look) in addition to the failed banner. The message localizes via
+                # add_validation_row → _tr_coerce_msgs → _tr_file_error.
+                self.problem.emit(ValidationProblem(self._mapping.header_row, "", True, str(exc)))
+                self.failed.emit(str(exc))
+                return
             for w in header_warnings:
                 self.problem.emit(ValidationProblem(self._mapping.header_row, "", False, f"⚠ {w}"))
             total = len(rows)
@@ -176,7 +189,7 @@ class RunWorker(QObject):
         dry_run: bool,
         limit: int | None,
         settings: Settings,
-        update_mode: bool = False,
+        mode: Literal["create", "update", "delete"] = "create",
     ) -> None:
         super().__init__()
         self._input = input_path
@@ -185,7 +198,7 @@ class RunWorker(QObject):
         self._dry_run = dry_run
         self._limit = limit
         self._settings = settings
-        self._update_mode = update_mode
+        self._mode = mode
         self._cancel = False
 
     def cancel(self) -> None:
@@ -208,7 +221,11 @@ class RunWorker(QObject):
                 on_row=lambda o: self.row.emit(o),
                 on_log=lambda m: self.log.emit(m),
             )
-            engine_fn = runner.run_update if self._update_mode else runner.run
+            engine_fn = {
+                "create": runner.run,
+                "update": runner.run_update,
+                "delete": runner.run_delete,
+            }[self._mode]
             summary = engine_fn(
                 self._input,
                 self._mapping,

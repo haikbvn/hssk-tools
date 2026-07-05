@@ -154,6 +154,34 @@ def load_mapping(path: str | Path, *, overlay_path: str | Path | None = None) ->
         raise ConfigError(f"Invalid mapping in {p}:\n{exc}") from exc
 
 
+def filter_for_delete(mapping: MappingConfig) -> MappingConfig:
+    """Reduce a merged (base + update-overlay) mapping to delete mode's two columns.
+
+    Delete mode only needs the identifier column and the ``medicalRecordId`` column, so this keeps
+    exactly those and drops the rest. That matters because ``excel/reader.py`` requires *every*
+    mapped column to be present in the Excel file: a slim 2-column delete file only loads against a
+    slim mapping, while the full update-template file still loads (its extra columns are ignored).
+
+    Selection is target-based, so a user who renamed the ``medicalRecordId`` header in their
+    ``mapping.update.yaml`` keeps working. Raises ConfigError if no required ``medicalRecordId``
+    column survives. Uses ``model_copy`` (no re-validation): the source mapping was already
+    validated and the identifier column is kept verbatim, so ``_check_identifier`` holds by
+    construction.
+    """
+    id_col = mapping.identifier.column
+    kept = {
+        col: spec
+        for col, spec in mapping.columns.items()
+        if col == id_col or spec.target == "medicalRecordId"
+    }
+    if not any(spec.target == "medicalRecordId" and spec.required for spec in kept.values()):
+        raise ConfigError(
+            "Delete mode requires a mapping column with target: medicalRecordId, required: true — "
+            "normally provided by mapping.update.yaml ('Mã hồ sơ')."
+        )
+    return mapping.model_copy(update={"columns": kept}, deep=True)
+
+
 def save_record_defaults(
     path: str | Path,
     *,

@@ -131,13 +131,18 @@ has successfully sent. If a run is interrupted (cancelled, expired session, serv
 simply <b>fix the issue and Start again</b> — already-sent rows are skipped automatically, so no
 record is created twice.</p>
 
-<a name="modes"></a><h3>10 · Create vs Update mode</h3>
-<p>The <b>Mode</b> selector chooses <b>Create</b> (new records, the usual case) or <b>Update</b>
-(modify existing records). Update mode reads <code>medicalRecordId</code> (the <b>Mã hồ sơ</b>
-column) from a small extra mapping file, <code>mapping.update.yaml</code>, that the tool creates and
-merges automatically — so update templates already include the column. You still fill in each
-record's id in Excel; if your header differs from <b>Mã hồ sơ</b>, edit
-<code>mapping.update.yaml</code>.</p>
+<a name="modes"></a><h3>10 · Create, Update and Delete mode</h3>
+<p>The <b>Mode</b> selector chooses <b>Create</b> (new records, the usual case), <b>Update</b>
+(modify existing records) or <b>Delete</b> (remove existing records). Update mode reads
+<code>medicalRecordId</code> (the <b>Mã hồ sơ</b> column) from a small extra mapping file,
+<code>mapping.update.yaml</code>, that the tool creates and merges automatically — so update
+templates already include the column. You still fill in each record's id in Excel; if your header
+differs from <b>Mã hồ sơ</b>, edit <code>mapping.update.yaml</code>.</p>
+<p><b>Delete</b> mode reuses that same <b>Mã hồ sơ</b> column and needs only two columns —
+<b>Mã định danh</b> and <b>Mã hồ sơ</b> (extra columns in a full template are ignored). It fetches
+each record first (to confirm it exists and show the patient) and then removes it. Deletion is
+<b>permanent</b>, so it is dry-run by default like the other modes — untick Dry-run and confirm the
+production prompt to actually delete.</p>
 
 <a name="prefs"></a><h3>11 · Preferences</h3>
 <p>Open <b>Settings → Settings…</b>. On the <b>General</b> tab you can set the delay between rows,
@@ -193,7 +198,7 @@ _GUIDE_HTML_VI = """
   <li><a href="#push">Đẩy dữ liệu thật</a></li>
   <li><a href="#results">Đọc kết quả</a></li>
   <li><a href="#rerun">Chạy lại an toàn</a></li>
-  <li><a href="#modes">Chế độ Tạo mới và Cập nhật</a></li>
+  <li><a href="#modes">Chế độ Tạo mới, Cập nhật và Xoá</a></li>
   <li><a href="#prefs">Cài đặt</a></li>
   <li><a href="#mapping">File mapping cột</a></li>
   <li><a href="#trouble">Xử lý sự cố</a></li>
@@ -290,12 +295,18 @@ thành công. Nếu một lần chạy bị gián đoạn (huỷ, hết phiên, 
 và nhấn Bắt đầu lại</b> — các hàng đã gửi sẽ tự động được bỏ qua, nên không hồ sơ nào bị tạo hai
 lần.</p>
 
-<a name="modes"></a><h3>10 · Chế độ Tạo mới và Cập nhật</h3>
-<p>Ô <b>Chế độ</b> chọn <b>Tạo mới</b> (hồ sơ mới, trường hợp thường gặp) hoặc <b>Cập nhật</b> (sửa
-hồ sơ đã có). Chế độ Cập nhật đọc <code>medicalRecordId</code> (cột <b>Mã hồ sơ</b>) từ một file
-mapping phụ nhỏ, <code>mapping.update.yaml</code>, được công cụ tạo và gộp tự động — nên mẫu Excel
-cho cập nhật đã có sẵn cột này. Bạn vẫn cần điền mã hồ sơ của từng bản ghi vào Excel; nếu tiêu đề
-cột của bạn khác <b>Mã hồ sơ</b>, hãy sửa <code>mapping.update.yaml</code>.</p>
+<a name="modes"></a><h3>10 · Chế độ Tạo mới, Cập nhật và Xoá</h3>
+<p>Ô <b>Chế độ</b> chọn <b>Tạo mới</b> (hồ sơ mới, trường hợp thường gặp), <b>Cập nhật</b> (sửa
+hồ sơ đã có) hoặc <b>Xoá</b> (xoá hồ sơ đã có). Chế độ Cập nhật đọc <code>medicalRecordId</code>
+(cột <b>Mã hồ sơ</b>) từ một file mapping phụ nhỏ, <code>mapping.update.yaml</code>, được công cụ
+tạo và gộp tự động — nên mẫu Excel cho cập nhật đã có sẵn cột này. Bạn vẫn cần điền mã hồ sơ của
+từng bản ghi vào Excel; nếu tiêu đề cột của bạn khác <b>Mã hồ sơ</b>, hãy sửa
+<code>mapping.update.yaml</code>.</p>
+<p>Chế độ <b>Xoá</b> dùng lại chính cột <b>Mã hồ sơ</b> đó và chỉ cần hai cột —
+<b>Mã định danh</b> và <b>Mã hồ sơ</b> (các cột thừa trong mẫu đầy đủ sẽ bị bỏ qua). Công cụ lấy
+chi tiết từng hồ sơ trước (để xác nhận hồ sơ tồn tại và hiển thị bệnh nhân) rồi mới xoá. Việc xoá là
+<b>vĩnh viễn</b>, nên mặc định vẫn là chạy thử như các chế độ khác — bỏ chọn Chạy thử và xác nhận
+để xoá thật.</p>
 
 <a name="prefs"></a><h3>11 · Cài đặt</h3>
 <p>Mở <b>Cài đặt → Cài đặt…</b>. Trong tab <b>Chung</b> bạn có thể đặt độ trễ giữa các hàng,

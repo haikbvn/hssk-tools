@@ -4,9 +4,10 @@ Per-row ``try/except`` isolates failures so one bad row never kills the batch. P
 via plain callbacks (no UI imports) so the same engine drives both the CLI and the GUI. Auth/rate
 problems abort the batch cleanly; the ledger makes the next run resumable.
 
-``run`` (create) and ``run_update`` (update) share one skeleton, ``_run_batch``: it owns the loop,
-per-row coercion, the dry-run write, the send/abort error ladder, and reporting. Each mode supplies
-a ``process_row`` closure for the part that differs (resolve-vs-fetch, ledger, which builder).
+``run`` (create), ``run_update`` (update), and ``run_delete`` (delete) share one skeleton,
+``_run_batch``: it owns the loop, per-row coercion, the dry-run write, the send/abort error ladder,
+and reporting. Each mode supplies a ``process_row`` closure for the part that differs
+(resolve-vs-fetch, ledger, which builder / sender).
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from .ledger import Ledger
 from .results import RowOutcome, RunSummary, Status
 
 # Re-export so existing ``from hssk.pipeline.runner import Status`` imports keep working.
-__all__ = ["Callbacks", "RowOutcome", "RunSummary", "Status", "run", "run_update"]
+__all__ = ["Callbacks", "RowOutcome", "RunSummary", "Status", "run", "run_delete", "run_update"]
 
 
 @dataclass
@@ -56,11 +57,15 @@ class _Proceed:
     payload: dict[str, Any]
     patient_id: Any
     who: str
-    success_status: Status  # CREATED / UPDATED
-    success_verb: str  # "created" / "updated" (kept literal: the GUI matches on these heads)
-    send: Callable[[ApiClient], tuple[Any, Any]]  # exams.create / records.update → (rid, resp)
-    on_commit: Callable[[Any], None] | None = None  # create: ledger mark_done; update: None
-    dryrun_record_id: str | None = None  # create: None; update: medicalRecordId
+    success_status: Status  # CREATED / UPDATED / DELETED
+    success_verb: (
+        str  # "created"/"updated"/"deleted" (kept literal: the GUI matches on these heads)
+    )
+    send: Callable[
+        [ApiClient], tuple[Any, Any]
+    ]  # exams.create / records.update|delete → (rid, resp)
+    on_commit: Callable[[Any], None] | None = None  # create: ledger mark_done; update/delete: None
+    dryrun_record_id: str | None = None  # create: None; update/delete: medicalRecordId
 
 
 # A mode returns a finished RowOutcome (emit & continue) or a _Proceed (run the shared tail).
@@ -68,7 +73,7 @@ class _Proceed:
 ProcessRow = Callable[[ApiClient, int, RowResult, Callable[[Any], None]], "RowOutcome | _Proceed"]
 
 _REQUEST_OVERHEAD_S = 0.8  # rough per-request network+server time (heuristic)
-_REQUESTS_PER_ROW = 2  # create: search + create; update: fetch-detail + update
+_REQUESTS_PER_ROW = 2  # create: search + create; update/delete: fetch-detail + update|delete
 
 
 def estimate_batch_seconds(rows: int, settings: Settings) -> float:
@@ -462,6 +467,100 @@ def run_update(
             success_status=Status.UPDATED,
             success_verb="updated",
             send=lambda c: records.update(c, payload),
+            dryrun_record_id=medical_record_id,
+        )
+
+    return _run_batch(
+        input_path,
+        mapping,
+        token=token,
+        dry_run=dry_run,
+        limit=limit,
+        settings=settings,
+        callbacks=callbacks,
+        should_cancel=should_cancel,
+        process_row=process_row,
+    )
+
+
+def run_delete(
+    input_path: str | Path,
+    mapping: MappingConfig,
+    *,
+    token: str,
+    dry_run: bool = True,
+    limit: int | None = None,
+    settings: Settings | None = None,
+    callbacks: Callbacks | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> RunSummary:
+    """Batch-delete existing medical records by ``medicalRecordId``.
+
+    Like ``run_update``, this fetches each record's detail first — as an existence check and to
+    recover patient info for the dry-run/results display — then sends the empty-body delete. It
+    does not search for patients and does not consult or write the ledger, so re-running a delete
+    on an already-deleted id simply fails at fetch-detail as a per-row FAILED (the batch continues).
+    The mapping must include a column with ``target: medicalRecordId, required: true``.
+    """
+    if not any(
+        spec.target == "medicalRecordId" and spec.required for spec in mapping.columns.values()
+    ):
+        raise ConfigError(
+            "Delete mode requires a mapping column with target: medicalRecordId, required: true. "
+            "See mapping.update.example.yaml for an example ('Mã hồ sơ')."
+        )
+
+    bad_targets = builder.validate_targets(mapping)
+    if bad_targets:
+        raise ConfigError(f"Mapping uses unknown API field target(s): {bad_targets}")
+
+    def process_row(
+        client: ApiClient,
+        row_index: int,
+        coerced: RowResult,
+        raw_logger: Callable[[Any], None],
+    ) -> RowOutcome | _Proceed:
+        identifier = coerced.identifier
+        medical_record_id = coerced.values.get("medicalRecordId")
+        if medical_record_id is None:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.INVALID,
+                message="medicalRecordId is blank",
+                warnings=coerced.warnings,
+            )
+
+        try:
+            detail = records.fetch_detail(client, medical_record_id)
+        except ApiError as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.FAILED,
+                message=f"fetch detail: {exc}",
+                warnings=coerced.warnings,
+            )
+
+        patient_id, mic = records.extract_patient_ref(detail)
+        who = (detail.get("medicalRecordInfo") or detail.get("medicalRecords") or {}).get(
+            "doctorName"
+        ) or ""
+        # The live delete request has an empty body; this payload is only a dry-run marker,
+        # written to payloads/row_N.json so the payloads dir stays meaningful for inspection.
+        payload = {
+            "action": "delete",
+            "medicalRecordId": medical_record_id,
+            "patientId": patient_id,
+            "medicalIdentifierCode": mic,
+        }
+        return _Proceed(
+            payload=payload,
+            patient_id=patient_id,
+            who=who,
+            success_status=Status.DELETED,
+            success_verb="deleted",
+            send=lambda c: records.delete(c, medical_record_id),
             dryrun_record_id=medical_record_id,
         )
 

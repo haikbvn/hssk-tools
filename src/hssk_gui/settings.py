@@ -79,12 +79,20 @@ class UiSettings:
         self._s.setValue("language", value)
 
     @property
-    def update_mode(self) -> bool:
-        return bool(self._s.value("update_mode", False, type=bool))
+    def mode(self) -> str:
+        """Run mode: 'create' | 'update' | 'delete'.
 
-    @update_mode.setter
-    def update_mode(self, value: bool) -> None:
-        self._s.setValue("update_mode", value)
+        Falls back to the legacy boolean ``update_mode`` key so users upgrading from a version
+        that only had create/update keep their stored mode.
+        """
+        stored = str(self._s.value("mode", "", type=str))
+        if stored in ("create", "update", "delete"):
+            return stored
+        return "update" if bool(self._s.value("update_mode", False, type=bool)) else "create"
+
+    @mode.setter
+    def mode(self, value: str) -> None:
+        self._s.setValue("mode", value)
 
     @property
     def check_updates(self) -> bool:

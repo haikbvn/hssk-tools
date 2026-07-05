@@ -78,6 +78,8 @@ _TYPE_HINT = {
 _FIELD_HINT = {
     "medicalIdentifierCode": "Mã tra cứu bệnh nhân: CCCD / số thẻ BHYT / mã định danh "
     "(giống ô tìm kiếm trên web).",
+    "medicalRecordId": "Mã hồ sơ trên hệ thống — lấy từ cột 'Mã hồ sơ' trong danh sách hồ sơ "
+    "trên web. Dùng cho chế độ Cập nhật / Xoá.",
     "examinationDate": "Ngày khám. Bỏ trống giờ sẽ dùng giờ mặc định trong cấu hình.",
     "finishExaminationDate": "Ngày/giờ kết thúc khám. Phải sau 'Ngày khám'.",
     "typeOfExamination": "Mã loại khám. Mặc định: 100 (khám ngoại trú).",

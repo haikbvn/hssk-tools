@@ -2,6 +2,7 @@
 #
 # `hssk update` merges this file's `columns` on top of your main mapping.yaml. Keep it small: it
 # holds only the fields that updating an existing record needs but creating one does not.
+# `hssk delete` reuses this same overlay too (it needs only "Mã hồ sơ" plus the identifier column).
 #
 # `medicalRecordId` is the record's primary key on hososuckhoe.com.vn — the tool can't discover it
 # from a patient search, so you must supply it per row in your Excel (the "Mã hồ sơ" column below).

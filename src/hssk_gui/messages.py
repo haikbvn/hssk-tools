@@ -52,6 +52,40 @@ def _tr_unmapped(msg: str) -> str | None:
     return None
 
 
+# File-level ConfigError shapes raised by excel/reader.py:_check_columns before any row is read.
+# Both start "Excel <name> …"; we condense them (dropping the raw found-headers dump) and localize.
+_FILE_ERR_HEAD = "Excel "
+_MISSING_COLS_MID = " is missing mapped column(s): "
+_MISSING_COLS_TAIL = ". Found headers: "
+_DUP_COLS_MID = " has duplicate mapped column header(s): "
+
+
+def _strip_list_brackets(cols: str) -> str:
+    """Turn a repr'd list like "['Mã hồ sơ', 'X']" into "'Mã hồ sơ', 'X'" for readable display."""
+    cols = cols.strip()
+    if cols.startswith("[") and cols.endswith("]"):
+        return cols[1:-1]
+    return cols
+
+
+def _tr_file_error(msg: str) -> str | None:
+    """Translate the reader's file-level ConfigError shapes; None if the message isn't one."""
+    if not msg.startswith(_FILE_ERR_HEAD):
+        return None
+    body = msg[len(_FILE_ERR_HEAD) :]
+    if _MISSING_COLS_MID in body and _MISSING_COLS_TAIL in body:
+        name, _, rest = body.partition(_MISSING_COLS_MID)
+        cols, _, _headers = rest.partition(_MISSING_COLS_TAIL)  # drop the found-headers dump
+        return tr("msg_missing_columns").format(name=name, cols=_strip_list_brackets(cols))
+    if _DUP_COLS_MID in body:
+        name, _, rest = body.partition(_DUP_COLS_MID)
+        # The engine appends an English explanation after the list ("…. Only the right-most…");
+        # keep only the bracketed list, our own key carries the (localized) explanation.
+        cols = rest.split(". ", 1)[0]
+        return tr("msg_duplicate_columns").format(name=name, cols=_strip_list_brackets(cols))
+    return None
+
+
 def _tr_log(msg: str) -> str:
     """Translate known engine log strings; pass diagnostic/API detail through unchanged."""
     exact = _LOG_EXACT.get(msg)
@@ -101,12 +135,16 @@ _MSG_EXACT = {
 _MSG_HEADS = [  # "<head>" or "<head> — <name>"
     ("created", "msg_row_created"),
     ("updated", "msg_row_updated"),
+    ("deleted", "msg_row_deleted"),
     ("payload built (not sent)", "msg_row_dryrun"),
 ]
 
 
 def _tr_coerce_msg(msg: str) -> str:
     """Translate a single coerce error/warning line from the engine (no ⚠ prefix)."""
+    file_error = _tr_file_error(msg)
+    if file_error is not None:
+        return file_error
     unmapped = _tr_unmapped(msg)
     if unmapped is not None:
         return unmapped

@@ -16,6 +16,7 @@ from hssk_gui.i18n import set_language
 from hssk_gui.messages import (
     _tr_coerce_msg,
     _tr_coerce_msgs,
+    _tr_file_error,
     _tr_log,
     _tr_login_status,
     _tr_message,
@@ -65,7 +66,15 @@ def test_message_exact_phrases() -> None:
 def test_message_head_with_name_keeps_detail() -> None:
     set_language("vi")
     assert _tr_message("created — Nguyễn Văn A") == "Đã tạo — Nguyễn Văn A"
+    assert _tr_message("deleted — Nguyễn Văn A") == "Đã xoá — Nguyễn Văn A"
     assert _tr_message("payload built (not sent) — Le C") == "Đã dựng dữ liệu (chưa gửi) — Le C"
+
+
+def test_message_deleted_head() -> None:
+    set_language("vi")
+    assert _tr_message("deleted") == "Đã xoá"
+    set_language("en")
+    assert _tr_message("deleted — A") == "Deleted — A"
 
 
 def test_message_no_record_id_suffix() -> None:
@@ -219,6 +228,51 @@ def test_unmapped_columns_via_log() -> None:
     assert _tr_log(_UNMAPPED_EN) == _UNMAPPED_EN
 
 
+# -- file-level ConfigError shapes (missing / duplicate mapped columns) -----------------
+
+# Exact shapes raised by excel/reader.py:_check_columns, including the long Found-headers dump.
+_MISSING_RAW = (
+    "Excel hssk_import.xlsx is missing mapped column(s): ['Mã hồ sơ']. "
+    "Found headers: ['Mã định danh', 'Ngày khám', 'Bác sĩ']"
+)
+_DUP_RAW = (
+    "Excel hssk_import.xlsx has duplicate mapped column header(s): ['Mã hồ sơ']. "
+    "Only the right-most copy would be read — rename or remove the duplicates."
+)
+
+
+def test_file_error_missing_columns_condensed_and_localized() -> None:
+    set_language("vi")
+    out = _tr_coerce_msg(_MISSING_RAW)
+    assert "Found headers" not in out  # the raw header dump is dropped
+    assert "['Mã hồ sơ']" not in out and "'Mã hồ sơ'" in out  # brackets stripped
+    assert out.startswith("File hssk_import.xlsx thiếu cột bắt buộc: 'Mã hồ sơ'")
+    set_language("en")
+    out_en = _tr_coerce_msg(_MISSING_RAW)
+    assert "Found headers" not in out_en
+    assert out_en.startswith("Excel hssk_import.xlsx is missing required column(s): 'Mã hồ sơ'")
+    assert "Template button" in out_en
+
+
+def test_file_error_duplicate_columns_localized() -> None:
+    set_language("vi")
+    out = _tr_coerce_msg(_DUP_RAW)
+    assert out.startswith("File hssk_import.xlsx có tiêu đề cột bị trùng: 'Mã hồ sơ'")
+    set_language("en")
+    out_en = _tr_coerce_msg(_DUP_RAW)
+    assert out_en.startswith("Excel hssk_import.xlsx has duplicate column header(s): 'Mã hồ sơ'")
+
+
+def test_file_error_unknown_shape_passes_through() -> None:
+    set_language("vi")
+    assert _tr_file_error("Excel foo.xlsx something else entirely") is None
+    assert _tr_file_error("some raw API diagnostic") is None
+    # via the coerce path, an unmatched message is returned unchanged
+    assert _tr_coerce_msg("Excel foo.xlsx something else entirely") == (
+        "Excel foo.xlsx something else entirely"
+    )
+
+
 def test_log_no_record_id() -> None:
     set_language("vi")
     assert _tr_log("row 5: no record id in server response") == (
@@ -346,6 +400,8 @@ _UI_POLISH_KEYS = [
     "counter_warns",
     "counter_invalid",
     "msg_validation_done",
+    "msg_missing_columns",
+    "msg_duplicate_columns",
 ]
 
 
@@ -355,6 +411,29 @@ def test_ui_polish_keys_resolve_in_both_languages() -> None:
     for lang in ("vi", "en"):
         set_language(lang)
         for key in _UI_POLISH_KEYS:
+            assert tr(key) != key, f"missing {lang} entry for {key}"
+
+
+# -- delete-mode keys resolve in both languages -----------------------------------------
+
+_DELETE_KEYS = [
+    "mode_delete",
+    "btn_start_delete_live",
+    "banner_production_delete",
+    "msg_confirm_push_delete",
+    "status_DELETED",
+    "msg_row_deleted",
+    "dlg_delete_needs_record_id",
+    "msg_delete_needs_record_id",
+]
+
+
+def test_delete_keys_resolve_in_both_languages() -> None:
+    from hssk_gui.i18n import tr
+
+    for lang in ("vi", "en"):
+        set_language(lang)
+        for key in _DELETE_KEYS:
             assert tr(key) != key, f"missing {lang} entry for {key}"
 
 
