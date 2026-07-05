@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.6.0 — 2026-07-05
+
+### Delete mode
+
+- New third mode alongside Create and Update: bulk-delete existing medical records by
+  `medicalRecordId` ("Mã hồ sơ"). Available as `hssk delete` (plus `validate --delete` and
+  `template --delete`) and as a third entry in the GUI's mode selector.
+- Fetches each record's detail first — confirming it exists and showing the patient in the
+  results — before sending the delete. Dry-run by default, like every other mode; a live delete
+  requires `--commit` + typed confirmation (CLI) or unticking Dry-run and confirming a
+  **"PERMANENTLY DELETE"** production prompt (GUI).
+- Reuses the existing `mapping.update.yaml` overlay, filtered down to just the identifier and
+  "Mã hồ sơ" columns, so a minimal 2-column Excel works — a full Create/Update file with extra
+  columns still loads too (unmapped columns are ignored with a warning).
+- Does not use the ledger: re-running a delete on an already-removed record simply reports that
+  row as failed instead of crashing the batch.
+
+### Validation error messages
+
+- A missing or duplicate mapped column in the Excel file used to dump a raw, untranslated wall of
+  text (including every header found in the file) into the top banner. It's now condensed,
+  translated (VI/EN), and shown as a single row in the results table instead — consistent with
+  how every other validation problem is reported.
+
 ## v1.5.1 — 2026-07-04
 
 ### Excel template hardening
