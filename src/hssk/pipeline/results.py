@@ -11,6 +11,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from ..events import Msg, render_en
+
 
 class Status(StrEnum):
     CREATED = "CREATED"
@@ -33,11 +35,23 @@ class RowOutcome:
     status: Status
     patient_id: Any = None
     record_id: Any = None
-    message: str = ""
-    warnings: list[str] = field(default_factory=list)
+    # Typed message(s) for this row — usually one, but an INVALID row carries every coerce error.
+    # Frontends render these (the GUI in the UI language, `message` below in English).
+    msgs: list[Msg] = field(default_factory=list)
+    warnings: list[Msg] = field(default_factory=list)
     # ISO-8601 local time, stamped by the runner when the outcome is recorded. Kept last so
     # positional construction of the fields above keeps working.
     timestamp: str = ""
+
+    @property
+    def message(self) -> str:
+        """English rendering of the message(s), for the CLI and written reports (byte-stable)."""
+        return "; ".join(render_en(m) for m in self.msgs)
+
+    @property
+    def warning_texts(self) -> list[str]:
+        """English renderings of the warnings, for the CLI and written reports."""
+        return [render_en(m) for m in self.warnings]
 
 
 @dataclass

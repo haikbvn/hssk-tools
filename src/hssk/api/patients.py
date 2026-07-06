@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..errors import MultiMatch, PatientNotFound
+from ..events import MessageCode, Msg
 from ..mapping import SearchSpec
 from .client import ApiClient
 
@@ -102,7 +103,10 @@ def resolve(
     """Return the resolved patient for ``query``, or raise PatientNotFound / MultiMatch."""
     candidates = search(client, query, search_spec, on_raw=on_raw)
     if not candidates:
-        raise PatientNotFound(f"no patient found for {query!r}")
+        raise PatientNotFound(
+            f"no patient found for {query!r}",
+            msg=Msg(MessageCode.ROW_NO_PATIENT, {"query": repr(query)}),
+        )
 
     # Prefer candidates that exactly match an echoed identifier field; otherwise fall back to the
     # full set (e.g. a CCCD match, which the API doesn't echo back).
@@ -113,9 +117,20 @@ def resolve(
         if search_spec.multi_match == "first":
             chosen = pool[0]
         elif search_spec.multi_match == "error":
-            raise MultiMatch(f"{len(pool)} patients match {query!r}", candidates=pool)
+            raise MultiMatch(
+                f"{len(pool)} patients match {query!r}",
+                candidates=pool,
+                msg=Msg(MessageCode.ROW_MULTI_MATCH, {"count": len(pool), "query": repr(query)}),
+            )
         else:  # skip
-            raise MultiMatch(f"{len(pool)} patients match {query!r}; skipping", candidates=pool)
+            raise MultiMatch(
+                f"{len(pool)} patients match {query!r}; skipping",
+                candidates=pool,
+                msg=Msg(
+                    MessageCode.ROW_MULTI_MATCH,
+                    {"count": len(pool), "query": repr(query), "skipping": True},
+                ),
+            )
     else:
         chosen = pool[0]
 
@@ -123,7 +138,10 @@ def resolve(
     if pid is None:
         pid = chosen.get("id")
     if pid is None:
-        raise PatientNotFound(f"match for {query!r} has no patientId field")
+        raise PatientNotFound(
+            f"match for {query!r} has no patientId field",
+            msg=Msg(MessageCode.ROW_MATCH_NO_PATIENT_ID, {"query": repr(query)}),
+        )
     return ResolvedPatient(
         patient_id=pid,
         medical_identifier_code=chosen.get("medicalIdentifierCode"),

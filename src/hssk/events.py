@@ -52,6 +52,8 @@ class MessageCode(StrEnum):
     # -- browser-login progress (StatusFn) --
     LOGIN_WAITING = "LOGIN_WAITING"
     LOGIN_TOKEN_CAPTURED = "LOGIN_TOKEN_CAPTURED"
+    # -- raw server/exception text with no translatable structure (detail shown verbatim) --
+    PASSTHROUGH = "PASSTHROUGH"
 
 
 # Verb heads for the four "success"-shaped row messages, reused by render_en.
@@ -93,7 +95,7 @@ def render_en(msg: Msg | LogEvent) -> str:
     p = msg.params
     d = msg.detail or ""
 
-    if c is None:
+    if c is None or c == MessageCode.PASSTHROUGH:
         return d
 
     if c in _ROW_VERB:

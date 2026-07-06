@@ -42,14 +42,15 @@ from hssk.auth.token_store import TokenData, load_token
 from hssk.config import ensure_mapping_file, ensure_update_overlay_file, output_dir
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
+from hssk.events import LogEvent, MessageCode, Msg
 from hssk.mapping import filter_for_delete, load_mapping
 from hssk.pipeline.results import RunSummary, Status
 
 from . import theme
 from .banner import NoticeBanner
 from .i18n import tr
-from .messages import _tr_file_error, _tr_log, _tr_login_status
 from .preferences_dialog import PreferencesDialog
+from .render import render
 from .results_panel import ResultsPanel
 from .settings import UiSettings
 from .update_check import is_newer
@@ -63,6 +64,10 @@ from .workers import (
 
 # Run modes, indexed to match the mode combo (create=0, update=1, delete=2).
 _MODES = ("create", "update", "delete")
+
+# File-level ConfigError codes that ValidateWorker already surfaces as a synthetic table row —
+# _on_validate_failed skips the banner for these to avoid saying the same thing twice.
+_FILE_ERROR_CODES = (MessageCode.FILE_MISSING_COLUMNS, MessageCode.FILE_DUPLICATE_COLUMNS)
 
 
 def _with_shortcut(text: str, button: QPushButton) -> str:
@@ -578,9 +583,7 @@ class MainWindow(QMainWindow):
         self._login_worker = LoginWorker()
         self._login_worker.moveToThread(self._login_thread)
         self._login_thread.started.connect(self._login_worker.run)
-        self._login_worker.status.connect(
-            lambda m: self._set_token_label(_tr_login_status(m), "info")
-        )
+        self._login_worker.status.connect(lambda m: self._set_token_label(render(m), "info"))
         # Stop the thread first, then update UI; only drop our references once the thread has
         # fully finished (dropping a running QThread is a fatal crash).
         self._login_worker.finished.connect(self._login_thread.quit)
@@ -597,7 +600,7 @@ class MainWindow(QMainWindow):
         self._refresh_token_status()
         self._update_start_enabled()
 
-    def _on_login_failed(self, message: str) -> None:
+    def _on_login_failed(self, message: str, _msg: Msg | None) -> None:
         self.login_btn.setEnabled(True)
         self._refresh_token_status()
         self.error_banner.show_message(f"{tr('dlg_login_failed')}: {message}")
@@ -781,13 +784,13 @@ class MainWindow(QMainWindow):
             self._validated_path = self._excel_path
             self._validated_invalid = summary.invalid
 
-    def _on_validate_failed(self, message: str) -> None:
+    def _on_validate_failed(self, message: str, msg: Msg | None) -> None:
         self.results.flush_now()
         self.results.set_status(tr("lbl_error"))
         # A file-level structural error (missing/duplicate mapped column) is already shown as a
         # synthetic INVALID row in the results table by ValidateWorker, so don't repeat it in the
         # banner. Other validation failures have no table row, so they still surface in the banner.
-        if _tr_file_error(message) is not None:
+        if msg is not None and msg.code in _FILE_ERROR_CODES:
             return
         self.error_banner.show_message(f"{tr('dlg_validation')}: {message}")
 
@@ -937,12 +940,12 @@ class MainWindow(QMainWindow):
         self._update_start_enabled()  # _run_thread is set, so this also disables Start/Validate
         self._run_thread.start()
 
-    def _on_run_log(self, msg: str) -> None:
-        self.results.append_log(_tr_log(msg))
+    def _on_run_log(self, event: LogEvent) -> None:
+        self.results.append_log(render(event))
         # The engine's pre-run token-lifetime estimate is easy to miss in the log pane —
-        # mirror it in the banner (wording matched in hssk_gui/messages.py).
-        if msg.startswith("token may expire before this batch finishes"):
-            self.error_banner.show_message(_tr_log(msg), severity="warning")
+        # mirror it in the banner too.
+        if event.code == MessageCode.LOG_TOKEN_SHORT:
+            self.error_banner.show_message(render(event), severity="warning")
 
     def _stop_run(self) -> None:
         if self._run_worker is not None:
@@ -982,10 +985,10 @@ class MainWindow(QMainWindow):
         # buttons are enabled above — surface the detail + recovery guidance in the log pane.
         self.results.append_log("\n" + "\n".join(parts))
 
-    def _on_run_failed(self, message: str) -> None:
+    def _on_run_failed(self, message: str, msg: Msg | None) -> None:
         self.results.flush_now()
         self.results.set_status(tr("lbl_error"))
-        text = _tr_file_error(message) or message
+        text = render(msg) if msg is not None else message
         self.error_banner.show_message(f"{tr('dlg_run_failed')}: {text}")
 
     def _on_run_thread_finished(self) -> None:

@@ -22,6 +22,7 @@ from .. import __version__
 from ..config import Settings
 from ..config import settings as default_settings
 from ..errors import ApiError, AuthExpired, BatchCancelled, RateLimited
+from ..events import LogEvent, MessageCode
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -32,7 +33,7 @@ class ApiClient:
         token: str,
         settings: Settings | None = None,
         *,
-        on_log: Callable[[str], None] | None = None,
+        on_log: Callable[[LogEvent], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
         cancel: threading.Event | None = None,
@@ -99,7 +100,12 @@ class ApiClient:
         else:
             capped = min(self.s.backoff_cap, self.s.backoff_base * (2**attempt))
             delay = random.uniform(0, capped)  # full jitter
-        self.on_log(f"retry in {delay:.1f}s (attempt {attempt + 1})")
+        self.on_log(
+            LogEvent(
+                MessageCode.LOG_RETRY,
+                {"delay": f"{delay:.1f}", "attempt": str(attempt + 1)},
+            )
+        )
         self._wait(delay)
 
     @staticmethod

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .config import ensure_mapping_file, ensure_update_overlay_file, settings
 from .errors import ConfigError, HsskError
+from .events import render_en
 from .excel import reader
 from .excel.coerce import coerce_row
 from .mapping import filter_for_delete, load_mapping
@@ -51,7 +52,7 @@ def cmd_login(args: argparse.Namespace) -> int:
     from .auth.profile import load_profile
     from .auth.token_store import mask
 
-    data = capture_token(on_status=lambda m: print(f"  {m}"))
+    data = capture_token(on_status=lambda m: print(f"  {render_en(m)}"))
     rem = data.seconds_remaining()
     print(f"✓ Token saved ({mask(data.token)}).")
     if rem is not None:
@@ -79,7 +80,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if bad:
         print(f"✗ Mapping uses unknown API field target(s): {bad}")
         return 1
-    rows = reader.read_rows(args.input, mapping, on_warning=lambda m: print(f"  ⚠ {m}"))
+    rows = reader.read_rows(args.input, mapping, on_warning=lambda m: print(f"  ⚠ {render_en(m)}"))
     valid = invalid = 0
     for idx, raw in rows:
         r = coerce_row(raw, mapping, idx)
@@ -87,9 +88,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
             valid += 1
         else:
             invalid += 1
-            print(f"  row {idx}: ERROR  {'; '.join(r.errors)}")
+            print(f"  row {idx}: ERROR  {'; '.join(render_en(e) for e in r.errors)}")
         for w in r.warnings:
-            print(f"  row {idx}: warn   {w}")
+            print(f"  row {idx}: warn   {render_en(w)}")
     print(f"\n{valid} valid, {invalid} invalid, {len(rows)} total.")
     return 0 if invalid == 0 else 1
 
@@ -115,7 +116,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     def on_row(o: runner.RowOutcome) -> None:
         print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
 
-    cb = runner.Callbacks(on_row=on_row, on_log=lambda m: print(f"  · {m}"))
+    cb = runner.Callbacks(on_row=on_row, on_log=lambda e: print(f"  · {render_en(e)}"))
     summary = runner.run(
         args.input,
         mapping,
@@ -153,7 +154,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     def on_row(o: runner.RowOutcome) -> None:
         print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
 
-    cb = runner.Callbacks(on_row=on_row, on_log=lambda m: print(f"  · {m}"))
+    cb = runner.Callbacks(on_row=on_row, on_log=lambda e: print(f"  · {render_en(e)}"))
     summary = runner.run_update(
         args.input,
         mapping,
@@ -190,7 +191,7 @@ def cmd_delete(args: argparse.Namespace) -> int:
     def on_row(o: runner.RowOutcome) -> None:
         print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
 
-    cb = runner.Callbacks(on_row=on_row, on_log=lambda m: print(f"  · {m}"))
+    cb = runner.Callbacks(on_row=on_row, on_log=lambda e: print(f"  · {render_en(e)}"))
     summary = runner.run_delete(
         args.input,
         mapping,

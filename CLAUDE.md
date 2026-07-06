@@ -161,8 +161,15 @@ exits the app and does not persist `terms_accepted`), then opens `MainWindow`.
 
 Every user-facing string goes through `i18n.tr(key)` — a flat VI/EN dict in `i18n.py`, **Vietnamese
 default**, switched in Preferences (applies on restart). Add a key there rather than a bare literal.
-Subtle cross-boundary coupling: the engine emits a few literal English verb heads ("created" /
-"updated") in row messages that the GUI matches on, so those stay untranslated at the source.
+
+**Engine→frontend messages are typed, not strings.** The engine never authors a human sentence: it
+emits `events.MessageCode` + a params dict (as `Msg` on `RowOutcome.msgs` / `ConfigError.msg`, and
+`LogEvent` on `Callbacks.on_log`). `events.render_en` is the single engine-owned English renderer
+(CLI + written reports stay byte-stable; `events.jsonl` also stores `codes`+params). The GUI renders
+the same codes in the UI language via `hssk_gui/render.py` (keys `msg_<CODE>` in `i18n.py`). When you
+add an engine message, add a `MessageCode` + a `render_en` branch + `msg_<CODE>` vi/en keys — never a
+bare English string the GUI must parse. `Msg.detail` carries raw server/exception text shown verbatim.
+`tests/golden/vi_messages_golden.json` + `test_events.py`/`test_gui_i18n.py` pin the wording.
 
 Dialogs: `preferences_dialog` (run defaults + record defaults — the latter edits the mapping's
 `defaults` block in place), `legal_dialog` (Terms/Privacy/Security, also opened read-only from Help),

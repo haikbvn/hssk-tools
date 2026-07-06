@@ -176,14 +176,17 @@ def test_duplicate_unmapped_header_ignored(tmp_path: Path):
 
 
 def test_extra_header_warns(tmp_path: Path):
+    from hssk.events import MessageCode, render_en
+
     p = _write_xlsx(tmp_path, ["Mã định danh", "Extra"], [["ID001", "x"]])
     mapping = _minimal_mapping(["Mã định danh"])
-    warnings: list[str] = []
+    warnings = []
     result = read_rows(p, mapping, on_warning=warnings.append)
     assert len(result) == 1  # return value unchanged
     assert len(warnings) == 1
-    assert "'Extra'" in warnings[0]
-    assert "unmapped Excel column" in warnings[0]
+    assert warnings[0].code == MessageCode.LOG_UNMAPPED_COLUMNS
+    assert "'Extra'" in render_en(warnings[0])
+    assert "unmapped Excel column" in render_en(warnings[0])
 
 
 def test_no_callback_stays_silent(tmp_path: Path):

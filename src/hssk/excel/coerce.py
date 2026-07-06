@@ -17,6 +17,7 @@ from typing import Any
 
 from dateutil import parser as date_parser
 
+from ..events import MessageCode, Msg
 from ..mapping import ColumnSpec, MappingConfig
 
 # Soft sanity ranges (warn, don't block) keyed by target field.
@@ -49,8 +50,8 @@ class RowResult:
     row_index: int  # 1-based Excel row number
     raw: dict[str, Any] = field(default_factory=dict)
     values: dict[str, Any] = field(default_factory=dict)  # target -> coerced value
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    errors: list[Msg] = field(default_factory=list)
+    warnings: list[Msg] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -140,12 +141,20 @@ def coerce_row(raw: dict[str, Any], mapping: MappingConfig, row_index: int) -> R
         value = raw.get(column)
         if _is_blank(value):
             if spec.required:
-                result.errors.append(f"missing required column {column!r}")
+                result.errors.append(
+                    Msg(MessageCode.COERCE_MISSING_REQUIRED, {"col": repr(column)})
+                )
             continue
         try:
             coerced = _coerce_one(value, spec)
         except (ValueError, TypeError, OverflowError) as exc:
-            result.errors.append(f"{column!r}: cannot parse {value!r} as {spec.type} ({exc})")
+            result.errors.append(
+                Msg(
+                    MessageCode.COERCE_CANNOT_PARSE,
+                    {"col": repr(column), "value": repr(value), "type": spec.type},
+                    detail=str(exc),
+                )
+            )
             continue
         result.values[spec.target] = coerced
         _range_check(spec.target, coerced, result)
@@ -165,7 +174,12 @@ def _range_check(target: str, value: Any, result: RowResult) -> None:
         return
     lo, hi = lo_hi
     if not (lo <= n <= hi):
-        result.warnings.append(f"{target}={value} outside expected range {lo}–{hi}")
+        result.warnings.append(
+            Msg(
+                MessageCode.COERCE_RANGE,
+                {"target": target, "value": value, "lo": lo, "hi": hi},
+            )
+        )
 
 
 def _compute_bmi(mapping: MappingConfig, result: RowResult) -> None:
@@ -204,5 +218,5 @@ def _check_dates(result: RowResult) -> None:
         return
     if f < s:
         result.errors.append(
-            f"finishExaminationDate ({finish}) is before examinationDate ({start})"
+            Msg(MessageCode.COERCE_DATE_BEFORE, {"finish": finish, "start": start})
         )

@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.8.0 — 2026-07-06
+
+### Internal — typed events across the engine↔GUI boundary
+
+- The engine no longer authors human-readable English strings for row results and log lines.
+  It emits stable typed events (`hssk.events.MessageCode` + params); each frontend renders the
+  wording it needs. This removes a brittle, untested contract where the GUI re-parsed the engine's
+  English by prefix-matching — a reworded engine message used to silently fall back to untranslated
+  text in the Vietnamese UI. Adding a language (or rewording a message) no longer touches the engine.
+- The CLI and the written reports keep byte-identical English (`events.render_en`), pinned by a
+  golden test captured before the change. `events.jsonl` now additionally records each row's
+  message `codes` + params, so reports are machine-readable without re-parsing English.
+- The 221-line GUI string-parsing layer (`hssk_gui/messages.py`) is deleted, replaced by a small
+  `hssk_gui/render.py`; a contract test asserts every message code renders in both languages.
+
+No user-visible behavior change (one edge case is intentionally cleaner: an unexpected coercion
+crash now shows its raw detail verbatim instead of partially re-translating arbitrary text).
+
 ## v1.7.0 — 2026-07-05
 
 ### Safety guardrails

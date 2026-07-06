@@ -43,7 +43,7 @@ def _row(outcome: RowOutcome) -> list[Any]:
         outcome.patient_id if outcome.patient_id is not None else "",
         outcome.record_id if outcome.record_id is not None else "",
         outcome.message,
-        "; ".join(outcome.warnings),
+        "; ".join(outcome.warning_texts),
         outcome.timestamp,
     ]
 
@@ -59,10 +59,12 @@ def write_report(run_dir: Path, outcomes: Iterable[RowOutcome], *, dry_run: bool
         for o in outcomes:
             w.writerow(_row(o))
 
-    # JSONL events
+    # JSONL events. Beyond the human columns, record the typed message codes + params so the
+    # file is machine-readable (dashboards / re-localization) without re-parsing English.
     with (run_dir / "events.jsonl").open("w", encoding="utf-8") as f:
         for o in outcomes:
             record = dict(zip(_COLUMNS, _row(o), strict=True))
+            record["codes"] = [{"code": m.code.value, "params": m.params} for m in o.msgs]
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     # XLSX. write_only streams rows to disk instead of holding the whole sheet in memory,

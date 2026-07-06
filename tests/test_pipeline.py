@@ -8,6 +8,7 @@ from openpyxl import Workbook
 
 from hssk.api import exams, patients
 from hssk.config import Settings
+from hssk.events import render_en
 from hssk.pipeline import runner
 from hssk.pipeline.ledger import Ledger
 from hssk.pipeline.runner import Status
@@ -184,7 +185,7 @@ def test_no_patient(mapping, tmp_path):
         dry_run=False,
         settings=s,
         ledger=Ledger(tmp_path / "l.jsonl"),
-        callbacks=runner.Callbacks(on_log=logs.append),
+        callbacks=runner.Callbacks(on_log=lambda e: logs.append(render_en(e))),
     )
     assert summary.counts.get(Status.NO_PATIENT) == 1
     # The failed lookup's exact server response is kept for debugging.
@@ -276,7 +277,7 @@ def test_corrupt_ledger_line_warns_on_run(mapping, tmp_path):
         dry_run=True,
         settings=s,
         ledger=Ledger.load(ledger_file),
-        callbacks=runner.Callbacks(on_log=logs.append),
+        callbacks=runner.Callbacks(on_log=lambda e: logs.append(render_en(e))),
     )
     assert any("1 unreadable ledger line(s)" in m for m in logs)
 
@@ -296,7 +297,7 @@ def test_create_without_record_id_still_created_but_warns(mapping, tmp_path):
         dry_run=False,
         settings=s,
         ledger=Ledger(tmp_path / "l.jsonl"),
-        callbacks=runner.Callbacks(on_log=logs.append),
+        callbacks=runner.Callbacks(on_log=lambda e: logs.append(render_en(e))),
     )
     assert summary.created == 1
     outcome = next(o for o in summary.outcomes if o.status is Status.CREATED)

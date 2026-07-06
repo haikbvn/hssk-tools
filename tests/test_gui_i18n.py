@@ -1,364 +1,211 @@
-"""Translation of engine-authored result/validation messages in the GUI layer.
+"""Contract test: every engine ``MessageCode`` renders in both GUI languages.
 
-These helpers encode a contract with the runner and coerce modules: they translate a
-small set of fixed English phrases and pass all other (diagnostic / API) text through
-untouched. If the runner's wording drifts, these tests should catch it.
+The engine emits typed events (``hssk.events.MessageCode`` + params); ``hssk_gui/render.py`` is
+the GUI-side renderer, the counterpart to the engine's own ``render_en``. This file is what used
+to pin ``hssk_gui/messages.py``'s prefix-matching of raw engine strings — that module is gone, so
+the contract is now: every code has a real vi + en translation, and produces the exact wording the
+pre-refactor GUI showed (pinned against ``tests/golden/vi_messages_golden.json``, captured from the
+old messages.py before this refactor).
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
+from hssk.events import MessageCode, Msg, render_en
 from hssk.pipeline.results import Status
-from hssk_gui.i18n import set_language
-from hssk_gui.messages import (
-    _tr_coerce_msg,
-    _tr_coerce_msgs,
-    _tr_file_error,
-    _tr_log,
-    _tr_login_status,
-    _tr_message,
-    _tr_status,
-)
+from hssk_gui.i18n import set_language, tr
+from hssk_gui.render import render, render_all, render_status, render_validation_row
 from hssk_gui.workers import ValidationSummary
+
+GOLDEN = json.loads(
+    (Path(__file__).parent / "golden" / "vi_messages_golden.json").read_text(encoding="utf-8")
+)
 
 
 @pytest.fixture(autouse=True)
 def _reset_language() -> Iterator[None]:
-    # Every test sets the language it needs; restore the default afterwards so a stray
-    # language never leaks into another test.
     yield
     set_language("vi")
 
 
-# -- _tr_status -------------------------------------------------------------------------
+# -- render_status ------------------------------------------------------------------------
 
 
 def test_status_every_enum_value_translates() -> None:
     set_language("vi")
     for status in Status:
-        out = _tr_status(status)
-        # A real translation never equals the bare key form ("status_<VALUE>") and is
-        # non-empty; the raw enum value would only show through on a missing key.
+        out = render_status(status)
         assert out
         assert not out.startswith("status_")
 
 
 def test_status_specific_labels() -> None:
     set_language("en")
-    assert _tr_status(Status.CREATED) == "Created"
-    assert _tr_status(Status.SKIPPED_ALREADY) == "Skipped (already sent)"
+    assert render_status(Status.CREATED) == "Created"
+    assert render_status(Status.SKIPPED_ALREADY) == "Skipped (already sent)"
     set_language("vi")
-    assert _tr_status(Status.CREATED) == "Đã tạo"
+    assert render_status(Status.CREATED) == "Đã tạo"
 
 
-# -- _tr_message: engine-authored row messages ------------------------------------------
+# -- every MessageCode has a real translation, matched against the pre-refactor golden ----
+
+_WHO = "Nguyễn Thị Hoa"
+_Q = "'027148003240'"
+
+# label (matches the golden's key) -> Msg built the way the engine would build it.
+_CASES: dict[str, Msg] = {
+    "row_created_bare": Msg(MessageCode.ROW_CREATED),
+    "row_created_who": Msg(MessageCode.ROW_CREATED, {"who": _WHO}),
+    "row_updated_bare": Msg(MessageCode.ROW_UPDATED),
+    "row_updated_who": Msg(MessageCode.ROW_UPDATED, {"who": _WHO}),
+    "row_deleted_bare": Msg(MessageCode.ROW_DELETED),
+    "row_deleted_who": Msg(MessageCode.ROW_DELETED, {"who": _WHO}),
+    "row_dryrun_bare": Msg(MessageCode.ROW_DRY_RUN),
+    "row_dryrun_who": Msg(MessageCode.ROW_DRY_RUN, {"who": _WHO}),
+    "row_created_no_rid": Msg(MessageCode.ROW_CREATED, {"who": _WHO, "no_record_id": True}),
+    "row_created_bare_no_rid": Msg(MessageCode.ROW_CREATED, {"no_record_id": True}),
+    "row_already": Msg(MessageCode.ROW_ALREADY_PROCESSED),
+    "row_id_blank": Msg(MessageCode.ROW_ID_BLANK),
+    "row_recordid_blank": Msg(MessageCode.ROW_RECORD_ID_BLANK),
+    "row_fetch_detail": Msg(MessageCode.ROW_FETCH_DETAIL_FAILED, detail="HTTP 404"),
+    "row_no_patient": Msg(MessageCode.ROW_NO_PATIENT, {"query": _Q}),
+    "row_multi_match": Msg(MessageCode.ROW_MULTI_MATCH, {"count": 2, "query": _Q}),
+    "row_multi_match_skip": Msg(
+        MessageCode.ROW_MULTI_MATCH, {"count": 2, "query": _Q, "skipping": True}
+    ),
+    "row_match_no_pid": Msg(MessageCode.ROW_MATCH_NO_PATIENT_ID, {"query": _Q}),
+    "coerce_cannot_parse": Msg(
+        MessageCode.COERCE_CANNOT_PARSE,
+        {"col": "'Tuổi'", "value": "'abc'", "type": "int"},
+        detail="invalid",
+    ),
+    "coerce_range_warn": Msg(
+        MessageCode.COERCE_RANGE, {"target": "Mạch", "value": 250, "lo": 30, "hi": 200}
+    ),
+    "coerce_date_before": Msg(
+        MessageCode.COERCE_DATE_BEFORE, {"finish": "17/06/2026", "start": "18/06/2026"}
+    ),
+    "coerce_missing_required": Msg(MessageCode.COERCE_MISSING_REQUIRED, {"col": "'Mã định danh'"}),
+    "file_missing_columns": Msg(
+        MessageCode.FILE_MISSING_COLUMNS,
+        {"name": "foo.xlsx", "missing": ["Mã hồ sơ"], "headers": ["A", "B"]},
+    ),
+    "file_duplicate_columns": Msg(
+        MessageCode.FILE_DUPLICATE_COLUMNS, {"name": "foo.xlsx", "dups": ["X"]}
+    ),
+    "log_first_search": Msg(MessageCode.LOG_FIRST_SEARCH_SAVED),
+    "log_retry": Msg(MessageCode.LOG_RETRY, {"delay": "2.5", "attempt": 3}),
+    "log_no_record_id": Msg(MessageCode.LOG_NO_RECORD_ID, {"row": 5}),
+    "log_ledger_corrupt": Msg(MessageCode.LOG_LEDGER_CORRUPT, {"n": 3}),
+    "log_saved_search": Msg(
+        MessageCode.LOG_SEARCH_SAVED_ROW, {"row": 5, "filename": "search_response_row_5.json"}
+    ),
+    "log_unmapped": Msg(MessageCode.LOG_UNMAPPED_COLUMNS, {"n": 2, "cols": "'A', 'B'"}),
+    "log_token_short": Msg(MessageCode.LOG_TOKEN_SHORT, {"needed": 10, "left": 5}),
+    "login_waiting": Msg(MessageCode.LOGIN_WAITING),
+    "login_captured": Msg(MessageCode.LOGIN_TOKEN_CAPTURED),
+}
+
+# ROW_COERCE_ERROR is deliberately excluded from the golden cross-check: the GUI shows the raw
+# passthrough detail unmodified (see test_coerce_error_shows_raw_detail_unmodified below), which
+# differs from the golden's old messages.py behavior of re-parsing that detail text.
+
+_CODES_WITHOUT_GOLDEN_CASE = {
+    MessageCode.ROW_COERCE_ERROR,  # tested separately (see below)
+    MessageCode.ROW_SEARCH_FAILED,  # tested separately (see below)
+    MessageCode.PASSTHROUGH,  # not a real code — no template, always render_en passthrough
+}
 
 
-def test_message_exact_phrases() -> None:
+def test_every_code_has_a_golden_case_or_is_explicitly_exempt() -> None:
+    covered = {m.code for m in _CASES.values()} | _CODES_WITHOUT_GOLDEN_CASE
+    assert covered == set(MessageCode), f"missing coverage: {set(MessageCode) - covered}"
+
+
+# For coerce_range_warn only: the golden's "⚠ " is a display prefix the old code added when
+# showing the message in a *warnings* list (_tr_coerce_msgs), not part of the message template
+# itself — render_validation_row (tested below) adds the same prefix contextually. Every other
+# golden "⚠ " (e.g. log_token_short) is baked into that specific translation and must match as-is.
+_STRIP_WARNING_MARKER = {"coerce_range_warn"}
+
+
+@pytest.mark.parametrize("label", sorted(_CASES))
+def test_render_matches_golden_vi_and_en(label: str) -> None:
+    golden = GOLDEN["messages"][label]
+    msg = _CASES[label]
+    strip = label in _STRIP_WARNING_MARKER
     set_language("vi")
-    assert _tr_message("already processed") == "Đã xử lý trước đó"
-    assert _tr_message("identifier is blank") == "Mã định danh trống"
-
-
-def test_message_head_with_name_keeps_detail() -> None:
-    set_language("vi")
-    assert _tr_message("created — Nguyễn Văn A") == "Đã tạo — Nguyễn Văn A"
-    assert _tr_message("deleted — Nguyễn Văn A") == "Đã xoá — Nguyễn Văn A"
-    assert _tr_message("payload built (not sent) — Le C") == "Đã dựng dữ liệu (chưa gửi) — Le C"
-
-
-def test_message_deleted_head() -> None:
-    set_language("vi")
-    assert _tr_message("deleted") == "Đã xoá"
+    expected_vi = golden["vi"].removeprefix("⚠ ") if strip else golden["vi"]
+    assert render(msg) == expected_vi
     set_language("en")
-    assert _tr_message("deleted — A") == "Deleted — A"
+    expected_en = golden["en"].removeprefix("⚠ ") if strip else golden["en"]
+    assert render(msg) == expected_en
 
 
-def test_message_no_record_id_suffix() -> None:
+def test_coerce_error_shows_raw_detail_unmodified() -> None:
+    # Unlike the old messages.py (which re-parsed the coerce detail text for fixed phrases),
+    # the GUI now shows a translated prefix + the raw detail verbatim — the detail itself is
+    # inherently free-form (an arbitrary exception message) and is never re-translated.
+    msg = Msg(MessageCode.ROW_COERCE_ERROR, detail="'Tuổi': cannot parse 'abc' as int (bad)")
     set_language("vi")
-    assert _tr_message("created — Nguyễn A (no record id returned)") == (
-        "Đã tạo — Nguyễn A (không nhận được mã hồ sơ)"
-    )
-    # who-less variant: the suffix must be stripped before head matching
-    assert _tr_message("created (no record id returned)") == ("Đã tạo (không nhận được mã hồ sơ)")
+    assert render(msg) == "Lỗi chuyển đổi: 'Tuổi': cannot parse 'abc' as int (bad)"
     set_language("en")
-    assert _tr_message("created — A (no record id returned)") == (
-        "Created — A (no record id returned)"
-    )
+    assert render(msg) == "Coercion error: 'Tuổi': cannot parse 'abc' as int (bad)"
 
 
-def test_message_coercion_prefix() -> None:
+def test_search_failed_is_passthrough_with_prefix() -> None:
+    # Mirrors render_en: "search: {detail}", never translated (raw API/exception text).
+    msg = Msg(MessageCode.ROW_SEARCH_FAILED, detail="HTTP 500 server error")
+    for lang in ("vi", "en"):
+        set_language(lang)
+        assert render(msg) == render_en(msg) == "search: HTTP 500 server error"
+
+
+def test_passthrough_code_is_detail_verbatim() -> None:
+    msg = Msg(MessageCode.PASSTHROUGH, detail="PatientNotFound: no match for 123")
+    for lang in ("vi", "en"):
+        set_language(lang)
+        assert render(msg) == "PatientNotFound: no match for 123"
+
+
+def test_none_code_is_detail_verbatim() -> None:
+    from hssk.events import LogEvent
+
+    event = LogEvent(code=None, detail="some raw diagnostic")
+    assert render(event) == "some raw diagnostic"
+
+
+# -- render_all / render_validation_row (multi-message rows) ------------------------------
+
+
+def test_render_all_joins_with_semicolon() -> None:
     set_language("vi")
-    out = _tr_message("coercion error: missing required column 'Ngày khám'")
-    assert out == "Lỗi chuyển đổi: thiếu cột bắt buộc 'Ngày khám'"
+    msgs = [
+        Msg(MessageCode.COERCE_MISSING_REQUIRED, {"col": "'X'"}),
+        Msg(MessageCode.COERCE_CANNOT_PARSE, {"col": "'Tuổi'", "value": "'a'", "type": "int"}, "e"),
+    ]
+    assert render_all(msgs) == ("thiếu cột bắt buộc 'X'; 'Tuổi': không thể đọc 'a' thành int (e)")
 
 
-def test_message_bare_compound_coerce_errors() -> None:
-    # The runner joins coerced.errors with "; " and emits them with no prefix.
+def test_render_validation_row_prefixes_warnings() -> None:
     set_language("vi")
-    out = _tr_message("missing required column 'X'; 'Tuổi': cannot parse 'a' as int")
-    assert out == "thiếu cột bắt buộc 'X'; 'Tuổi': không thể đọc 'a' thành int"
-
-
-def test_message_no_patient_found() -> None:
-    set_language("vi")
-    assert _tr_message("no patient found for '027xxx'") == ("không tìm thấy bệnh nhân với '027xxx'")
-
-
-def test_message_no_patient_id_field() -> None:
-    set_language("vi")
-    assert _tr_message("match for '027xxx' has no patientId field") == (
-        "khớp với '027xxx' không có trường patientId"
-    )
-
-
-def test_message_multi_match() -> None:
-    set_language("vi")
-    assert _tr_message("3 patients match '027xxx'") == "3 bệnh nhân khớp với '027xxx'"
-    assert _tr_message("3 patients match '027xxx'; skipping") == (
-        "3 bệnh nhân khớp với '027xxx'; bỏ qua"
-    )
-
-
-def test_message_patient_english_passthrough() -> None:
-    set_language("en")
-    assert _tr_message("no patient found for '027xxx'") == "no patient found for '027xxx'"
-    assert _tr_message("3 patients match '027xxx'") == "3 patients match '027xxx'"
-
-
-def test_message_raw_text_passes_through() -> None:
-    set_language("vi")
-    raw = "PatientNotFound: no match for 123"
-    assert _tr_message(raw) == raw
-    fetch = _tr_message("fetch detail: HTTP 500 server error")
-    assert fetch == "Lỗi lấy chi tiết: HTTP 500 server error"
-
-
-def test_message_empty() -> None:
-    assert _tr_message("") == ""
-
-
-def test_message_english_is_passthrough() -> None:
-    set_language("en")
-    assert _tr_message("missing required column 'X'") == "missing required column 'X'"
-    assert _tr_message("created — A") == "Created — A"
-
-
-# -- _tr_coerce_msg: the four coerce patterns -------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("english", "vietnamese"),
-    [
-        ("missing required column 'Ngày khám'", "thiếu cột bắt buộc 'Ngày khám'"),
-        (
-            "'Tuổi': cannot parse 'x' as int (bad literal)",
-            "'Tuổi': không thể đọc 'x' thành int (bad literal)",
-        ),
-        ("pulse=200 outside expected range 30–220", "pulse=200 nằm ngoài phạm vi 30–220"),
-        (
-            "finishExaminationDate (a) is before examinationDate (b)",
-            "finishExaminationDate (a) trước examinationDate (b)",
-        ),
-    ],
-)
-def test_coerce_msg_patterns(english: str, vietnamese: str) -> None:
-    set_language("vi")
-    assert _tr_coerce_msg(english) == vietnamese
-    set_language("en")
-    assert _tr_coerce_msg(english) == english
-
-
-def test_coerce_msgs_preserves_warning_marker() -> None:
-    set_language("vi")
-    out = _tr_coerce_msgs("⚠ pulse=200 outside expected range 30–220")
-    assert out == "⚠ pulse=200 nằm ngoài phạm vi 30–220"
-
-
-def test_coerce_msgs_mixed_error_and_warning() -> None:
-    set_language("vi")
-    out = _tr_coerce_msgs("missing required column 'X'; ⚠ pulse=200 outside expected range 30–220")
-    assert out == "thiếu cột bắt buộc 'X'; ⚠ pulse=200 nằm ngoài phạm vi 30–220"
-
-
-# -- _tr_log: engine on_log strings ----------------------------------------------------
-
-
-def test_log_first_search_response() -> None:
-    set_language("vi")
-    assert _tr_log("Logged first search response for inspection.") == (
-        "Đã ghi phản hồi tìm kiếm đầu tiên để kiểm tra."
-    )
-    set_language("en")
-    assert _tr_log("Logged first search response for inspection.") == (
-        "Logged first search response for inspection."
-    )
-
-
-def test_log_retry_translated() -> None:
-    set_language("vi")
-    assert _tr_log("retry in 2.5s (attempt 3)") == "thử lại sau 2.5s (lần 3)"
-
-
-def test_log_retry_english_passthrough() -> None:
-    set_language("en")
-    assert _tr_log("retry in 1.0s (attempt 2)") == "retry in 1.0s (attempt 2)"
-
-
-# -- unmapped-columns warning (reader → validate table + run log) ----------------------
-
-_UNMAPPED_EN = "ignoring 2 unmapped Excel column(s): 'A', 'B'"
-_UNMAPPED_VI = "bỏ qua 2 cột Excel không có trong file mapping: 'A', 'B'"
-
-
-def test_unmapped_columns_via_coerce_msg() -> None:
-    set_language("vi")
-    assert _tr_coerce_msg(_UNMAPPED_EN) == _UNMAPPED_VI
-    set_language("en")
-    assert _tr_coerce_msg(_UNMAPPED_EN) == _UNMAPPED_EN
-
-
-def test_unmapped_columns_via_log() -> None:
-    set_language("vi")
-    assert _tr_log(_UNMAPPED_EN) == _UNMAPPED_VI
-    set_language("en")
-    assert _tr_log(_UNMAPPED_EN) == _UNMAPPED_EN
-
-
-# -- file-level ConfigError shapes (missing / duplicate mapped columns) -----------------
-
-# Exact shapes raised by excel/reader.py:_check_columns, including the long Found-headers dump.
-_MISSING_RAW = (
-    "Excel hssk_import.xlsx is missing mapped column(s): ['Mã hồ sơ']. "
-    "Found headers: ['Mã định danh', 'Ngày khám', 'Bác sĩ']"
-)
-_DUP_RAW = (
-    "Excel hssk_import.xlsx has duplicate mapped column header(s): ['Mã hồ sơ']. "
-    "Only the right-most copy would be read — rename or remove the duplicates."
-)
-
-
-def test_file_error_missing_columns_condensed_and_localized() -> None:
-    set_language("vi")
-    out = _tr_coerce_msg(_MISSING_RAW)
-    assert "Found headers" not in out  # the raw header dump is dropped
-    assert "['Mã hồ sơ']" not in out and "'Mã hồ sơ'" in out  # brackets stripped
-    assert out.startswith("File hssk_import.xlsx thiếu cột bắt buộc: 'Mã hồ sơ'")
-    set_language("en")
-    out_en = _tr_coerce_msg(_MISSING_RAW)
-    assert "Found headers" not in out_en
-    assert out_en.startswith("Excel hssk_import.xlsx is missing required column(s): 'Mã hồ sơ'")
-    assert "Template button" in out_en
-
-
-def test_file_error_duplicate_columns_localized() -> None:
-    set_language("vi")
-    out = _tr_coerce_msg(_DUP_RAW)
-    assert out.startswith("File hssk_import.xlsx có tiêu đề cột bị trùng: 'Mã hồ sơ'")
-    set_language("en")
-    out_en = _tr_coerce_msg(_DUP_RAW)
-    assert out_en.startswith("Excel hssk_import.xlsx has duplicate column header(s): 'Mã hồ sơ'")
-
-
-def test_file_error_unknown_shape_passes_through() -> None:
-    set_language("vi")
-    assert _tr_file_error("Excel foo.xlsx something else entirely") is None
-    assert _tr_file_error("some raw API diagnostic") is None
-    # via the coerce path, an unmatched message is returned unchanged
-    assert _tr_coerce_msg("Excel foo.xlsx something else entirely") == (
-        "Excel foo.xlsx something else entirely"
-    )
-
-
-def test_log_no_record_id() -> None:
-    set_language("vi")
-    assert _tr_log("row 5: no record id in server response") == (
-        "dòng 5: máy chủ không trả về mã hồ sơ"
-    )
-    set_language("en")
-    assert _tr_log("row 5: no record id in server response") == (
-        "row 5: no record id in server response"
-    )
-
-
-def test_log_ledger_corrupt() -> None:
-    set_language("vi")
-    assert _tr_log("2 unreadable ledger line(s) — those rows may be re-sent") == (
-        "2 dòng nhật ký gửi (ledger) không đọc được — các hàng đó có thể bị gửi lại"
-    )
-    set_language("en")
-    assert _tr_log("2 unreadable ledger line(s) — those rows may be re-sent") == (
-        "2 unreadable ledger line(s) — those rows may be re-sent"
-    )
-
-
-def test_log_saved_search_response() -> None:
-    set_language("vi")
-    assert _tr_log("saved search response for row 3 (search_response_row_3.json)") == (
-        "đã lưu phản hồi tìm kiếm cho dòng 3 (search_response_row_3.json)"
-    )
-    set_language("en")
-    assert _tr_log("saved search response for row 3 (search_response_row_3.json)") == (
-        "saved search response for row 3 (search_response_row_3.json)"
-    )
-
-
-def test_log_token_short_for_batch() -> None:
-    msg = (
-        "token may expire before this batch finishes "
-        "(~7 min needed, ~2 min left) — consider logging in again first"
-    )
-    set_language("vi")
-    assert _tr_log(msg) == (
-        "⚠ Token có thể hết hạn trước khi chạy xong lô này "
-        "(cần ~7 phút, còn ~2 phút) — nên đăng nhập lại trước khi chạy"
-    )
-    set_language("en")
-    assert _tr_log(msg) == msg
-
-
-def test_log_unknown_passes_through() -> None:
-    set_language("vi")
-    raw = "some raw API diagnostic"
-    assert _tr_log(raw) == raw
-
-
-# -- _tr_login_status: browser-login progress strings -----------------------------------
-
-
-def test_login_status_known_strings() -> None:
-    set_language("vi")
-    assert _tr_login_status("Please log in in the browser window…") == (
-        "Vui lòng đăng nhập trong cửa sổ trình duyệt…"
-    )
-    assert _tr_login_status("Token captured.") == "Đã lấy token."
-
-
-def test_login_status_english_passthrough() -> None:
-    set_language("en")
-    assert _tr_login_status("Please log in in the browser window…") == (
-        "Please log in in the browser window…"
-    )
-    assert _tr_login_status("Token captured.") == "Token captured."
-
-
-def test_login_status_unknown_passes_through() -> None:
-    set_language("vi")
-    raw = "Some unexpected engine message"
-    assert _tr_login_status(raw) == raw
-
-
-# -- v1.4.0 keys resolve in both languages ----------------------------------------------
+    errors = [Msg(MessageCode.COERCE_MISSING_REQUIRED, {"col": "'X'"})]
+    warnings = [
+        Msg(MessageCode.COERCE_RANGE, {"target": "pulse", "value": 250, "lo": 30, "hi": 220})
+    ]
+    out = render_validation_row(errors, warnings)
+    assert out == "thiếu cột bắt buộc 'X'; ⚠ pulse=250 nằm ngoài phạm vi 30–220"
+
+
+# -- UI vocabulary keys resolve in both languages ------------------------------------------
 
 _V140_KEYS = [
     "msg_no_record_id",
-    "log_no_record_id",
-    "log_ledger_corrupt",
-    "log_saved_search_response",
-    "log_token_short_for_batch",
     "tip_dismiss_banner",
     "a11y_error_banner",
     "filter_all_statuses",
@@ -381,15 +228,11 @@ _V140_KEYS = [
 
 
 def test_v140_keys_resolve_in_both_languages() -> None:
-    from hssk_gui.i18n import tr
-
     for lang in ("vi", "en"):
         set_language(lang)
         for key in _V140_KEYS:
             assert tr(key) != key, f"missing {lang} entry for {key}"
 
-
-# -- UI-polish round: labeled counter keys ------------------------------------------------
 
 _UI_POLISH_KEYS = [
     "counter_ok",
@@ -400,21 +243,15 @@ _UI_POLISH_KEYS = [
     "counter_warns",
     "counter_invalid",
     "msg_validation_done",
-    "msg_missing_columns",
-    "msg_duplicate_columns",
 ]
 
 
 def test_ui_polish_keys_resolve_in_both_languages() -> None:
-    from hssk_gui.i18n import tr
-
     for lang in ("vi", "en"):
         set_language(lang)
         for key in _UI_POLISH_KEYS:
             assert tr(key) != key, f"missing {lang} entry for {key}"
 
-
-# -- delete-mode keys resolve in both languages -----------------------------------------
 
 _DELETE_KEYS = [
     "mode_delete",
@@ -422,22 +259,19 @@ _DELETE_KEYS = [
     "banner_production_delete",
     "msg_confirm_push_delete",
     "status_DELETED",
-    "msg_row_deleted",
     "dlg_delete_needs_record_id",
     "msg_delete_needs_record_id",
 ]
 
 
 def test_delete_keys_resolve_in_both_languages() -> None:
-    from hssk_gui.i18n import tr
-
     for lang in ("vi", "en"):
         set_language(lang)
         for key in _DELETE_KEYS:
             assert tr(key) != key, f"missing {lang} entry for {key}"
 
 
-# -- ValidationSummary contract ---------------------------------------------------------
+# -- ValidationSummary contract -------------------------------------------------------------
 
 
 def test_validation_summary_not_cancelled_by_default() -> None:

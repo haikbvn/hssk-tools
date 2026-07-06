@@ -5,15 +5,22 @@ import json
 
 import openpyxl
 
+from hssk.events import MessageCode, Msg
 from hssk.pipeline.runner import RowOutcome, Status
 from hssk.report import new_run_dir, write_report
 
 
-def _outcome(row_index=1, status=Status.CREATED, **kwargs) -> RowOutcome:
+def _outcome(
+    row_index=1, status=Status.CREATED, *, message=None, warnings=None, **kwargs
+) -> RowOutcome:
+    # Tests express message/warnings as plain strings; carry them as passthrough Msgs so the
+    # report renders them verbatim (render_en of PASSTHROUGH returns the detail unchanged).
     return RowOutcome(
         row_index=row_index,
         identifier="MIC001",
         status=status,
+        msgs=[Msg(MessageCode.PASSTHROUGH, detail=message)] if message is not None else [],
+        warnings=[Msg(MessageCode.PASSTHROUGH, detail=w) for w in (warnings or [])],
         **kwargs,
     )
 

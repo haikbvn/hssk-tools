@@ -81,7 +81,7 @@
     "row_coercion_error": {
       "kind": "message",
       "raw": "coercion error: 'Tuổi': cannot parse 'abc' as int (bad)",
-      "vi": "Lỗi chuyển đổi: 'Tuổi': không thể đọc 'abc' thành int (bad)",
+      "vi": "Lỗi chuyển đổi: 'Tuổi': cannot parse 'abc' as int (bad)",
       "en": "Coercion error: 'Tuổi': cannot parse 'abc' as int (bad)"
     },
     "row_fetch_detail": {
