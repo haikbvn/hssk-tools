@@ -68,6 +68,10 @@ datas.append((str(ROOT / "config" / "mapping.update.example.yaml"), "config"))
 datas.append((str(ROOT / "assets" / "sponsor" / "vietqr.png"), "assets/sponsor"))
 datas.append((str(ROOT / "assets" / "sponsor" / "momo.png"), "assets/sponsor"))
 datas.append((str(ROOT / "packaging" / "assets" / "icon.png"), "assets"))
+# Bundled app-wide font (theme.py pins the Fusion style; fonts.py applies this cross-platform
+# so Windows/macOS metric differences don't undo that consistency). OFL.txt travels with it.
+for _font_file in ROOT.glob("assets/fonts/*"):
+    datas.append((str(_font_file), "assets/fonts"))
 
 a = Analysis(
     [str(ROOT / "packaging" / "launch.py")],

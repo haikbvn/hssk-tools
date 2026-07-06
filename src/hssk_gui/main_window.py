@@ -48,6 +48,8 @@ from hssk.pipeline.results import RunSummary, Status
 
 from . import theme
 from .banner import NoticeBanner
+from .components.stepper import SafetyStepper
+from .confirm_dialog import ConfirmProductionDialog
 from .i18n import tr
 from .preferences_dialog import PreferencesDialog
 from .render import render
@@ -199,6 +201,8 @@ class MainWindow(QMainWindow):
         # Separate instance for the newer-version hint so an error never overwrites it.
         self.update_banner = NoticeBanner()
         root.addWidget(self.update_banner)
+        self.stepper = SafetyStepper()
+        root.addWidget(self.stepper)
         root.addWidget(self._build_login_box())
         root.addWidget(self._build_data_box())
         root.addWidget(self._build_run_box())
@@ -825,6 +829,7 @@ class MainWindow(QMainWindow):
         else:
             self.start_btn.setText(tr(live_btn_key))
             self.start_btn.setStyleSheet(theme.danger_button_qss())
+        self._refresh_stepper()
 
     def _on_dryrun_toggled(self) -> None:
         self._refresh_run_controls()
@@ -841,6 +846,16 @@ class MainWindow(QMainWindow):
         # offer it when a file is loaded and nothing else is running.
         self.validate_btn.setEnabled(self._excel_path is not None and idle)
         self.start_btn.setToolTip(self._start_disabled_reason(ready, idle))
+        self._refresh_stepper()
+
+    def _refresh_stepper(self) -> None:
+        """Reflect current state on the safety-ladder strip — display only, changes no gating."""
+        self.stepper.update_state(
+            logged_in=self._token is not None,
+            file_chosen=self._excel_path is not None,
+            validated=self._validated_path is not None and self._validated_path == self._excel_path,
+            dry_run=self.dryrun_check.isChecked(),
+        )
 
     def _start_disabled_reason(self, ready: bool, idle: bool) -> str:
         if not idle:
@@ -871,15 +886,7 @@ class MainWindow(QMainWindow):
                 msg = tr("msg_not_validated_warn") + msg
             elif self._validated_invalid > 0:
                 msg = tr("msg_validation_had_errors").format(n=self._validated_invalid) + msg
-            box = QMessageBox(self)
-            box.setIcon(QMessageBox.Icon.Question)
-            box.setWindowTitle(tr("dlg_confirm_push"))
-            box.setText(msg)
-            yes_btn = box.addButton(tr("btn_yes"), QMessageBox.ButtonRole.YesRole)
-            no_btn = box.addButton(tr("btn_no"), QMessageBox.ButtonRole.NoRole)
-            box.setDefaultButton(no_btn)
-            box.exec()
-            if box.clickedButton() is not yes_btn:
+            if not ConfirmProductionDialog.confirm(msg, parent=self):
                 return
 
         try:

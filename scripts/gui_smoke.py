@@ -20,6 +20,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt, QTimer  # noqa: E402
 from PySide6.QtWidgets import QApplication, QHeaderView  # noqa: E402
 
+from hssk.events import MessageCode, Msg  # noqa: E402
 from hssk.pipeline.results import RowOutcome, Status  # noqa: E402
 from hssk_gui import theme  # noqa: E402
 from hssk_gui.i18n import set_language  # noqa: E402
@@ -31,12 +32,46 @@ from hssk_gui.workers import ValidationProblem, ValidationSummary  # noqa: E402
 OUT = os.environ.get("HSSK_SMOKE_OUT", ".")
 
 FAKE_ROWS = [
-    RowOutcome(2, "2700020596A", Status.CREATED, 372954970, 555, "created — Nguyễn Thị Hoa"),
-    RowOutcome(3, "0123456789", Status.SKIPPED_ALREADY, None, 444, "already processed"),
-    RowOutcome(4, "2700099999B", Status.NO_PATIENT, message="no patient found for '2700099999B'"),
-    RowOutcome(5, "0987654321", Status.FAILED, message="HTTP 400: bad request — server said no"),
-    RowOutcome(6, "2711122233C", Status.DRY_RUN_OK, message="payload built (not sent) — Trần V. B"),
-    RowOutcome(7, "0333444555", Status.MULTI_MATCH, message="3 patients match '0333444555'"),
+    RowOutcome(
+        2,
+        "2700020596A",
+        Status.CREATED,
+        372954970,
+        555,
+        msgs=[Msg(MessageCode.ROW_CREATED, {"who": "Nguyễn Thị Hoa"})],
+    ),
+    RowOutcome(
+        3,
+        "0123456789",
+        Status.SKIPPED_ALREADY,
+        None,
+        444,
+        msgs=[Msg(MessageCode.ROW_ALREADY_PROCESSED)],
+    ),
+    RowOutcome(
+        4,
+        "2700099999B",
+        Status.NO_PATIENT,
+        msgs=[Msg(MessageCode.ROW_NO_PATIENT, {"query": "'2700099999B'"})],
+    ),
+    RowOutcome(
+        5,
+        "0987654321",
+        Status.FAILED,
+        msgs=[Msg(MessageCode.PASSTHROUGH, detail="HTTP 400: bad request — server said no")],
+    ),
+    RowOutcome(
+        6,
+        "2711122233C",
+        Status.DRY_RUN_OK,
+        msgs=[Msg(MessageCode.ROW_DRY_RUN, {"who": "Trần V. B"})],
+    ),
+    RowOutcome(
+        7,
+        "0333444555",
+        Status.MULTI_MATCH,
+        msgs=[Msg(MessageCode.ROW_MULTI_MATCH, {"count": 3, "query": "'0333444555'"})],
+    ),
 ]
 
 
@@ -93,7 +128,9 @@ def main() -> int:
     assert order == ["7", "6", "5"], f"numeric sort broken: {order}"
 
     # insert while custom-sorted: no scattered cells, hidden flags recomputed
-    w.results.add_row(RowOutcome(9, "E5", Status.CREATED, message="created — X"))
+    w.results.add_row(
+        RowOutcome(9, "E5", Status.CREATED, msgs=[Msg(MessageCode.ROW_CREATED, {"who": "X"})])
+    )
     w.results.flush_now()
     assert [t.item(r, 0).text() for r in range(2)] == ["9", "7"]
     assert all(t.item(r, c) is not None for r in range(t.rowCount()) for c in range(6))
@@ -117,9 +154,22 @@ def main() -> int:
     # --- validation mode: the status filter works on invalid-vs-warning kinds ------------
     w.results.reset(for_validation=True)
     assert combo.isEnabled() and combo.count() == 3, "validation filter must be usable"
-    w.results.add_validation_row(ValidationProblem(2, "A1", True, "missing required column 'X'"))
     w.results.add_validation_row(
-        ValidationProblem(3, "B2", False, "pulse=200 outside expected range 30–220")
+        ValidationProblem(
+            2, "A1", errors=[Msg(MessageCode.COERCE_MISSING_REQUIRED, {"col": "'X'"})], warnings=[]
+        )
+    )
+    w.results.add_validation_row(
+        ValidationProblem(
+            3,
+            "B2",
+            errors=[],
+            warnings=[
+                Msg(
+                    MessageCode.COERCE_RANGE, {"target": "pulse", "value": 200, "lo": 30, "hi": 220}
+                )
+            ],
+        )
     )
     w.results.flush_now()
     combo.setCurrentIndex(1)  # invalid

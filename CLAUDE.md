@@ -173,8 +173,22 @@ bare English string the GUI must parse. `Msg.detail` carries raw server/exceptio
 
 Dialogs: `preferences_dialog` (run defaults + record defaults — the latter edits the mapping's
 `defaults` block in place), `legal_dialog` (Terms/Privacy/Security, also opened read-only from Help),
-`guide_dialog`, and `sponsor_dialog` (VietQR + MoMo QR images, reachable from the Help menu and a
-grey footer link). `results_panel` is the live results table.
+`guide_dialog`, `sponsor_dialog` (VietQR + MoMo QR images, reachable from the Help menu and a grey
+footer link), and `confirm_dialog.ConfirmProductionDialog` (type-to-confirm PRODUCTION push — the
+operator must type the literal `YES`, mirroring the CLI's `--commit` prompt; replaces a plain
+Yes/No message box). `results_panel` is the live results table.
+
+**One rendered appearance on both OSes.** `app.py:main` pins `QApplication.setStyle("Fusion")`
+before constructing the app, and `fonts.apply_app_font` loads a bundled Vietnamese-first font
+(Be Vietnam Pro, `assets/fonts/`, SIL OFL) as the app-wide default — together these remove the
+Segoe-UI-vs-SF-Pro metric drift that used to make "the same layout" look different per OS. Native
+OS chrome that's *supposed* to differ (menu bar placement, file dialogs, dialog button order) is
+untouched — only the app's own content area is pinned. `theme.build_palette(scheme)` builds the
+full QPalette Fusion renders from (surface/text/border/highlight tokens in `theme.py`, alongside
+the existing accent tokens); `theme.apply_app_theme` applies it and rebuilds it live on an OS
+Light/Dark switch. `components/stepper.SafetyStepper` is a read-only strip (Login → File →
+Validated → Dry-run/Commit) reflecting the same state `MainWindow._update_start_enabled` already
+tracks — it does not gate anything itself.
 
 ## Packaging
 

@@ -131,6 +131,11 @@ def sponsor_asset(name: str) -> Path:
     return bundle_root() / "assets" / "sponsor" / name
 
 
+def font_asset(name: str) -> Path:
+    """Path to a bundled font file (``assets/fonts/``, or ``_MEIPASS`` when frozen)."""
+    return bundle_root() / "assets" / "fonts" / name
+
+
 def app_icon() -> Path:
     """Path to the application icon PNG for runtime use (e.g. ``QIcon``).
 

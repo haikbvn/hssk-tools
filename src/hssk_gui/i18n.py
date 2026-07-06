@@ -14,6 +14,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "HSSK Tools is already running. Please use the window that is already open.",
         "vi": "HSSK Tools đang chạy. Vui lòng dùng cửa sổ đang mở.",
     },
+    # -- safety-ladder stepper (components/stepper.py) --
+    "step_login": {"en": "Login", "vi": "Đăng nhập"},
+    "step_file": {"en": "File", "vi": "File"},
+    "step_validated": {"en": "Validated", "vi": "Đã kiểm tra"},
+    "step_dryrun": {"en": "Dry-run", "vi": "Chạy thử"},
+    "step_commit": {"en": "Commit", "vi": "Gửi thật"},
     # -- engine event codes (hssk.events.MessageCode) rendered by hssk_gui/render.py --
     "msg_ROW_CREATED": {"en": "Created", "vi": "Đã tạo"},
     "msg_ROW_UPDATED": {"en": "Updated", "vi": "Đã cập nhật"},
@@ -312,6 +318,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": ("This will PERMANENTLY DELETE medical records on hososuckhoe.com.vn.\n\nProceed?"),
         "vi": ("Thao tác này sẽ XOÁ VĨNH VIỄN hồ sơ y tế trên hososuckhoe.com.vn.\n\nTiếp tục?"),
     },
+    "dlg_type_to_confirm_hint": {
+        "en": "Type YES to proceed:",
+        "vi": "Nhập YES để tiếp tục:",
+    },
+    "btn_confirm_push": {"en": "Confirm", "vi": "Xác nhận"},
     "dlg_update_needs_record_id": {
         "en": "Update mode — mapping error",
         "vi": "Chế độ cập nhật — lỗi mapping",
@@ -654,8 +665,6 @@ _STRINGS: dict[str, dict[str, str]] = {
     "tab_security": {"en": "Security", "vi": "Bảo mật"},
     "btn_accept": {"en": "Accept", "vi": "Chấp nhận"},
     "btn_decline": {"en": "Decline", "vi": "Từ chối"},
-    "btn_yes": {"en": "Yes", "vi": "Có"},
-    "btn_no": {"en": "No", "vi": "Không"},
     # preferences — record default field labels
     "rec_normal_desc_value": {"en": "Normal description", "vi": "Mô tả bình thường"},
     "rec_doctorName": {"en": "Doctor (default)", "vi": "Bác sĩ (mặc định)"},

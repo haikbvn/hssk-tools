@@ -1,13 +1,14 @@
-"""Centralised, dark-mode-aware colour tokens.
+"""Centralised, dark-mode-aware colour tokens — and the app-wide Fusion palette built from them.
 
-Single source of truth for the accent colours the GUI paints programmatically (status text,
-the production banner, the live-PUSH button, the drag-drop border). No app-wide stylesheet is
-installed — every widget keeps its platform-native look in both light and dark mode; only the
-handful of surfaces we already custom-paint read their colours from here.
+Single source of truth for every colour the GUI uses: the accent colours it paints
+programmatically (status text, the production banner, the live-PUSH button, the drag-drop
+border) AND the app's base surface palette (window/text/border/highlight), applied via a pinned
+Fusion style so the app renders identically on Windows and macOS instead of each OS's native
+widget chrome.
 
-Colours follow GitHub Primer's light/dark accent ramps, which are tuned for contrast on either
+Colours follow GitHub Primer's light/dark ramps, which are tuned for contrast on either
 background. ``apply_app_theme`` wires ``QStyleHints.colorSchemeChanged`` so a system Light/Dark
-switch re-themes the running app live.
+switch re-themes the running app live (both the custom-painted surfaces and the Fusion palette).
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication
 
 from hssk.pipeline.results import Status
@@ -58,7 +59,25 @@ _TOKENS: dict[str, dict[str, str]] = {
     "pill_muted_bg": {"light": "#eaeef2", "dark": "#30363d"},
     # the log/table splitter grip (a soft bar so operators discover it's draggable)
     "splitter_grip": {"light": "#d0d7de", "dark": "#30363d"},
+    # -- app-wide Fusion palette surfaces (GitHub Primer canvas/border/text ramps) --
+    "surface_window": {"light": "#ffffff", "dark": "#0d1117"},
+    "surface_base": {"light": "#ffffff", "dark": "#0d1117"},
+    "surface_alt_base": {"light": "#f6f8fa", "dark": "#161b22"},
+    "surface_button": {"light": "#f6f8fa", "dark": "#21262d"},
+    "surface_tooltip": {"light": "#1f2328", "dark": "#e6edf3"},
+    "surface_tooltip_text": {"light": "#ffffff", "dark": "#0d1117"},
+    "surface_text": {"light": "#1f2328", "dark": "#e6edf3"},
+    "surface_text_disabled": {"light": "#8c959f", "dark": "#6e7681"},
+    "surface_border": {"light": "#d0d7de", "dark": "#30363d"},
+    "surface_highlight": {"light": "#0969da", "dark": "#1f6feb"},
+    "surface_highlight_text": {"light": "#ffffff", "dark": "#ffffff"},
+    "surface_link": {"light": "#0969da", "dark": "#58a6ff"},
 }
+
+# Spacing/radius constants shared by scoped QSS and any custom-painted geometry, so hand-built
+# widgets (stepper, confirm dialog) share a rhythm with the rest of the app instead of guessing.
+SPACING = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
+RADIUS = {"sm": 4, "md": 6, "lg": 8}
 
 # Status -> token name; replaces the old literal _STATUS_COLORS map in results_panel.
 STATUS_COLOR_TOKENS: dict[Status, str] = {
@@ -94,6 +113,47 @@ def status_color(status: Status) -> str:
     """Hex colour for a row Status, falling back to the default text colour."""
     token = STATUS_COLOR_TOKENS.get(status)
     return color(token) if token else color("muted")
+
+
+def build_palette(scheme: str) -> QPalette:
+    """A QPalette for ``scheme`` ("light"/"dark") from the surface_* tokens above.
+
+    Applied on top of the Fusion style so the app renders identically on Windows and macOS —
+    Fusion is the one built-in Qt style that fully respects an app-supplied QPalette (native
+    styles only partially do), which is also what makes dark mode deterministic here rather than
+    dependent on OS-style quirks.
+    """
+
+    def c(token: str) -> QColor:
+        return QColor(_TOKENS[token][scheme])
+
+    p = QPalette()
+    p.setColor(QPalette.ColorRole.Window, c("surface_window"))
+    p.setColor(QPalette.ColorRole.WindowText, c("surface_text"))
+    p.setColor(QPalette.ColorRole.Base, c("surface_base"))
+    p.setColor(QPalette.ColorRole.AlternateBase, c("surface_alt_base"))
+    p.setColor(QPalette.ColorRole.ToolTipBase, c("surface_tooltip"))
+    p.setColor(QPalette.ColorRole.ToolTipText, c("surface_tooltip_text"))
+    p.setColor(QPalette.ColorRole.Text, c("surface_text"))
+    p.setColor(QPalette.ColorRole.PlaceholderText, c("surface_text_disabled"))
+    p.setColor(QPalette.ColorRole.Button, c("surface_button"))
+    p.setColor(QPalette.ColorRole.ButtonText, c("surface_text"))
+    p.setColor(QPalette.ColorRole.BrightText, c("danger"))
+    p.setColor(QPalette.ColorRole.Link, c("surface_link"))
+    p.setColor(QPalette.ColorRole.LinkVisited, c("surface_link"))
+    p.setColor(QPalette.ColorRole.Highlight, c("surface_highlight"))
+    p.setColor(QPalette.ColorRole.HighlightedText, c("surface_highlight_text"))
+    p.setColor(QPalette.ColorRole.Light, c("surface_border"))
+    p.setColor(QPalette.ColorRole.Mid, c("surface_border"))
+    p.setColor(QPalette.ColorRole.Dark, c("surface_border"))
+    disabled_text = c("surface_text_disabled")
+    for role in (
+        QPalette.ColorRole.WindowText,
+        QPalette.ColorRole.Text,
+        QPalette.ColorRole.ButtonText,
+    ):
+        p.setColor(QPalette.ColorGroup.Disabled, role, disabled_text)
+    return p
 
 
 def danger_button_qss() -> str:
@@ -161,12 +221,21 @@ def label_qss(token: str) -> str:
 
 
 def apply_app_theme(app: QApplication, on_change: Callable[[], None] | None = None) -> None:
-    """Call ``on_change`` whenever the system switches Light/Dark, so the app re-themes live.
+    """Apply the Fusion palette for the current scheme, then keep it (and ``on_change``) live.
 
-    No app-wide stylesheet is installed: every widget keeps fully native rendering (and native
-    focus indication). The few custom-painted surfaces (banners, the drag-drop border, status
-    text) read their colours from ``color()`` at paint time and repaint via ``on_change``.
+    The app is pinned to the Fusion style (set once, in ``app.py``, before this runs) so the
+    palette below is fully respected on both OSes. On every OS Light/Dark switch this rebuilds
+    the palette for the new scheme and calls ``on_change`` so the few custom-painted surfaces
+    (banners, the drag-drop border, status text) repaint from ``color()`` too.
     """
+    app.setPalette(build_palette(current_scheme()))
     hints = app.styleHints()
-    if hints is not None and on_change is not None:
-        hints.colorSchemeChanged.connect(lambda _scheme: on_change())
+    if hints is None:
+        return
+
+    def _on_scheme_changed(_scheme: Qt.ColorScheme) -> None:
+        app.setPalette(build_palette(current_scheme()))
+        if on_change is not None:
+            on_change()
+
+    hints.colorSchemeChanged.connect(_on_scheme_changed)
