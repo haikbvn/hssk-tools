@@ -4,10 +4,12 @@ Not collected by pytest (no Qt on CI needed) and not packaged; run it by hand af
 
     .venv/bin/python scripts/gui_smoke.py
 
-Renders light-mode screenshots (idle + busy) to $HSSK_SMOKE_OUT (default: CWD) for eyeballing.
-Dark mode cannot be emulated offscreen — check that on a real machine. The script patches the
-update check and recent-files persistence to no-ops so it never touches the network or the
-user's QSettings beyond what a normal launch reads.
+Renders screenshots to $HSSK_SMOKE_OUT (default: CWD) for eyeballing: idle + busy (light), a
+dark-mode pass (monkeypatching theme.current_scheme — the palette and app_qss() modern design
+system are both built from that one function, so this is a faithful offline stand-in for a real
+OS dark-mode switch), and PreferencesDialog + LegalDialog. The script patches the update check
+and recent-files persistence to no-ops so it never touches the network or the user's QSettings
+beyond what a normal launch reads.
 """
 
 from __future__ import annotations
@@ -79,6 +81,7 @@ def main() -> int:
     # In-memory only: no network thread on startup, no recent-files writes.
     MainWindow._start_update_check = lambda self: None  # type: ignore[method-assign]
     UiSettings.add_recent_file = lambda self, path: None  # type: ignore[method-assign]
+    real_current_scheme = theme.current_scheme  # captured before the dark-mode monkeypatch below
 
     app = QApplication([])
     theme.apply_app_theme(app)
@@ -198,6 +201,35 @@ def main() -> int:
     set_language("vi")
     w.retranslate()
     w.on_theme_changed()  # must not raise; re-applies splitter QSS, counter, viewport
+
+    # --- dialogs (built fresh each time from Help/Settings, so a plain construction + show
+    # is representative — .exec() would block waiting for input) ---------------------------
+    from hssk_gui.legal_dialog import LegalDialog
+    from hssk_gui.preferences_dialog import PreferencesDialog
+
+    prefs = PreferencesDialog(w)
+    prefs.show()
+    for _ in range(3):
+        app.processEvents()
+    prefs.grab().save(f"{OUT}/smoke_preferences.png")
+    prefs.close()
+
+    legal = LegalDialog(w)
+    legal.show()
+    for _ in range(3):
+        app.processEvents()
+    legal.grab().save(f"{OUT}/smoke_legal.png")
+    legal.close()
+
+    # --- dark mode: current_scheme drives both the palette and app_qss(), so monkeypatching
+    # it here is a faithful offline stand-in for a real OS Light/Dark switch -----------------
+    theme.current_scheme = lambda: "dark"  # type: ignore[method-assign]
+    theme.apply_app_theme(app, on_change=w.on_theme_changed)
+    w.on_theme_changed()
+    for _ in range(3):
+        app.processEvents()
+    w.grab().save(f"{OUT}/smoke_dark.png")
+    theme.current_scheme = real_current_scheme  # restore before closing
 
     def finish() -> None:
         ok = w.close()

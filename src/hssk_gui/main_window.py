@@ -225,8 +225,9 @@ class MainWindow(QMainWindow):
         return footer
 
     def _render_footer_link(self) -> None:
+        muted = theme.color("muted")
         self._footer_link.setText(
-            f'<a href="#sponsor" style="color: grey; font-size: small; text-decoration: none;">'
+            f'<a href="#sponsor" style="color: {muted}; font-size: small; text-decoration: none;">'
             f'{tr("footer_sponsor")} <span style="color: #e05050;">♥</span></a>'
         )
 
@@ -520,6 +521,7 @@ class MainWindow(QMainWindow):
         self._refresh_run_controls()
         self._render_token_label()
         self.file_label.setStyleSheet(f"color: {theme.color('muted')};")
+        self._render_footer_link()
         self.error_banner.refresh_theme()
         self.update_banner.refresh_theme()
         self.results.on_theme_changed()

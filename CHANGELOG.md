@@ -9,6 +9,10 @@
   now render identically — same widget metrics, same dark/light palette — instead of drifting apart
   the way Segoe UI (Windows) and SF Pro (macOS) always did. Dark mode is now built from an explicit
   palette (`theme.build_palette`), so it no longer depends on OS-style quirks.
+- On top of that pinned Fusion base, a modern Primer-flavored design system (`theme.app_qss`):
+  card-style sections, bordered/focus-ringed buttons and inputs, a flat table header, slim
+  progress bar and scrollbars, and flat tabs/menus — all generated from the same colour tokens as
+  the existing status pills and banners, so light/dark stay in sync automatically.
 - New **safety-ladder strip** at the top of the window: Login → File → Validated → Dry-run/Commit,
   each step checked off as it completes. Purely a status display — it doesn't change what Start
   allows — but the batch's safety prerequisites are now visible at a glance instead of only showing

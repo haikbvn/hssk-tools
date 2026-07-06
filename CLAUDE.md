@@ -185,9 +185,14 @@ Segoe-UI-vs-SF-Pro metric drift that used to make "the same layout" look differe
 OS chrome that's *supposed* to differ (menu bar placement, file dialogs, dialog button order) is
 untouched — only the app's own content area is pinned. `theme.build_palette(scheme)` builds the
 full QPalette Fusion renders from (surface/text/border/highlight tokens in `theme.py`, alongside
-the existing accent tokens); `theme.apply_app_theme` applies it and rebuilds it live on an OS
-Light/Dark switch. `components/stepper.SafetyStepper` is a read-only strip (Login → File →
-Validated → Dry-run/Commit) reflecting the same state `MainWindow._update_start_enabled` already
+the existing accent tokens); `theme.app_qss()` layers a modern Primer-flavored design system on
+top (card-style `QGroupBox` sections, bordered/focus-ringed buttons and inputs, flat table header,
+slim progress bar/scrollbars, flat tabs/menus) generated from those same tokens — an unknown token
+raises `KeyError` at build time rather than silently rendering unstyled. `theme.apply_app_theme`
+applies both the palette and the stylesheet, and rebuilds both live on an OS Light/Dark switch. A
+widget's own `setStyleSheet` (the danger button, notice banners, splitter grip, stepper labels)
+always wins over these app-level rules. `components/stepper.SafetyStepper` is a read-only strip
+(Login → File → Validated → Dry-run/Commit) reflecting the same state `MainWindow._update_start_enabled` already
 tracks — it does not gate anything itself.
 
 ## Packaging
