@@ -178,21 +178,17 @@ footer link), and `confirm_dialog.ConfirmProductionDialog` (type-to-confirm PROD
 operator must type the literal `YES`, mirroring the CLI's `--commit` prompt; replaces a plain
 Yes/No message box). `results_panel` is the live results table.
 
-**One rendered appearance on both OSes.** `app.py:main` pins `QApplication.setStyle("Fusion")`
-before constructing the app, and `fonts.apply_app_font` loads a bundled Vietnamese-first font
-(Be Vietnam Pro, `assets/fonts/`, SIL OFL) as the app-wide default — together these remove the
-Segoe-UI-vs-SF-Pro metric drift that used to make "the same layout" look different per OS. Native
-OS chrome that's *supposed* to differ (menu bar placement, file dialogs, dialog button order) is
-untouched — only the app's own content area is pinned. `theme.build_palette(scheme)` builds the
-full QPalette Fusion renders from (surface/text/border/highlight tokens in `theme.py`, alongside
-the existing accent tokens); `theme.app_qss()` layers a modern Primer-flavored design system on
-top (card-style `QGroupBox` sections, bordered/focus-ringed buttons and inputs, flat table header,
-slim progress bar/scrollbars, flat tabs/menus) generated from those same tokens — an unknown token
-raises `KeyError` at build time rather than silently rendering unstyled. `theme.apply_app_theme`
-applies both the palette and the stylesheet, and rebuilds both live on an OS Light/Dark switch. A
-widget's own `setStyleSheet` (the danger button, notice banners, splitter grip, stepper labels)
-always wins over these app-level rules. `components/stepper.SafetyStepper` is a read-only strip
-(Login → File → Validated → Dry-run/Commit) reflecting the same state `MainWindow._update_start_enabled` already
+**Native look per OS, on purpose.** No app-wide style, palette, or stylesheet is installed —
+Windows renders the windows11 style, macOS renders Aqua, and each follows its own OS Light/Dark
+switch natively. `theme.py`'s tokens (`color(token)`, Primer light/dark ramps) exist only for the
+handful of surfaces the app custom-paints on top of native widgets: the production banner, notice
+banners, the live-PUSH/UPDATE danger button, the results-table splitter grip and status pills, and
+the stepper/confirm-dialog above. `theme.apply_app_theme` wires `QStyleHints.colorSchemeChanged`
+so those custom-painted surfaces re-theme live when the OS switches Light/Dark; native widgets
+aren't touched — they already follow the OS automatically. `SPACING`/`RADIUS` constants keep the
+stepper and confirm dialog's hand-built geometry consistent with each other without a shared
+stylesheet to inherit from. `components/stepper.SafetyStepper` is a read-only strip (Login → File
+→ Validated → Dry-run/Commit) reflecting the same state `MainWindow._update_start_enabled` already
 tracks — it does not gate anything itself.
 
 ## Packaging

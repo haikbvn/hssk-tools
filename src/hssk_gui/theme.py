@@ -1,14 +1,13 @@
-"""Centralised, dark-mode-aware colour tokens — and the app-wide Fusion palette built from them.
+"""Centralised, dark-mode-aware colour tokens.
 
-Single source of truth for every colour the GUI uses: the accent colours it paints
-programmatically (status text, the production banner, the live-PUSH button, the drag-drop
-border) AND the app's base surface palette (window/text/border/highlight), applied via a pinned
-Fusion style so the app renders identically on Windows and macOS instead of each OS's native
-widget chrome.
+Single source of truth for the accent colours the GUI paints programmatically (status text,
+the production banner, the live-PUSH button, the drag-drop border). No app-wide stylesheet is
+installed — every widget keeps its platform-native look in both light and dark mode; only the
+handful of surfaces we already custom-paint read their colours from here.
 
-Colours follow GitHub Primer's light/dark ramps, which are tuned for contrast on either
+Colours follow GitHub Primer's light/dark accent ramps, which are tuned for contrast on either
 background. ``apply_app_theme`` wires ``QStyleHints.colorSchemeChanged`` so a system Light/Dark
-switch re-themes the running app live (both the custom-painted surfaces and the Fusion palette).
+switch re-themes the running app live.
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QGuiApplication, QPalette
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 from hssk.pipeline.results import Status
@@ -59,29 +58,6 @@ _TOKENS: dict[str, dict[str, str]] = {
     "pill_muted_bg": {"light": "#eaeef2", "dark": "#30363d"},
     # the log/table splitter grip (a soft bar so operators discover it's draggable)
     "splitter_grip": {"light": "#d0d7de", "dark": "#30363d"},
-    # -- app-wide Fusion palette surfaces (GitHub Primer canvas/border/text ramps) --
-    # surface_window is the app CANVAS (subtly tinted, not flat white) — surface_base/card_bg
-    # below are what actually render white-on-canvas (inputs, tables, QGroupBox cards), giving
-    # the modern-QSS layer (app_qss) something to contrast against.
-    "surface_window": {"light": "#f6f8fa", "dark": "#0d1117"},
-    "surface_base": {"light": "#ffffff", "dark": "#0d1117"},
-    "surface_alt_base": {"light": "#f6f8fa", "dark": "#161b22"},
-    "surface_button": {"light": "#f6f8fa", "dark": "#21262d"},
-    "surface_tooltip": {"light": "#1f2328", "dark": "#e6edf3"},
-    "surface_tooltip_text": {"light": "#ffffff", "dark": "#0d1117"},
-    "surface_text": {"light": "#1f2328", "dark": "#e6edf3"},
-    "surface_text_disabled": {"light": "#8c959f", "dark": "#6e7681"},
-    "surface_border": {"light": "#d0d7de", "dark": "#30363d"},
-    "surface_highlight": {"light": "#0969da", "dark": "#1f6feb"},
-    "surface_highlight_text": {"light": "#ffffff", "dark": "#ffffff"},
-    "surface_link": {"light": "#0969da", "dark": "#58a6ff"},
-    # -- modern QSS layer (app_qss): cards, button/menu states, progress track, scrollbars --
-    "card_bg": {"light": "#ffffff", "dark": "#161b22"},
-    "hover_bg": {"light": "#f3f4f6", "dark": "#30363d"},
-    "button_hover_bg": {"light": "#eef1f4", "dark": "#30363d"},
-    "button_pressed_bg": {"light": "#e7ebf0", "dark": "#282e33"},
-    "progress_track": {"light": "#eaeef2", "dark": "#21262d"},
-    "scrollbar_hover": {"light": "#afb8c1", "dark": "#484f58"},
 }
 
 # Spacing/radius constants shared by scoped QSS and any custom-painted geometry, so hand-built
@@ -123,47 +99,6 @@ def status_color(status: Status) -> str:
     """Hex colour for a row Status, falling back to the default text colour."""
     token = STATUS_COLOR_TOKENS.get(status)
     return color(token) if token else color("muted")
-
-
-def build_palette(scheme: str) -> QPalette:
-    """A QPalette for ``scheme`` ("light"/"dark") from the surface_* tokens above.
-
-    Applied on top of the Fusion style so the app renders identically on Windows and macOS —
-    Fusion is the one built-in Qt style that fully respects an app-supplied QPalette (native
-    styles only partially do), which is also what makes dark mode deterministic here rather than
-    dependent on OS-style quirks.
-    """
-
-    def c(token: str) -> QColor:
-        return QColor(_TOKENS[token][scheme])
-
-    p = QPalette()
-    p.setColor(QPalette.ColorRole.Window, c("surface_window"))
-    p.setColor(QPalette.ColorRole.WindowText, c("surface_text"))
-    p.setColor(QPalette.ColorRole.Base, c("surface_base"))
-    p.setColor(QPalette.ColorRole.AlternateBase, c("surface_alt_base"))
-    p.setColor(QPalette.ColorRole.ToolTipBase, c("surface_tooltip"))
-    p.setColor(QPalette.ColorRole.ToolTipText, c("surface_tooltip_text"))
-    p.setColor(QPalette.ColorRole.Text, c("surface_text"))
-    p.setColor(QPalette.ColorRole.PlaceholderText, c("surface_text_disabled"))
-    p.setColor(QPalette.ColorRole.Button, c("surface_button"))
-    p.setColor(QPalette.ColorRole.ButtonText, c("surface_text"))
-    p.setColor(QPalette.ColorRole.BrightText, c("danger"))
-    p.setColor(QPalette.ColorRole.Link, c("surface_link"))
-    p.setColor(QPalette.ColorRole.LinkVisited, c("surface_link"))
-    p.setColor(QPalette.ColorRole.Highlight, c("surface_highlight"))
-    p.setColor(QPalette.ColorRole.HighlightedText, c("surface_highlight_text"))
-    p.setColor(QPalette.ColorRole.Light, c("surface_border"))
-    p.setColor(QPalette.ColorRole.Mid, c("surface_border"))
-    p.setColor(QPalette.ColorRole.Dark, c("surface_border"))
-    disabled_text = c("surface_text_disabled")
-    for role in (
-        QPalette.ColorRole.WindowText,
-        QPalette.ColorRole.Text,
-        QPalette.ColorRole.ButtonText,
-    ):
-        p.setColor(QPalette.ColorGroup.Disabled, role, disabled_text)
-    return p
 
 
 def danger_button_qss() -> str:
@@ -230,210 +165,13 @@ def label_qss(token: str) -> str:
     return f"color:{color(token)}; font-weight:bold;"
 
 
-def app_qss() -> str:
-    """The app-wide modern design system: Primer-flavored cards, buttons, inputs, table, etc.
-
-    Built entirely from tokens/SPACING/RADIUS (an unknown token raises ``KeyError`` here, at
-    build time, rather than silently falling back to nothing). Applied over the Fusion style +
-    palette in ``apply_app_theme`` — a widget's own ``setStyleSheet`` (the danger button, notice
-    banners, the splitter grip, stepper labels) still wins over these app-level rules, so those
-    stay exactly as they were.
-
-    Deliberately does NOT touch: bare ``QWidget`` or global ``QLabel`` (would repaint
-    ``_DropArea``'s custom border, the results-table empty-state overlay, and banner children),
-    or ``QCheckBox``/``QRadioButton`` (Fusion already renders their indicator from the palette
-    Highlight color and draws its own focus rect — restyling them risks losing both for no
-    visual gain).
-    """
-    c = color
-    sp, rad = SPACING, RADIUS
-    return f"""
-QGroupBox {{
-    background: {c("card_bg")};
-    border: 1px solid {c("surface_border")};
-    border-radius: {rad["lg"]}px;
-    padding: {sp["md"]}px;
-    padding-top: 34px;
-}}
-QGroupBox::title {{
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    margin: {sp["sm"]}px 0 0 {sp["md"]}px;
-    padding: 0;
-    font-weight: 600;
-    color: {c("surface_text")};
-    background: transparent;
-}}
-
-QPushButton {{
-    background: {c("surface_button")};
-    color: {c("surface_text")};
-    border: 1px solid {c("surface_border")};
-    border-radius: {rad["md"]}px;
-    padding: 5px 14px;
-    min-height: 28px;
-}}
-QPushButton:hover {{ background: {c("button_hover_bg")}; }}
-QPushButton:pressed {{ background: {c("button_pressed_bg")}; }}
-QPushButton:disabled {{
-    background: {c("surface_alt_base")};
-    color: {c("surface_text_disabled")};
-    border-color: {c("surface_border")};
-}}
-QPushButton:focus {{ border: 1px solid {c("surface_highlight")}; }}
-
-QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-    background: {c("surface_base")};
-    color: {c("surface_text")};
-    border: 1px solid {c("surface_border")};
-    border-radius: {rad["md"]}px;
-    padding: 4px {sp["sm"]}px;
-    min-height: 26px;
-}}
-QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
-    border: 1px solid {c("surface_highlight")};
-}}
-QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {{
-    background: {c("surface_alt_base")};
-    color: {c("surface_text_disabled")};
-}}
-QComboBox::drop-down {{ border: none; background: transparent; width: 24px; }}
-QSpinBox::up-button, QDoubleSpinBox::up-button {{
-    border: none; background: transparent; width: 18px;
-}}
-QSpinBox::down-button, QDoubleSpinBox::down-button {{
-    border: none; background: transparent; width: 18px;
-}}
-QComboBox QAbstractItemView {{
-    background: {c("card_bg")};
-    border: 1px solid {c("surface_border")};
-    selection-background-color: {c("surface_highlight")};
-    selection-color: {c("surface_highlight_text")};
-    padding: 2px;
-}}
-
-QTableWidget {{
-    background: {c("surface_base")};
-    alternate-background-color: {c("surface_alt_base")};
-    gridline-color: {c("surface_border")};
-    border: 1px solid {c("surface_border")};
-    border-radius: {rad["md"]}px;
-    selection-background-color: {c("surface_highlight")};
-    selection-color: {c("surface_highlight_text")};
-}}
-QHeaderView::section {{
-    background: {c("surface_alt_base")};
-    color: {c("surface_text")};
-    border: none;
-    border-bottom: 1px solid {c("surface_border")};
-    padding: 6px 18px 6px {sp["sm"]}px;
-    font-weight: 600;
-}}
-
-QPlainTextEdit, QTextBrowser {{
-    background: {c("surface_base")};
-    color: {c("surface_text")};
-    border: 1px solid {c("surface_border")};
-    border-radius: {rad["md"]}px;
-    padding: 4px;
-}}
-
-QProgressBar {{
-    background: {c("progress_track")};
-    border: none;
-    border-radius: 4px;
-    text-align: center;
-    min-height: 16px;
-    max-height: 16px;
-    color: {c("surface_text")};
-}}
-QProgressBar::chunk {{
-    background: {c("surface_highlight")};
-    border-radius: 3px;
-}}
-
-QTabWidget::pane {{
-    border: 1px solid {c("surface_border")};
-    border-radius: {rad["md"]}px;
-    top: -1px;
-    background: {c("card_bg")};
-}}
-QTabBar::tab {{
-    background: transparent;
-    color: {c("muted")};
-    padding: 6px 14px;
-    border: none;
-    border-bottom: 2px solid transparent;
-}}
-QTabBar::tab:selected {{
-    color: {c("surface_text")};
-    border-bottom: 2px solid {c("surface_highlight")};
-    font-weight: 600;
-}}
-QTabBar::tab:hover:!selected {{ color: {c("surface_text")}; }}
-
-QMenuBar {{ background: transparent; }}
-QMenuBar::item {{ padding: 4px {sp["sm"]}px; border-radius: {rad["sm"]}px; }}
-QMenuBar::item:selected {{ background: {c("hover_bg")}; }}
-QMenu {{
-    background: {c("card_bg")};
-    border: 1px solid {c("surface_border")};
-    border-radius: {rad["md"]}px;
-    padding: 4px;
-}}
-QMenu::item {{ padding: 5px 24px 5px 12px; border-radius: {rad["sm"]}px; }}
-QMenu::item:selected {{ background: {c("hover_bg")}; }}
-QMenu::item:disabled {{ color: {c("surface_text_disabled")}; }}
-QMenu::separator {{ height: 1px; background: {c("surface_border")}; margin: 4px {sp["sm"]}px; }}
-
-QToolTip {{
-    background: {c("surface_tooltip")};
-    color: {c("surface_tooltip_text")};
-    border: 1px solid {c("surface_border")};
-    padding: 4px 6px;
-}}
-
-QScrollBar:vertical {{ width: 10px; background: transparent; margin: 0; }}
-QScrollBar::handle:vertical {{
-    background: {c("surface_border")};
-    border-radius: 4px;
-    min-height: 30px;
-}}
-QScrollBar::handle:vertical:hover {{ background: {c("scrollbar_hover")}; }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; width: 0; }}
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
-QScrollBar:horizontal {{ height: 10px; background: transparent; margin: 0; }}
-QScrollBar::handle:horizontal {{
-    background: {c("surface_border")};
-    border-radius: 4px;
-    min-width: 30px;
-}}
-QScrollBar::handle:horizontal:hover {{ background: {c("scrollbar_hover")}; }}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ height: 0; width: 0; }}
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
-"""
-
-
 def apply_app_theme(app: QApplication, on_change: Callable[[], None] | None = None) -> None:
-    """Apply the Fusion palette for the current scheme, then keep it (and ``on_change``) live.
+    """Call ``on_change`` whenever the system switches Light/Dark, so the app re-themes live.
 
-    The app is pinned to the Fusion style (set once, in ``app.py``, before this runs) so the
-    palette and app_qss() modern design system below are both fully respected on both OSes. On
-    every OS Light/Dark switch this rebuilds the palette AND re-applies the stylesheet (Qt only
-    re-polishes styled widgets on a stylesheet change, not on a bare palette change) for the new
-    scheme, then calls ``on_change`` so the few custom-painted surfaces (banners, the drag-drop
-    border, status text) repaint from ``color()`` too.
+    No app-wide stylesheet is installed: every widget keeps fully native rendering (and native
+    focus indication). The few custom-painted surfaces (banners, the drag-drop border, status
+    text) read their colours from ``color()`` at paint time and repaint via ``on_change``.
     """
-    app.setPalette(build_palette(current_scheme()))
-    app.setStyleSheet(app_qss())
     hints = app.styleHints()
-    if hints is None:
-        return
-
-    def _on_scheme_changed(_scheme: Qt.ColorScheme) -> None:
-        app.setPalette(build_palette(current_scheme()))
-        app.setStyleSheet(app_qss())
-        if on_change is not None:
-            on_change()
-
-    hints.colorSchemeChanged.connect(_on_scheme_changed)
+    if hints is not None and on_change is not None:
+        hints.colorSchemeChanged.connect(lambda _scheme: on_change())

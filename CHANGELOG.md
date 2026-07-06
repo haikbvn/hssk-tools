@@ -2,28 +2,19 @@
 
 ## v1.9.0 — 2026-07-06
 
-### One consistent interface on Windows and macOS
+### Safety stepper + type-to-confirm production push
 
-- The app is pinned to Qt's Fusion style instead of each OS's native widget chrome, and bundles a
-  single Vietnamese-first font (Be Vietnam Pro, SIL OFL) as the app-wide default. Windows and macOS
-  now render identically — same widget metrics, same dark/light palette — instead of drifting apart
-  the way Segoe UI (Windows) and SF Pro (macOS) always did. Dark mode is now built from an explicit
-  palette (`theme.build_palette`), so it no longer depends on OS-style quirks.
-- On top of that pinned Fusion base, a modern Primer-flavored design system (`theme.app_qss`):
-  card-style sections, bordered/focus-ringed buttons and inputs, a flat table header, slim
-  progress bar and scrollbars, and flat tabs/menus — all generated from the same colour tokens as
-  the existing status pills and banners, so light/dark stay in sync automatically.
 - New **safety-ladder strip** at the top of the window: Login → File → Validated → Dry-run/Commit,
   each step checked off as it completes. Purely a status display — it doesn't change what Start
   allows — but the batch's safety prerequisites are now visible at a glance instead of only showing
   up as a disabled-button tooltip.
 - The PRODUCTION push confirmation is now a custom **type-to-confirm** dialog (type `YES`, mirroring
   the CLI's `--commit` prompt) instead of a plain Yes/No message box — a more deliberate, harder to
-  mis-click confirmation for the one action that sends live data, and rendered identically on both
-  OSes since it's custom-drawn rather than a native message box.
-
-This is a visible change for existing users — screenshots in the README/guide will look different
-starting this release.
+  mis-click confirmation for the one action that sends live data.
+- The app keeps each OS's native widget style (Windows renders windows11, macOS renders Aqua) and
+  native fonts; a cross-platform-identical look (a pinned Fusion style, a bundled font, and a custom
+  design system) was built and evaluated but not kept — native look-and-feel per OS was the final
+  call.
 
 ## v1.8.0 — 2026-07-06
 

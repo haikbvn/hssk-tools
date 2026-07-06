@@ -37,9 +37,8 @@ def _qr_widget(image_name: str, caption_key: str, a11y_key: str, details_key: st
         img_label.setText(tr("sponsor_qr_missing"))
         img_label.setFrameShape(QFrame.Shape.Box)
         img_label.setFixedSize(_QR_WIDTH, _QR_WIDTH)
-        img_label.setStyleSheet(
-            f"color: {theme.color('muted')}; border: 1px solid {theme.color('surface_border')};"
-        )
+        muted = theme.color("muted")
+        img_label.setStyleSheet(f"color: {muted}; border: 1px solid {muted};")
     else:
         img_label.setPixmap(px.scaledToWidth(_QR_WIDTH, Qt.TransformationMode.SmoothTransformation))
 

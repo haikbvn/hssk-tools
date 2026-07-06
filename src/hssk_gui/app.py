@@ -11,7 +11,6 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 from hssk import __version__
 from hssk.config import app_icon, data_dir
 
-from .fonts import apply_app_font
 from .i18n import set_language, tr
 from .main_window import MainWindow
 from .settings import UiSettings
@@ -32,15 +31,10 @@ def _ensure_terms_accepted() -> bool:
 
 
 def main() -> int:
-    # Pinned before QApplication touches any widget: Fusion renders identically on Windows and
-    # macOS (unlike each OS's native style), and is the one built-in style that fully honors the
-    # QPalette apply_app_theme installs below — native styles only partially respect it.
-    QApplication.setStyle("Fusion")
     app = QApplication(sys.argv)
     app.setApplicationName("HSSK Tools")
     app.setOrganizationName("hssk-tools")
     app.setApplicationVersion(__version__)
-    apply_app_font(app)
     icon_path = app_icon()
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))

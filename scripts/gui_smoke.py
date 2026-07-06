@@ -5,11 +5,13 @@ Not collected by pytest (no Qt on CI needed) and not packaged; run it by hand af
     .venv/bin/python scripts/gui_smoke.py
 
 Renders screenshots to $HSSK_SMOKE_OUT (default: CWD) for eyeballing: idle + busy (light), a
-dark-mode pass (monkeypatching theme.current_scheme — the palette and app_qss() modern design
-system are both built from that one function, so this is a faithful offline stand-in for a real
-OS dark-mode switch), and PreferencesDialog + LegalDialog. The script patches the update check
-and recent-files persistence to no-ops so it never touches the network or the user's QSettings
-beyond what a normal launch reads.
+dark-mode pass, and PreferencesDialog + LegalDialog. Every widget keeps its native OS look (no
+app-wide stylesheet/palette is installed) — the dark-mode pass monkeypatches theme.current_scheme
+to verify only the handful of surfaces the app custom-paints (banners, the danger button, status
+pills, the splitter grip, the stepper) re-theme correctly; it does not change native widget colors
+offscreen the way a real OS Light/Dark switch would on a real machine. The script patches the
+update check and recent-files persistence to no-ops so it never touches the network or the user's
+QSettings beyond what a normal launch reads.
 """
 
 from __future__ import annotations
@@ -84,7 +86,6 @@ def main() -> int:
     real_current_scheme = theme.current_scheme  # captured before the dark-mode monkeypatch below
 
     app = QApplication([])
-    theme.apply_app_theme(app)
     w = MainWindow()
     w.resize(960, 720)
     w.show()
@@ -221,10 +222,10 @@ def main() -> int:
     legal.grab().save(f"{OUT}/smoke_legal.png")
     legal.close()
 
-    # --- dark mode: current_scheme drives both the palette and app_qss(), so monkeypatching
-    # it here is a faithful offline stand-in for a real OS Light/Dark switch -----------------
+    # --- dark mode: monkeypatch current_scheme and force the same repaint on_theme_changed
+    # would run on a real OS Light/Dark switch — exercises the custom-painted surfaces only,
+    # since native widgets aren't themed by us (see module docstring) ------------------------
     theme.current_scheme = lambda: "dark"  # type: ignore[method-assign]
-    theme.apply_app_theme(app, on_change=w.on_theme_changed)
     w.on_theme_changed()
     for _ in range(3):
         app.processEvents()
