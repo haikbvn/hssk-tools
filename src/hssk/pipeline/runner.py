@@ -35,6 +35,7 @@ from ..errors import (
     ConfigError,
     MultiMatch,
     PatientNotFound,
+    PayloadInvalid,
     RateLimited,
 )
 from ..events import LogEvent, MessageCode, Msg
@@ -79,7 +80,12 @@ class _Proceed:
 
 # A mode returns a finished RowOutcome (emit & continue) or a _Proceed (run the shared tail).
 # It may raise AuthExpired / RateLimited; _run_batch catches those to abort cleanly.
-ProcessRow = Callable[[ApiClient, int, RowResult, Callable[[Any], None]], "RowOutcome | _Proceed"]
+# The two callbacks are ``raw_logger`` (dump the first/failing search response) and ``drift_logger``
+# (``(endpoint, detail)`` → one-per-endpoint LOG_DRIFT warning).
+ProcessRow = Callable[
+    [ApiClient, int, RowResult, Callable[[Any], None], Callable[[str, str], None]],
+    "RowOutcome | _Proceed",
+]
 
 _REQUEST_OVERHEAD_S = 0.8  # rough per-request network+server time (heuristic)
 _REQUESTS_PER_ROW = 2  # create: search + create; update/delete: fetch-detail + update|delete
@@ -190,6 +196,16 @@ def _run_batch_locked(
     aborted = False
     abort_reason = ""
     logged_raw = False
+    drifted_endpoints: set[str] = set()
+
+    def drift_logger(endpoint: str, detail: str) -> None:
+        """Emit a LOG_DRIFT warning at most once per endpoint (a drift repeats on every row)."""
+        if endpoint in drifted_endpoints:
+            return
+        drifted_endpoints.add(endpoint)
+        cb.on_log(
+            LogEvent(MessageCode.LOG_DRIFT, {"endpoint": endpoint}, detail=detail, level="warning")
+        )
 
     def emit(outcome: RowOutcome) -> None:
         outcome.timestamp = dt.datetime.now().isoformat(timespec="seconds")
@@ -244,7 +260,7 @@ def _run_batch_locked(
                 continue
 
             try:
-                step = process_row(client, row_index, coerced, raw_logger)
+                step = process_row(client, row_index, coerced, raw_logger, drift_logger)
             except BatchCancelled:
                 aborted, abort_reason = True, "cancelled by user"
                 break
@@ -387,6 +403,7 @@ def run(
         row_index: int,
         coerced: RowResult,
         raw_logger: Callable[[Any], None],
+        drift_logger: Callable[[str, str], None],
     ) -> RowOutcome | _Proceed:
         identifier = coerced.identifier
         key = Ledger.make_key(identifier, coerced.exam_date)
@@ -403,7 +420,13 @@ def run(
             return RowOutcome(row_index, None, Status.INVALID, msgs=[Msg(MessageCode.ROW_ID_BLANK)])
 
         try:
-            resolved = patients.resolve(client, identifier, mapping.search, on_raw=raw_logger)
+            resolved = patients.resolve(
+                client,
+                identifier,
+                mapping.search,
+                on_raw=raw_logger,
+                on_drift=lambda detail: drift_logger(patients.SEARCH_PATH, detail),
+            )
         except PatientNotFound as exc:
             return RowOutcome(
                 row_index,
@@ -430,13 +453,23 @@ def run(
             )
 
         pid = resolved.patient_id
-        payload = builder.build(
-            coerced,
-            payload_base,
-            pid,
-            medical_identifier_code=resolved.medical_identifier_code,
-            profile=profile,
-        )
+        try:
+            payload = builder.build(
+                coerced,
+                payload_base,
+                pid,
+                medical_identifier_code=resolved.medical_identifier_code,
+                profile=profile,
+            )
+        except PayloadInvalid as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.INVALID,
+                patient_id=pid,
+                msgs=[exc.msg or Msg(MessageCode.PASSTHROUGH, detail=str(exc))],
+                warnings=coerced.warnings,
+            )
         return _Proceed(
             payload=payload,
             patient_id=pid,
@@ -499,6 +532,7 @@ def run_update(
         row_index: int,
         coerced: RowResult,
         raw_logger: Callable[[Any], None],
+        drift_logger: Callable[[str, str], None],
     ) -> RowOutcome | _Proceed:
         identifier = coerced.identifier
         medical_record_id = coerced.values.get("medicalRecordId")
@@ -522,16 +556,29 @@ def run_update(
                 warnings=coerced.warnings,
             )
 
-        patient_id, mic = records.extract_patient_ref(detail)
-        payload = update_builder.build_update(
-            coerced,
-            mapping,
-            patient_id,
-            medical_record_id=medical_record_id,
-            medical_identifier_code=mic,
-            profile=profile,
-            _base=update_payload_base,
+        patient_id, mic = records.extract_patient_ref(
+            detail, on_drift=lambda d: drift_logger(records.DETAIL_PATH, d)
         )
+        try:
+            payload = update_builder.build_update(
+                coerced,
+                mapping,
+                patient_id,
+                medical_record_id=medical_record_id,
+                medical_identifier_code=mic,
+                profile=profile,
+                _base=update_payload_base,
+            )
+        except PayloadInvalid as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.INVALID,
+                patient_id=patient_id,
+                record_id=medical_record_id,
+                msgs=[exc.msg or Msg(MessageCode.PASSTHROUGH, detail=str(exc))],
+                warnings=coerced.warnings,
+            )
         who = (detail.get("medicalRecordInfo") or detail.get("medicalRecords") or {}).get(
             "doctorName"
         ) or ""
@@ -596,6 +643,7 @@ def run_delete(
         row_index: int,
         coerced: RowResult,
         raw_logger: Callable[[Any], None],
+        drift_logger: Callable[[str, str], None],
     ) -> RowOutcome | _Proceed:
         identifier = coerced.identifier
         medical_record_id = coerced.values.get("medicalRecordId")
@@ -619,7 +667,9 @@ def run_delete(
                 warnings=coerced.warnings,
             )
 
-        patient_id, mic = records.extract_patient_ref(detail)
+        patient_id, mic = records.extract_patient_ref(
+            detail, on_drift=lambda d: drift_logger(records.DETAIL_PATH, d)
+        )
         who = (detail.get("medicalRecordInfo") or detail.get("medicalRecords") or {}).get(
             "doctorName"
         ) or ""

@@ -993,9 +993,9 @@ class MainWindow(QMainWindow):
 
     def _on_run_log(self, event: LogEvent) -> None:
         self.results.append_log(render(event))
-        # The engine's pre-run token-lifetime estimate is easy to miss in the log pane —
-        # mirror it in the banner too.
-        if event.code == MessageCode.LOG_TOKEN_SHORT:
+        # A couple of log lines are too important to leave only in the log pane — mirror them in
+        # the banner: the pre-run token-lifetime estimate, and an API-drift warning.
+        if event.code in (MessageCode.LOG_TOKEN_SHORT, MessageCode.LOG_DRIFT):
             self.error_banner.show_message(render(event), severity="warning")
 
     def _stop_run(self) -> None:

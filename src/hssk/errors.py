@@ -57,6 +57,18 @@ class PatientNotFound(HsskError):
         self.msg = msg
 
 
+class PayloadInvalid(HsskError):
+    """The assembled create payload failed the pydantic gate (unknown field / bad shape).
+
+    Carries a typed ``msg`` so the GUI can localize it; the runner turns it into a per-row INVALID
+    outcome (in dry-run and commit) instead of sending a malformed body.
+    """
+
+    def __init__(self, message: str, *, msg: Msg | None = None):
+        super().__init__(message)
+        self.msg = msg
+
+
 class MultiMatch(HsskError):
     """Patient search returned more than one candidate and policy forbids guessing."""
 

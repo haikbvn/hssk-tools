@@ -33,6 +33,7 @@ class MessageCode(StrEnum):
     ROW_NO_PATIENT = "ROW_NO_PATIENT"
     ROW_MULTI_MATCH = "ROW_MULTI_MATCH"
     ROW_MATCH_NO_PATIENT_ID = "ROW_MATCH_NO_PATIENT_ID"
+    ROW_PAYLOAD_INVALID = "ROW_PAYLOAD_INVALID"  # pydantic gate rejected the assembled payload
     # -- per-cell coercion errors/warnings (RowResult.errors / .warnings) --
     COERCE_CANNOT_PARSE = "COERCE_CANNOT_PARSE"
     COERCE_MISSING_REQUIRED = "COERCE_MISSING_REQUIRED"
@@ -49,6 +50,7 @@ class MessageCode(StrEnum):
     LOG_LEDGER_CORRUPT = "LOG_LEDGER_CORRUPT"
     LOG_SEARCH_SAVED_ROW = "LOG_SEARCH_SAVED_ROW"
     LOG_TOKEN_SHORT = "LOG_TOKEN_SHORT"
+    LOG_DRIFT = "LOG_DRIFT"  # a response shape was unrecognised — the site's API may have changed
     # -- browser-login progress (StatusFn) --
     LOGIN_WAITING = "LOGIN_WAITING"
     LOGIN_TOKEN_CAPTURED = "LOGIN_TOKEN_CAPTURED"
@@ -126,6 +128,8 @@ def render_en(msg: Msg | LogEvent) -> str:
         return f"{base}; skipping" if p.get("skipping") else base
     if c == MessageCode.ROW_MATCH_NO_PATIENT_ID:
         return f"match for {p['query']} has no patientId field"
+    if c == MessageCode.ROW_PAYLOAD_INVALID:
+        return f"payload failed validation: {d}"
 
     if c == MessageCode.COERCE_CANNOT_PARSE:
         return f"{p['col']}: cannot parse {p['value']} as {p['type']} ({d})"
@@ -163,6 +167,11 @@ def render_en(msg: Msg | LogEvent) -> str:
         return (
             f"token may expire before this batch finishes "
             f"(~{p['needed']} min needed, ~{p['left']} min left) — consider logging in again first"
+        )
+    if c == MessageCode.LOG_DRIFT:
+        return (
+            f"server response from {p['endpoint']} was not recognised — the site's API may have "
+            "changed; dry-run and check the results before committing"
         )
 
     if c == MessageCode.LOGIN_WAITING:

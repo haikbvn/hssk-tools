@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from .models import MedicalPatientDetailInfo, MedicalRecordInfo
+
 NORMAL = "Bình thường"
 
 # Organ/system description fields — all default to "Bình thường" (normal).
@@ -124,8 +126,12 @@ def default_payload(normal: str = NORMAL) -> dict[str, Any]:
     }
 
 
-RECORD_INFO_TARGETS: frozenset[str] = frozenset(record_info_template().keys())
-PATIENT_DETAIL_TARGETS: frozenset[str] = frozenset(patient_detail_template().keys())
+# The set of valid mapping targets is derived from the pydantic models (the single source of truth
+# for the payload shape), not the template dicts. A typo'd mapping target thus errors against the
+# model. ``tests/test_payload_models.py`` pins ``model_fields`` ≡ the template dict keys, so the
+# templates (source of default *values*) and the models (source of the *shape*) can never drift.
+RECORD_INFO_TARGETS: frozenset[str] = frozenset(MedicalRecordInfo.model_fields)
+PATIENT_DETAIL_TARGETS: frozenset[str] = frozenset(MedicalPatientDetailInfo.model_fields)
 ALL_TARGETS: frozenset[str] = RECORD_INFO_TARGETS | PATIENT_DETAIL_TARGETS
 
 

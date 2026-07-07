@@ -119,6 +119,8 @@ _CODES_WITHOUT_GOLDEN_CASE = {
     MessageCode.ROW_COERCE_ERROR,  # tested separately (see below)
     MessageCode.ROW_SEARCH_FAILED,  # tested separately (see below)
     MessageCode.PASSTHROUGH,  # not a real code — no template, always render_en passthrough
+    MessageCode.ROW_PAYLOAD_INVALID,  # Phase 5, no pre-refactor golden — tested below
+    MessageCode.LOG_DRIFT,  # Phase 5, no pre-refactor golden — tested below
 }
 
 
@@ -156,6 +158,28 @@ def test_coerce_error_shows_raw_detail_unmodified() -> None:
     assert render(msg) == "Lỗi chuyển đổi: 'Tuổi': cannot parse 'abc' as int (bad)"
     set_language("en")
     assert render(msg) == "Coercion error: 'Tuổi': cannot parse 'abc' as int (bad)"
+
+
+def test_payload_invalid_shows_translated_prefix_plus_raw_detail() -> None:
+    # Phase 5: like ROW_COERCE_ERROR — a translated prefix followed by the verbatim pydantic detail.
+    msg = Msg(MessageCode.ROW_PAYLOAD_INVALID, detail="medicalRecordInfo.symptomss: Extra inputs")
+    set_language("vi")
+    assert render(msg) == "Dữ liệu gửi không hợp lệ: medicalRecordInfo.symptomss: Extra inputs"
+    set_language("en")
+    assert render(msg) == "Payload failed validation: medicalRecordInfo.symptomss: Extra inputs"
+
+
+def test_drift_formats_endpoint_in_both_languages() -> None:
+    # Phase 5: a plain format template — the {endpoint} param must be substituted, not left literal.
+    from hssk.events import LogEvent
+
+    event = LogEvent(MessageCode.LOG_DRIFT, {"endpoint": "/api/v1/report/patient/search"})
+    for lang in ("vi", "en"):
+        set_language(lang)
+        out = render(event)
+        assert "/api/v1/report/patient/search" in out
+        assert "{endpoint}" not in out
+        assert out != "msg_LOG_DRIFT"  # key actually resolved
 
 
 def test_search_failed_is_passthrough_with_prefix() -> None:

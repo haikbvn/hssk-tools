@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.12.0 — 2026-07-07
+
+### Typed payload gate + API-drift warnings
+
+- **Malformed payloads are caught before sending.** The create/update body is now checked against a
+  strict field schema right before it would go out: any field the templates don't define — most
+  often a typo in your `mapping.yaml` `defaults` block, which nothing previously validated — turns
+  that row into a clean `INVALID` (with the offending field named), in dry-run and for real, instead
+  of a silent bad record on the server. Valid rows are unchanged: the check only inspects, it never
+  rewrites the payload, so what's sent is byte-for-byte what was sent before.
+- **A heads-up when the website's API may have changed.** The app has always guessed defensively at
+  the site's undocumented response shapes. Those guesses now live in one place and raise a one-time
+  "server response not recognised — dry-run and check before committing" banner when a search or
+  record-detail response doesn't look like anything expected — so an upstream change surfaces as a
+  visible warning instead of mysterious "no patient found" rows. A normal empty result is never
+  mistaken for drift.
+
 ## v1.11.0 — 2026-07-07
 
 ### PII hygiene & a one-click support bundle

@@ -110,18 +110,41 @@ The Excel "Mã định danh" identifier is usually a **CCCD or insurance number,
 JSON shape is undocumented, so `_find_patient_list` probes several list keys and the runner dumps the
 first response to `first_search_response.json` for inspection.
 
+**Response probing lives in `api/adapters.py`** — the one home for the three tolerant probers
+(`find_patient_list`, `extract_patient_ref`, `extract_record_id`); `patients.py`/`records.py`/
+`record_id.py` re-export from it (keeps their public names + tests). Two of them take an optional
+`on_drift` callback that fires **only** when a response is clearly not the expected shape — a
+non-empty object with no place the data could sit (a *located-but-empty* result like
+`{"data":{"items":[]}}` is a normal miss, never drift). The runner threads a once-per-endpoint
+`drift_logger` in, emitting a single `LOG_DRIFT` warning the GUI raises as a "server response not
+recognised — dry-run first" banner. Keep drift narrow (locate-failure only) so a normal empty search
+never false-alarms.
+
 ### Payload assembly (`payload/templates.py` + `payload/builder.py`)
 
 `templates.py` is the single source of truth for the create-request body shape and its constant
 defaults (organ descriptions → "Bình thường", money fields → null, etc.). `builder.build` layers:
 canonical template → deep-merge the mapping's `defaults` block → inject per-row coerced values into
 the correct sub-object (a target is routed by membership in `RECORD_INFO_TARGETS` vs
-`PATIENT_DETAIL_TARGETS`) → set `patientId`/`medicalIdentifierCode` last. `validate_targets` rejects
-any mapped target that isn't a real field in these templates — run it before any batch.
-`update_builder.build_update` reuses `builder.build`, then stamps `medicalRecordId`, adds
-`concludesDisease`, and the two empty `deleted*` lists the update endpoint requires. `builder.build`
-also fills operator-identity fields from the cached login profile (`auth/profile.py`, fetched once at
-login) when the row leaves them blank.
+`PATIENT_DETAIL_TARGETS`) → set `patientId`/`medicalIdentifierCode` last. `update_builder.build_update`
+reuses `builder.build`, then stamps `medicalRecordId`, adds `concludesDisease`, and the two empty
+`deleted*` lists the update endpoint requires. `builder.build` also fills operator-identity fields
+from the cached login profile (`auth/profile.py`, fetched once at login) when the row leaves them blank.
+
+**`payload/models.py` is the pydantic schema for the body shape** (`CreateExamPayload` +
+`MedicalRecordInfo`/`MedicalPatientDetailInfo`, all `extra="forbid"`). It is the **single source of
+truth for the field set**: `RECORD_INFO_TARGETS`/`PATIENT_DETAIL_TARGETS` derive from `model_fields`,
+so `validate_targets` (run before any batch) rejects a mapped target the model doesn't define. The
+**templates stay the source of default *values***; `tests/test_payload_models.py` pins `model_fields`
+≡ the template keys so the two can't drift. `builder.build` ends with a **validate-only gate**
+(`validate_payload`): it runs `CreateExamPayload.model_validate` for its *rejection* behavior and
+sends the original dict unchanged (never a `model_dump`, so the wire bytes are unaffected). A failure
+raises `PayloadInvalid`, which the runner turns into a per-row `INVALID` (`ROW_PAYLOAD_INVALID`) — in
+dry-run and commit. This is what catches a typo in the mapping's `defaults` block (otherwise
+unvalidated). Field *value* types are deliberately permissive (`str_num` coercion yields strings like
+`"18"`); the gate's value is `extra="forbid"`, not value strictness — don't tighten value types
+without checking the builder/pipeline goldens. The error detail is built from pydantic `loc`+`msg`
+only (never `input`), so patient cell values don't leak into reports/logs.
 
 ### Config & the mapping file (`mapping.py`, `config.py`)
 

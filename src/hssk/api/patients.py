@@ -16,6 +16,7 @@ from typing import Any
 from ..errors import MultiMatch, PatientNotFound
 from ..events import MessageCode, Msg
 from ..mapping import SearchSpec
+from .adapters import OnDrift, find_patient_list
 from .client import ApiClient
 
 SEARCH_PATH = "/api/v1/report/patient/search"
@@ -38,8 +39,6 @@ _ECHOED_ID_FIELDS = (
     "householdCode",
 )
 
-_LIST_KEYS = ("items", "content", "records", "rows", "list", "data")
-
 
 @dataclass
 class ResolvedPatient:
@@ -50,23 +49,8 @@ class ResolvedPatient:
 
 
 def _find_patient_list(data: Any) -> list[dict[str, Any]]:
-    """Walk the response and return the first list of dicts that look like patient records."""
-    if isinstance(data, list):
-        return [p for p in data if isinstance(p, dict)]
-    if isinstance(data, dict):
-        for key in _LIST_KEYS:
-            val = data.get(key)
-            if isinstance(val, list) and any(isinstance(x, dict) for x in val):
-                return [x for x in val if isinstance(x, dict)]
-        for key in ("data", "result", "response", "body"):
-            if key in data:
-                found = _find_patient_list(data[key])
-                if found:
-                    return found
-        for val in data.values():
-            if isinstance(val, list) and any(isinstance(x, dict) and "patientId" in x for x in val):
-                return [x for x in val if isinstance(x, dict)]
-    return []
+    """Thin, drift-free wrapper over the consolidated adapter (kept for existing callers/tests)."""
+    return find_patient_list(data)
 
 
 def search(
@@ -75,6 +59,7 @@ def search(
     search_spec: SearchSpec,
     *,
     on_raw: Callable[[Any], None] | None = None,
+    on_drift: OnDrift | None = None,
 ) -> list[dict[str, Any]]:
     body: dict[str, Any] = {field: query for field in SEARCH_FIELDS}
     body["profileStatus"] = search_spec.profileStatus
@@ -83,7 +68,7 @@ def search(
     data = client.post(SEARCH_PATH, body)
     if on_raw is not None:
         on_raw(data)
-    return _find_patient_list(data)
+    return find_patient_list(data, on_drift=on_drift)
 
 
 def _echoed_exact(record: dict[str, Any], query: str) -> bool:
@@ -99,9 +84,10 @@ def resolve(
     search_spec: SearchSpec,
     *,
     on_raw: Callable[[Any], None] | None = None,
+    on_drift: OnDrift | None = None,
 ) -> ResolvedPatient:
     """Return the resolved patient for ``query``, or raise PatientNotFound / MultiMatch."""
-    candidates = search(client, query, search_spec, on_raw=on_raw)
+    candidates = search(client, query, search_spec, on_raw=on_raw, on_drift=on_drift)
     if not candidates:
         raise PatientNotFound(
             f"no patient found for {query!r}",

@@ -31,6 +31,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     "msg_ROW_RECORD_ID_BLANK": {"en": "medicalRecordId is blank", "vi": "medicalRecordId trống"},
     "msg_ROW_COERCE_ERROR": {"en": "Coercion error: ", "vi": "Lỗi chuyển đổi: "},
     "msg_ROW_FETCH_DETAIL_FAILED": {"en": "Fetch detail: ", "vi": "Lỗi lấy chi tiết: "},
+    "msg_ROW_PAYLOAD_INVALID": {
+        "en": "Payload failed validation: ",
+        "vi": "Dữ liệu gửi không hợp lệ: ",
+    },
     "msg_ROW_NO_PATIENT": {
         "en": "no patient found for {query}",
         "vi": "không tìm thấy bệnh nhân với {query}",
@@ -101,6 +105,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "(~{needed} min needed, ~{left} min left) — consider logging in again first",
         "vi": "⚠ Token có thể hết hạn trước khi chạy xong lô này "
         "(cần ~{needed} phút, còn ~{left} phút) — nên đăng nhập lại trước khi chạy",
+    },
+    "msg_LOG_DRIFT": {
+        "en": "⚠ Server response from {endpoint} was not recognised — the website's API may have "
+        "changed. Dry-run and check the results before committing.",
+        "vi": "⚠ Phản hồi máy chủ từ {endpoint} không nhận dạng được — API của website có thể đã "
+        "thay đổi. Hãy chạy thử và kiểm tra kết quả trước khi gửi thật.",
     },
     "msg_LOGIN_WAITING": {
         "en": "Please log in in the browser window…",

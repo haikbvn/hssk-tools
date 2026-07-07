@@ -93,3 +93,22 @@ def test_render_en_matches_golden_raw(label: str):
     expected = GOLDEN["messages"][label]["raw"]
     expected = expected.removeprefix("⚠ ")  # the range-warning display marker is not the message
     assert render_en(CASES[label]) == expected
+
+
+# Phase 5 codes are newer than the pre-refactor golden, so their English wording is pinned here
+# directly (CLI + written reports render via render_en and must stay stable).
+
+
+def test_render_en_payload_invalid():
+    msg = Msg(MessageCode.ROW_PAYLOAD_INVALID, detail="medicalRecordInfo.symptomss: Extra inputs")
+    assert render_en(msg) == "payload failed validation: medicalRecordInfo.symptomss: Extra inputs"
+
+
+def test_render_en_drift():
+    from hssk.events import LogEvent
+
+    event = LogEvent(MessageCode.LOG_DRIFT, {"endpoint": "/api/v1/report/patient/search"})
+    assert render_en(event) == (
+        "server response from /api/v1/report/patient/search was not recognised — the site's API "
+        "may have changed; dry-run and check the results before committing"
+    )

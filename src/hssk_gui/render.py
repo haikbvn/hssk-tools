@@ -18,7 +18,7 @@ _C = MessageCode
 # Success-shaped rows: a translated verb head, then an optional " — {who}" and no-id suffix.
 _ROW_VERBS = {_C.ROW_CREATED, _C.ROW_UPDATED, _C.ROW_DELETED, _C.ROW_DRY_RUN}
 # Translated prefix followed by verbatim passthrough detail.
-_PREFIX_DETAIL = {_C.ROW_COERCE_ERROR, _C.ROW_FETCH_DETAIL_FAILED}
+_PREFIX_DETAIL = {_C.ROW_COERCE_ERROR, _C.ROW_FETCH_DETAIL_FAILED, _C.ROW_PAYLOAD_INVALID}
 # Diagnostic-only: no translation, defer to the English renderer (raw server/exception text).
 _PASSTHROUGH = {_C.ROW_SEARCH_FAILED, _C.PASSTHROUGH}
 
