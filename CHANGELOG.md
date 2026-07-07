@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.13.0 — 2026-07-07
+
+### Your login token now lives in the OS keychain
+
+- The saved login token moves from a file into the **operating-system keychain** (macOS Keychain,
+  Windows Credential Manager, Linux Secret Service). If the keychain isn't available for any reason,
+  the app **silently falls back** to the previous protected file, so logging in never breaks. An
+  existing token file is migrated into the keychain automatically the first time it's read.
+- Nothing else changes for you: log in as before. Exported support bundles still never include your
+  token.
+
+_Internal:_ the roadmap's plan to drop the ~130 MB bundled Chromium by switching login to the OS's
+native webview (pywebview) was **spiked and rejected** — on macOS, the system WebView can't load the
+site's WAF-protected single-sign-on login page. Playwright/Chromium stays; only the keychain change
+shipped from that phase.
+
 ## v1.12.0 — 2026-07-07
 
 ### Typed payload gate + API-drift warnings

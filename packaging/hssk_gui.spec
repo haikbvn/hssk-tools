@@ -10,7 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 ROOT = Path(os.getcwd())
 
@@ -23,6 +23,19 @@ pw_datas, pw_binaries, pw_hidden = collect_all("playwright")
 datas += pw_datas
 binaries += pw_binaries
 hiddenimports += pw_hidden
+
+# keyring: bundle the package + its dist metadata (entry points drive backend discovery) and name
+# the per-OS backends explicitly, since token_store imports keyring lazily. Best-effort only —
+# token_store silently falls back to a chmod-600 file if the keychain is unavailable at runtime.
+kr_datas, kr_binaries, kr_hidden = collect_all("keyring")
+datas += kr_datas + copy_metadata("keyring")
+binaries += kr_binaries
+hiddenimports += kr_hidden + [
+    "keyring.backends.macOS",
+    "keyring.backends.Windows",
+    "keyring.backends.chainer",
+    "keyring.backends.fail",
+]
 
 # Locate the Playwright Chromium to bundle (so operators install nothing). CI installs it into
 # $PLAYWRIGHT_BROWSERS_PATH; a plain local `playwright install chromium` puts it in Playwright's

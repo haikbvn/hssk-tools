@@ -164,9 +164,26 @@ PyInstaller.
 
 Login opens the real site in a **persistent** Playwright Chromium profile, sniffs the `Authorization:
 Bearer` header off any XHR to the API host (fallback: scan `localStorage` for a JWT), and saves the
-token to a `chmod 600` file. This uses Playwright's **sync** API, so it must run off any asyncio loop
-— i.e. the CLI main thread or a `QThread` worker, never an async context. The JWT `exp` is decoded
+token via `token_store.save_token`. This uses Playwright's **sync** API, so it must run off any asyncio
+loop — i.e. the CLI main thread or a `QThread` worker, never an async context. The JWT `exp` is decoded
 locally (no signature check) to warn before expiry; a server 401 surfaces as `AuthExpired`.
+
+**Token at rest → OS keychain, with a file fallback.** `token_store` stores the token in the OS
+keychain (macOS Keychain / Windows Credential Manager / Linux Secret Service) under service
+`hssk-tools`; if the keychain is unavailable (no backend, locked, any error) it **silently falls back**
+to the previous gitignored `chmod 600` file, so login never breaks. A legacy token file is migrated
+into the keychain on first read (file → keychain → delete). `keyring` is a lazy `import` inside the
+store (never at module load); every keyring call is wrapped so a failure just degrades to the file.
+Passing an explicit `path=` to `save_token`/`load_token` bypasses the keychain (file only) — this is
+what the tests use, and `tests/conftest.py` installs an **autouse in-memory keyring backend** so no
+test ever touches (or prompts) the real OS keychain. Note: the frozen-app keychain path and the macOS
+Keychain prompt on an unsigned build are only verifiable on a real build — the file fallback makes
+them non-load-bearing.
+
+> Phase 6 note: the roadmap's Chromium-free (pywebview) login was **spiked and rejected** — macOS
+> WKWebView can't run the site's WAF-protected Keycloak-OIDC SPA (the login page renders blank, and
+> WKWebView's `request_sent` never sees XHR), so **Playwright stays**. Only the keychain migration
+> (originally deferred from Phase 4) shipped from Phase 6.
 
 ### GUI threading invariant (`hssk_gui/worker_thread.py`)
 
