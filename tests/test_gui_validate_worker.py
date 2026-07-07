@@ -4,8 +4,7 @@ When the reader rejects the file up front (a required mapped column is absent), 
 both emit a ``problem`` (so the operator sees it in the results table) and ``failed`` (so the
 existing banner/lifecycle still runs) — and must not emit ``finished``.
 
-Runs without a QApplication: ValidateWorker is a plain QObject, and ``run()`` is called directly
-so its signals fire on the same thread via direct (synchronous) connections.
+``run()`` is called directly (no thread) so its signals fire synchronously.
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from openpyxl import Workbook
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
 from hssk.events import render_en
 from hssk.mapping import filter_for_delete, load_mapping
@@ -23,8 +22,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_MAPPING = REPO_ROOT / "config" / "mapping.example.yaml"
 EXAMPLE_OVERLAY = REPO_ROOT / "config" / "mapping.update.example.yaml"
 
-# A non-GUI application is enough for QObject signal/slot machinery; created once per process.
-_app = QCoreApplication.instance() or QCoreApplication([])
+# A full QApplication (not just QCoreApplication): pytest-qt's qapp/qtbot fixtures need one, and
+# a bare QCoreApplication singleton can't be upgraded after the fact — created once per process,
+# reused by pytest-qt's own fixture if this module collects first.
+_app = QApplication.instance() or QApplication([])
 
 
 def _delete_mapping():

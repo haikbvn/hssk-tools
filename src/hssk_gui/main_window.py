@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -56,6 +56,7 @@ from .render import render
 from .results_panel import ResultsPanel
 from .settings import UiSettings
 from .update_check import is_newer
+from .worker_thread import WorkerHandle, run_in_thread
 from .workers import (
     LoginWorker,
     RunWorker,
@@ -162,15 +163,13 @@ class MainWindow(QMainWindow):
         self._validated_path: Path | None = None  # last file a validation pass completed on
         self._validated_invalid = 0  # invalid-row count from that pass
 
-        # thread/worker handles (kept alive while running)
-        self._login_thread: QThread | None = None
-        self._login_worker: LoginWorker | None = None
-        self._validate_thread: QThread | None = None
-        self._validate_worker: ValidateWorker | None = None
-        self._run_thread: QThread | None = None
-        self._run_worker: RunWorker | None = None
-        self._update_thread: QThread | None = None
-        self._update_worker: UpdateCheckWorker | None = None
+        # One WorkerHandle per background job, non-None only while that job is running. Each owns
+        # its QThread + worker and the full teardown lifecycle (see worker_thread.py); "handle is
+        # None ⇔ that job is idle" is the invariant every idle-state reader below relies on.
+        self._login_handle: WorkerHandle | None = None
+        self._validate_handle: WorkerHandle | None = None
+        self._run_handle: WorkerHandle | None = None
+        self._update_handle: WorkerHandle | None = None
 
         self._build_ui()
         self.results.restore_splitter(self._ui.results_splitter)
@@ -585,21 +584,13 @@ class MainWindow(QMainWindow):
         self.error_banner.clear()
         self.login_btn.setEnabled(False)
         self._set_token_label(tr("lbl_opening_browser"), "info")
-        self._login_thread = QThread()
-        self._login_worker = LoginWorker()
-        self._login_worker.moveToThread(self._login_thread)
-        self._login_thread.started.connect(self._login_worker.run)
-        self._login_worker.status.connect(lambda m: self._set_token_label(render(m), "info"))
-        # Stop the thread first, then update UI; only drop our references once the thread has
-        # fully finished (dropping a running QThread is a fatal crash).
-        self._login_worker.finished.connect(self._login_thread.quit)
-        self._login_worker.failed.connect(self._login_thread.quit)
-        self._login_worker.finished.connect(self._on_login_finished)
-        self._login_worker.failed.connect(self._on_login_failed)
-        self._login_thread.finished.connect(self._login_worker.deleteLater)
-        self._login_thread.finished.connect(self._login_thread.deleteLater)
-        self._login_thread.finished.connect(self._on_login_thread_finished)
-        self._login_thread.start()
+        worker = LoginWorker()
+        worker.status.connect(lambda m: self._set_token_label(render(m), "info"))
+        worker.finished.connect(self._on_login_finished)
+        worker.failed.connect(self._on_login_failed)
+        self._login_handle = run_in_thread(
+            worker, on_thread_finished=self._on_login_thread_finished
+        )
 
     def _on_login_finished(self, _data: object) -> None:
         self.login_btn.setEnabled(True)
@@ -612,25 +603,16 @@ class MainWindow(QMainWindow):
         self.error_banner.show_message(f"{tr('dlg_login_failed')}: {message}")
 
     def _on_login_thread_finished(self) -> None:
-        self._login_thread = None
-        self._login_worker = None
+        self._login_handle = None
 
     # -- update notification --------------------------------------------------------------
 
     def _start_update_check(self) -> None:
-        self._update_thread = QThread()
-        self._update_worker = UpdateCheckWorker()
-        self._update_worker.moveToThread(self._update_thread)
-        self._update_thread.started.connect(self._update_worker.run)
-        # Same lifecycle as the login worker: quit first, then UI handler, deleteLater and
-        # reference drops only once the thread has fully finished.
-        self._update_worker.finished.connect(self._update_thread.quit)
-        self._update_worker.failed.connect(self._update_thread.quit)
-        self._update_worker.finished.connect(self._on_update_check_finished)
-        self._update_thread.finished.connect(self._update_worker.deleteLater)
-        self._update_thread.finished.connect(self._update_thread.deleteLater)
-        self._update_thread.finished.connect(self._on_update_thread_finished)
-        self._update_thread.start()
+        worker = UpdateCheckWorker()
+        worker.finished.connect(self._on_update_check_finished)
+        self._update_handle = run_in_thread(
+            worker, on_thread_finished=self._on_update_thread_finished
+        )
 
     def _on_update_check_finished(self, result: object) -> None:
         from hssk import __version__
@@ -647,8 +629,7 @@ class MainWindow(QMainWindow):
             )
 
     def _on_update_thread_finished(self) -> None:
-        self._update_thread = None
-        self._update_worker = None
+        self._update_handle = None
 
     # -- data ---------------------------------------------------------------------------
 
@@ -751,22 +732,16 @@ class MainWindow(QMainWindow):
         self._validated_path = None
         self._validated_invalid = 0
         self.results.reset(for_validation=True)
-        self._validate_thread = QThread()
-        self._validate_worker = ValidateWorker(self._excel_path, mapping)
-        self._validate_worker.moveToThread(self._validate_thread)
-        self._validate_thread.started.connect(self._validate_worker.run)
-        self._validate_worker.progress.connect(self.results.set_progress)
-        self._validate_worker.problem.connect(self.results.add_validation_row)
-        self._validate_worker.finished.connect(self._validate_thread.quit)
-        self._validate_worker.failed.connect(self._validate_thread.quit)
-        self._validate_worker.finished.connect(self._on_validate_finished)
-        self._validate_worker.failed.connect(self._on_validate_failed)
-        self._validate_thread.finished.connect(self._validate_worker.deleteLater)
-        self._validate_thread.finished.connect(self._validate_thread.deleteLater)
-        self._validate_thread.finished.connect(self._on_validate_thread_finished)
+        worker = ValidateWorker(self._excel_path, mapping)
+        worker.progress.connect(self.results.set_progress)
+        worker.problem.connect(self.results.add_validation_row)
+        worker.finished.connect(self._on_validate_finished)
+        worker.failed.connect(self._on_validate_failed)
         self.stop_btn.setEnabled(True)
-        self._update_start_enabled()  # _validate_thread is set, so this disables Start/Validate
-        self._validate_thread.start()
+        self._validate_handle = run_in_thread(
+            worker, on_thread_finished=self._on_validate_thread_finished
+        )
+        self._update_start_enabled()  # handle is set, so this disables Start/Validate
 
     def _on_validate_finished(self, summary: ValidationSummary) -> None:
         self.results.flush_now()  # ensure every buffered row is in the table before summarising
@@ -801,9 +776,8 @@ class MainWindow(QMainWindow):
         self.error_banner.show_message(f"{tr('dlg_validation')}: {message}")
 
     def _on_validate_thread_finished(self) -> None:
-        self._validate_thread = None
-        self._validate_worker = None
-        self.stop_btn.setEnabled(self._run_thread is not None)
+        self._validate_handle = None
+        self.stop_btn.setEnabled(self._run_handle is not None)
         self._update_start_enabled()  # re-enables Validate/Start now that idle is true
 
     # -- run ----------------------------------------------------------------------------
@@ -841,7 +815,7 @@ class MainWindow(QMainWindow):
 
     def _update_start_enabled(self) -> None:
         ready = self._excel_path is not None and self._token is not None
-        idle = self._run_thread is None and self._validate_thread is None
+        idle = self._run_handle is None and self._validate_handle is None
         self.start_btn.setEnabled(ready and idle)
         self.mode_combo.setEnabled(idle)
         # Validate shares the table/progress with a run, so keep it mutually exclusive: only
@@ -920,8 +894,7 @@ class MainWindow(QMainWindow):
         limit = self.limit_spin.value() or None
 
         self.results.reset()
-        self._run_thread = QThread()
-        self._run_worker = RunWorker(
+        worker = RunWorker(
             self._excel_path,
             mapping,
             self._token,
@@ -930,24 +903,15 @@ class MainWindow(QMainWindow):
             settings=settings,
             mode=mode,  # type: ignore[arg-type]
         )
-        self._run_worker.moveToThread(self._run_thread)
-        self._run_thread.started.connect(self._run_worker.run)
-        self._run_worker.progress.connect(self.results.set_progress)
-        self._run_worker.row.connect(self.results.add_row)
-        self._run_worker.log.connect(self._on_run_log)
-        # Stop the thread first, then run the UI handlers; drop references only after the thread
-        # has fully finished — destroying a running QThread aborts the process.
-        self._run_worker.finished.connect(self._run_thread.quit)
-        self._run_worker.failed.connect(self._run_thread.quit)
-        self._run_worker.finished.connect(self._on_run_finished)
-        self._run_worker.failed.connect(self._on_run_failed)
-        self._run_thread.finished.connect(self._run_worker.deleteLater)
-        self._run_thread.finished.connect(self._run_thread.deleteLater)
-        self._run_thread.finished.connect(self._on_run_thread_finished)
+        worker.progress.connect(self.results.set_progress)
+        worker.row.connect(self.results.add_row)
+        worker.log.connect(self._on_run_log)
+        worker.finished.connect(self._on_run_finished)
+        worker.failed.connect(self._on_run_failed)
 
         self.stop_btn.setEnabled(True)
-        self._update_start_enabled()  # _run_thread is set, so this also disables Start/Validate
-        self._run_thread.start()
+        self._run_handle = run_in_thread(worker, on_thread_finished=self._on_run_thread_finished)
+        self._update_start_enabled()  # handle is set, so this also disables Start/Validate
 
     def _on_run_log(self, event: LogEvent) -> None:
         self.results.append_log(render(event))
@@ -957,10 +921,10 @@ class MainWindow(QMainWindow):
             self.error_banner.show_message(render(event), severity="warning")
 
     def _stop_run(self) -> None:
-        if self._run_worker is not None:
-            self._run_worker.cancel()
-        if self._validate_worker is not None:
-            self._validate_worker.cancel()
+        if self._run_handle is not None:
+            self._run_handle.cancel()
+        if self._validate_handle is not None:
+            self._validate_handle.cancel()
         self.stop_btn.setEnabled(False)
 
     def _on_run_finished(self, summary: RunSummary) -> None:
@@ -1001,9 +965,8 @@ class MainWindow(QMainWindow):
         self.error_banner.show_message(f"{tr('dlg_run_failed')}: {text}")
 
     def _on_run_thread_finished(self) -> None:
-        # Thread has fully stopped — now it is safe to drop references and re-enable Start.
-        self._run_thread = None
-        self._run_worker = None
+        # Thread has fully stopped — now it is safe to drop the handle and re-enable Start.
+        self._run_handle = None
         self.stop_btn.setEnabled(False)
         self._update_start_enabled()
 
@@ -1023,7 +986,7 @@ class MainWindow(QMainWindow):
         self._central.set_drop_active(on)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        idle = self._run_thread is None and self._validate_thread is None
+        idle = self._run_handle is None and self._validate_handle is None
         if idle and self._excel_from_mime(event) is not None:
             self._set_drop_highlight(True)
             event.acceptProposedAction()
@@ -1041,18 +1004,21 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         # Never let the window (and its QThreads) be torn down while a worker is still running.
         # If a thread doesn't stop within the timeout, refuse the close rather than risk SIGABRT.
+        # cancel() lets a blocked run() return; quit() then stops the thread's event loop directly
+        # (the worker.finished→quit hop can't fire — this main thread is blocked in wait()).
         still_running = False
-        for worker, thread in (
-            (self._run_worker, self._run_thread),
-            (self._validate_worker, self._validate_thread),
-            (self._login_worker, self._login_thread),
-            (self._update_worker, self._update_thread),
+        for handle in (
+            self._run_handle,
+            self._validate_handle,
+            self._login_handle,
+            self._update_handle,
         ):
-            if worker is not None:
-                worker.cancel()
-            if thread is not None and thread.isRunning():
-                thread.quit()
-                if not thread.wait(10000):
+            if handle is None:
+                continue
+            handle.cancel()
+            if handle.is_running:
+                handle.quit()
+                if not handle.wait(10000):
                     still_running = True
 
         if still_running:

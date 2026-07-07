@@ -35,6 +35,7 @@ pyside6==6.11.1
 pyside6-addons==6.11.1
 pyside6-essentials==6.11.1
 pytest==9.1.1
+pytest-qt==4.5.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 pywin32-ctypes==0.2.3 ; sys_platform == 'win32'

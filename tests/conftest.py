@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import os
+
+# Must be set before any PySide6 import (conftest.py loads before test collection, so this is
+# the earliest safe point) — lets pytest-qt's qapp/qtbot fixtures create a QApplication without
+# a real display, on every machine including CI. A pre-existing QT_QPA_PLATFORM (e.g. a developer
+# running tests against a real display on purpose) is left alone.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import datetime as dt
 from pathlib import Path
 

@@ -145,13 +145,29 @@ token to a `chmod 600` file. This uses Playwright's **sync** API, so it must run
 — i.e. the CLI main thread or a `QThread` worker, never an async context. The JWT `exp` is decoded
 locally (no signature check) to warn before expiry; a server 401 surfaces as `AuthExpired`.
 
-### GUI threading invariant (`hssk_gui/main_window.py`)
+### GUI threading invariant (`hssk_gui/worker_thread.py`)
 
-Login and run both execute on a `QThread` + worker (`hssk_gui/workers.py`) so the UI stays
-responsive. **Destroying a running `QThread` aborts the whole process** (this was a real SIGABRT bug,
-commit 5ea2803). The fixed lifecycle: `worker.finished/failed → thread.quit`; only on
-`thread.finished` do `deleteLater` and drop the Python references. `closeEvent` cancels workers and
-`wait()`s for threads before accepting. Preserve this ordering when touching the worker wiring.
+All four background jobs (login, update-check, validate, run) run on a `QThread` + worker
+(`hssk_gui/workers.py`) so the UI stays responsive. **Destroying a running `QThread` aborts the
+whole process** (this was a real SIGABRT bug, commit 5ea2803). The lifecycle now lives in **one
+place** — `worker_thread.py:WorkerHandle` — instead of being hand-copied at four sites: it does
+`moveToThread` → `started→run` → `worker.finished/failed → thread.quit`, and on `thread.finished`
+invokes the caller's `on_thread_finished` callback (where `MainWindow` nulls its `_X_handle` and
+re-enables controls). Construct+start via `run_in_thread(worker, on_thread_finished=…)`; callers
+still connect their own domain signals (`status`/`progress`/`row`/`log`/`problem`/`finished`/
+`failed`) before it starts. `MainWindow` holds one `_X_handle: WorkerHandle | None` per job, and
+"`handle is None` ⇔ that job is idle" is the invariant every idle-state reader relies on.
+
+**Deletion is single-path on purpose — do not add `deleteLater`.** The old wiring paired
+`thread.finished → deleteLater` with a same-handler null-out of the Python reference; those are two
+competing deletion paths (a queued C++ deferred-delete and Python's refcount drop) that race into
+an intermittent segfault under rapid start/stop cycling. `WorkerHandle` keeps the worker+thread
+referenced for its whole life and uses **no** `deleteLater`, so the C++ objects are freed exactly
+once, by Python, when the handle is dropped — and a handle is only dropped after `thread.finished`
+(thread stopped), never mid-run. `closeEvent` cancels each handle, then `quit()`s + `wait()`s
+(cancel alone can't stop it — the main thread is blocked in `wait()`, so the queued
+`worker.finished→quit` hop can't fire; `quit()` stops the thread's event loop directly).
+`tests/test_gui_threads.py` is the regression net (run it in a loop; it must stay crash-free).
 
 ### GUI shell (`hssk_gui/`)
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.10.0 — 2026-07-07
+
+### Internal — one hardened home for the GUI thread lifecycle
+
+- The four background jobs (login, update-check, validate, run) each hand-repeated the same
+  ~11-line `QThread` + worker teardown — the exact sequence whose mishandling once aborted the whole
+  process (SIGABRT, commit 5ea2803). That lifecycle now lives once in `hssk_gui/worker_thread.py`
+  (`WorkerHandle` + `run_in_thread`); `main_window.py` holds one handle per job instead of eight
+  raw thread/worker fields.
+- Fixes a latent teardown race in the process: the old wiring deleted each finished worker/thread
+  by two competing paths at once (Qt's `deleteLater` **and** dropping the Python reference in the
+  same handler), which could intermittently crash under fast start/stop cycling. `WorkerHandle`
+  uses a single deletion path, so a stopped thread is never freed twice.
+- New `tests/test_gui_threads.py` (pytest-qt) locks the behavior down: start→finish, Stop→cancel,
+  and close-while-running for all four jobs, asserting the window shuts down cleanly rather than
+  hanging or crashing.
+
 ## v1.9.0 — 2026-07-06
 
 ### Safety stepper + type-to-confirm production push
