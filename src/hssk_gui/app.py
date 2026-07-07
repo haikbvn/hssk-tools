@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from hssk import __version__
 from hssk.config import app_icon, data_dir
+from hssk.logging_setup import configure_logging
 
 from .i18n import set_language, tr
 from .main_window import MainWindow
@@ -31,6 +32,7 @@ def _ensure_terms_accepted() -> bool:
 
 
 def main() -> int:
+    configure_logging()
     app = QApplication(sys.argv)
     app.setApplicationName("HSSK Tools")
     app.setOrganizationName("hssk-tools")

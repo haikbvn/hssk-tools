@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
@@ -242,6 +243,11 @@ class MainWindow(QMainWindow):
         reports_action.triggered.connect(self._open_reports_root)
         file_menu.addAction(reports_action)
 
+        purge_action = QAction(tr("menu_purge_reports"), self)
+        purge_action.setMenuRole(QAction.MenuRole.NoRole)
+        purge_action.triggered.connect(self._purge_old_reports)
+        file_menu.addAction(purge_action)
+
         settings_menu = self.menuBar().addMenu(tr("menu_settings"))
         prefs_action = QAction(tr("menu_settings_action"), self)
         prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
@@ -255,6 +261,12 @@ class MainWindow(QMainWindow):
         guide_action.setMenuRole(QAction.MenuRole.NoRole)
         guide_action.triggered.connect(self._show_guide)
         help_menu.addAction(guide_action)
+
+        support_action = QAction(tr("menu_support_bundle"), self)
+        support_action.setMenuRole(QAction.MenuRole.NoRole)
+        support_action.triggered.connect(self._export_support_bundle)
+        help_menu.addAction(support_action)
+
         help_menu.addSeparator()
 
         terms_action = QAction(tr("menu_terms"), self)
@@ -317,6 +329,72 @@ class MainWindow(QMainWindow):
         base = (s.data_dir / "output") if s.data_dir else output_dir()
         base.mkdir(parents=True, exist_ok=True)  # openUrl fails silently on a missing path
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(base)))
+
+    def _purge_old_reports(self) -> None:
+        # Report folders hold patient PII (results.xlsx, search_response_*.json). Deletion is only
+        # ever operator-initiated + confirmed here — nothing is ever purged automatically.
+        from hssk.maintenance import find_old_runs, purge_runs
+
+        s = engine_settings()
+        base = (s.data_dir / "output") if s.data_dir else output_dir()
+        days = s.output_retention_days
+        old = find_old_runs(base, days)
+        if not old:
+            self.error_banner.show_message(tr("msg_purge_none").format(days=days), severity="info")
+            return
+        confirmed = QMessageBox.question(
+            self,
+            tr("dlg_purge_title"),
+            tr("msg_purge_confirm").format(n=len(old), days=days),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,  # default to the safe choice
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+        removed = purge_runs(old)
+        self.error_banner.show_message(tr("msg_purge_done").format(n=removed), severity="info")
+
+    def _ui_snapshot(self) -> dict[str, object]:
+        """Non-PII UI settings for the support snapshot — no file paths or the recent-files list."""
+        return {
+            "language": self._ui.language,
+            "dry_run": self._ui.dry_run,
+            "check_updates": self._ui.check_updates,
+            "delay": self._ui.delay,
+            "limit": self._ui.limit,
+            "mode": self._ui.mode,
+        }
+
+    def _export_support_bundle(self) -> None:
+        # A diagnostics zip for a maintainer: redacted logs + mapping + versions. The saved token
+        # and profile are never included; patient event data is opt-in via the checkbox.
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("dlg_support_title"))
+        box.setText(tr("msg_support_intro"))
+        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Ok)
+        events_check = QCheckBox(tr("chk_support_events"))
+        box.setCheckBox(events_check)
+        if box.exec() != QMessageBox.StandardButton.Ok:
+            return
+        default_name = f"hssk-support-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+        path, _ = QFileDialog.getSaveFileName(
+            self, tr("dlg_support_title"), default_name, "Zip (*.zip)"
+        )
+        if not path:
+            return
+        from hssk.support_bundle import build_support_bundle
+
+        try:
+            dest = build_support_bundle(
+                Path(path),
+                include_events=events_check.isChecked(),
+                extra_snapshot=self._ui_snapshot(),
+            )
+        except OSError as exc:
+            self.error_banner.show_message(f"{tr('dlg_support_title')}: {exc}")
+            return
+        self.error_banner.show_message(tr("msg_support_done").format(path=dest), severity="info")
 
     def _show_guide(self) -> None:
         from .guide_dialog import GuideDialog

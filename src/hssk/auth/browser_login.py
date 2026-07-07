@@ -21,13 +21,15 @@ from ..config import Settings, auth_profile_dir
 from ..config import settings as default_settings
 from ..errors import AuthExpired, HsskError
 from ..events import MessageCode, Msg
+from ..logging_setup import JWT_BODY
 from .profile import fetch_profile, save_profile
 from .token_store import TokenData, decode_exp, save_token
 
 # DEBUG-level only — see auth/profile.py; the engine never prints.
 logger = logging.getLogger(__name__)
 
-_JWT_RE = re.compile(r"^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$")
+# Anchored full-string match of the shared JWT shape (logging_setup uses it unanchored to redact).
+_JWT_RE = re.compile(rf"^{JWT_BODY}$")
 
 StatusFn = Callable[[Msg], None]
 CancelFn = Callable[[], bool]

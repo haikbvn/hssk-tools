@@ -285,6 +285,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .logging_setup import configure_logging
+
+    configure_logging()
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)

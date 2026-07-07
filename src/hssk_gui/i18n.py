@@ -174,6 +174,20 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Open reports folder (all runs)",
         "vi": "Mở thư mục báo cáo (tất cả các lần chạy)",
     },
+    "menu_purge_reports": {"en": "Purge old reports…", "vi": "Xoá báo cáo cũ…"},
+    "dlg_purge_title": {"en": "Purge old reports", "vi": "Xoá báo cáo cũ"},
+    "msg_purge_confirm": {
+        "en": "Delete {n} report folder(s) older than {days} days?\nThis cannot be undone.",
+        "vi": "Xoá {n} thư mục báo cáo cũ hơn {days} ngày?\nThao tác này không thể hoàn tác.",
+    },
+    "msg_purge_none": {
+        "en": "No report folders are older than {days} days.",
+        "vi": "Không có thư mục báo cáo nào cũ hơn {days} ngày.",
+    },
+    "msg_purge_done": {
+        "en": "Deleted {n} old report folder(s).",
+        "vi": "Đã xoá {n} thư mục báo cáo cũ.",
+    },
     "msg_recent_missing": {
         "en": "File no longer exists: {path}",
         "vi": "File không còn tồn tại: {path}",
@@ -182,6 +196,26 @@ _STRINGS: dict[str, dict[str, str]] = {
     "menu_settings_action": {"en": "Settings…", "vi": "Cài đặt…"},
     "menu_help": {"en": "Help", "vi": "Trợ giúp"},
     "menu_user_guide": {"en": "User Guide", "vi": "Hướng dẫn sử dụng"},
+    "menu_support_bundle": {"en": "Export support bundle…", "vi": "Xuất gói hỗ trợ…"},
+    "dlg_support_title": {"en": "Export support bundle", "vi": "Xuất gói hỗ trợ"},
+    "msg_support_intro": {
+        "en": (
+            "Creates a zip with the app logs, your mapping, and version info to send to support. "
+            "Your saved login token is never included."
+        ),
+        "vi": (
+            "Tạo tệp zip gồm nhật ký ứng dụng, cấu hình ánh xạ và thông tin phiên bản để gửi cho "
+            "bộ phận hỗ trợ. Mã đăng nhập đã lưu sẽ không bao giờ được đưa vào."
+        ),
+    },
+    "chk_support_events": {
+        "en": "Include latest run's event log (may contain patient identifiers)",
+        "vi": "Kèm nhật ký sự kiện của lần chạy gần nhất (có thể chứa mã bệnh nhân)",
+    },
+    "msg_support_done": {
+        "en": "Support bundle saved: {path}",
+        "vi": "Đã lưu gói hỗ trợ: {path}",
+    },
     "guide_title": {
         "en": "HSSK Tools — User Guide",
         "vi": "HSSK Tools — Hướng dẫn sử dụng",

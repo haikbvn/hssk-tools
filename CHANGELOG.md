@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.11.0 — 2026-07-07
+
+### PII hygiene & a one-click support bundle
+
+- **Rotating, redacted log.** The app now keeps a small rotating diagnostic log at
+  `<data-dir>/logs/hssk.log` so a field problem leaves a trace instead of vanishing. Bearer tokens
+  and JWT-shaped strings are scrubbed from every line, and only the app's own messages are recorded
+  at debug level — third-party libraries stay quiet, so patient data in request bodies never reaches
+  the file.
+- **Purge old reports.** File → "Purge old reports…" deletes run-report folders (which hold patient
+  data) older than the retention window — default 90 days, set via `HSSK_OUTPUT_RETENTION_DAYS`.
+  It always asks first and shows how many folders will go; **nothing is ever deleted automatically**.
+- **Export support bundle.** Help → "Export support bundle…" saves a local zip with the redacted
+  logs, your mapping files, and a versions/settings snapshot — enough to diagnose an issue without
+  ever including your saved login token. The latest run's event log (which can contain patient
+  identifiers) is added only if you tick the opt-in checkbox. Nothing is uploaded anywhere.
+
 ## v1.10.0 — 2026-07-07
 
 ### Internal — one hardened home for the GUI thread lifecycle

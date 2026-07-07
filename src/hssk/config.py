@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # Treat a token as expired this many seconds before its actual ``exp`` (clock skew margin).
     token_exp_skew: int = 120
 
+    # Age (in days) beyond which run-report folders are offered for deletion by the manual
+    # "Purge old reports" action. Retention is never enforced automatically — see maintenance.py.
+    output_retention_days: int = 90
+
     # Optional base-dir overrides (else platformdirs defaults). Useful for tests/dev.
     data_dir: Path | None = None
     config_dir: Path | None = None

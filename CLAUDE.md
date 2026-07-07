@@ -234,6 +234,16 @@ turns CI red rather than shipping.
 - Excel files, reports, the token, and `mapping.yaml`/`mapping.update.yaml` all contain PII or
   secrets and are gitignored — never commit them. `~$hssk_template.xlsx` is an Excel lock file;
   ignore it.
+- **PII at rest & diagnostics.** `logging_setup.configure_logging()` (called once from `cli.main` /
+  `app.main`) attaches a rotating file log at `data_dir()/logs/hssk.log` whose `RedactionFilter`
+  scrubs Bearer/JWT strings; it turns up only the `hssk`/`hssk_gui` loggers to DEBUG so third-party
+  request bodies (patient PII) never hit disk. The shared JWT shape lives in `logging_setup.JWT_BODY`
+  (`browser_login` anchors it). `maintenance.find_old_runs`/`purge_runs` back the File → "Purge old
+  reports…" action — retention (`Settings.output_retention_days`, default 90) is **never** enforced
+  automatically, only via that confirmed action. `support_bundle.build_support_bundle` (engine-side,
+  UI-free) zips redacted logs + mapping + a versions/settings snapshot for Help → "Export support
+  bundle…"; it **never** includes `secrets/` (token + profile), and the latest run's `events.jsonl`
+  only on the GUI's opt-in checkbox. Keep those exclusions when touching either file.
 - Vietnamese text and locale quirks are pervasive (comma decimals, `dd/MM/yyyy HH:mm:ss` dates,
   diacritics in field defaults). Keep `ensure_ascii=False` when writing JSON and preserve the exact
   Vietnamese constant strings in `templates.py`.
