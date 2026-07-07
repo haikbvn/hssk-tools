@@ -60,6 +60,11 @@ _TOKENS: dict[str, dict[str, str]] = {
     "splitter_grip": {"light": "#d0d7de", "dark": "#30363d"},
 }
 
+# Spacing/radius constants shared by scoped QSS and any custom-painted geometry, so hand-built
+# widgets (stepper, confirm dialog) share a rhythm with the rest of the app instead of guessing.
+SPACING = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
+RADIUS = {"sm": 4, "md": 6, "lg": 8}
+
 # Status -> token name; replaces the old literal _STATUS_COLORS map in results_panel.
 STATUS_COLOR_TOKENS: dict[Status, str] = {
     Status.CREATED: "success",

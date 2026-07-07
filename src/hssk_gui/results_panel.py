@@ -53,7 +53,7 @@ from hssk.pipeline.results import RowOutcome, Status
 
 from . import theme
 from .i18n import tr
-from .messages import _tr_coerce_msgs, _tr_message, _tr_status
+from .render import render_all, render_status, render_validation_row
 from .workers import ValidationProblem
 
 try:  # accessibility announcements (Qt 6.8+); degrade gracefully if unavailable
@@ -364,10 +364,10 @@ class ResultsPanel(QGroupBox):
         cells = [
             str(outcome.row_index),
             outcome.identifier or "",
-            _tr_status(outcome.status),
+            render_status(outcome.status),
             "" if outcome.patient_id is None else str(outcome.patient_id),
             "" if outcome.record_id is None else str(outcome.record_id),
-            _tr_message(outcome.message),
+            render_all(outcome.msgs),
         ]
         token = theme.STATUS_COLOR_TOKENS.get(outcome.status)
         self._counter_dirty = True  # counter is re-rendered once per flush, not per row
@@ -387,7 +387,7 @@ class ResultsPanel(QGroupBox):
             status_text,
             "",
             "",
-            _tr_coerce_msgs(problem.message),
+            render_validation_row(problem.errors, problem.warnings),
         ]
         self._enqueue_row(
             cells,
@@ -539,7 +539,7 @@ class ResultsPanel(QGroupBox):
             combo.addItem(tr("val_status_warning"), _VAL_KIND_WARNING)
         else:
             for status in Status:
-                combo.addItem(_tr_status(status), status.value)
+                combo.addItem(render_status(status), status.value)
         combo.blockSignals(False)
 
     def _row_matches(self, r: int) -> bool:
@@ -710,7 +710,7 @@ class ResultsPanel(QGroupBox):
             elif value == _VAL_KIND_WARNING:
                 self.status_combo.setItemText(i, tr("val_status_warning"))
             elif value is not None:
-                self.status_combo.setItemText(i, _tr_status(Status(value)))
+                self.status_combo.setItemText(i, render_status(Status(value)))
         self.status_combo.setToolTip(tr("tip_status_filter"))
         self.clear_log_btn.setText(tr("btn_clear_log"))
         self.problems_check.setText(tr("chk_problems_only"))

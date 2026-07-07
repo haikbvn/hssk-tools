@@ -1,15 +1,55 @@
 from __future__ import annotations
 
+import os
+
+# Must be set before any PySide6 import (conftest.py loads before test collection, so this is
+# the earliest safe point) — lets pytest-qt's qapp/qtbot fixtures create a QApplication without
+# a real display, on every machine including CI. A pre-existing QT_QPA_PLATFORM (e.g. a developer
+# running tests against a real display on purpose) is left alone.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import datetime as dt
 from pathlib import Path
 
+import keyring
 import pytest
+from keyring.backend import KeyringBackend
 from openpyxl import Workbook
 
 from hssk.mapping import MappingConfig, load_mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_MAPPING = REPO_ROOT / "config" / "mapping.example.yaml"
+
+
+class _InMemoryKeyring(KeyringBackend):
+    """A throwaway keychain backend so tests never touch (or prompt) the real OS keychain."""
+
+    priority = 1  # type: ignore[assignment]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self._store.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self._store[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        self._store.pop((service, username), None)
+
+
+@pytest.fixture(autouse=True)
+def _fake_keyring() -> object:
+    """Swap in an empty in-memory keychain for every test (restored afterwards)."""
+    prev = keyring.get_keyring()
+    keyring.set_keyring(_InMemoryKeyring())
+    try:
+        yield
+    finally:
+        keyring.set_keyring(prev)
 
 
 @pytest.fixture

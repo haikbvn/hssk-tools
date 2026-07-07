@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 
 import httpx
 import pytest
@@ -9,7 +10,7 @@ import respx
 from hssk.api import exams, patients
 from hssk.api.client import ApiClient
 from hssk.config import Settings
-from hssk.errors import ApiError, AuthExpired, RateLimited
+from hssk.errors import ApiError, AuthExpired, BatchCancelled, RateLimited
 from hssk.mapping import SearchSpec
 
 BASE = "https://api.test"
@@ -199,3 +200,34 @@ def test_429_http_date_retry_after_is_honored():
     backoff_delays = [s for s in sleep.calls if s > 0]
     assert backoff_delays, "no backoff sleep was performed"
     assert any(3 <= d <= 10 for d in backoff_delays), f"unexpected delays: {backoff_delays}"
+
+
+# -- interruptible waits (cancel event) --------------------------------------------------
+
+
+@respx.mock
+def test_cancel_event_interrupts_backoff():
+    """A pre-set cancel event makes a retryable-status backoff abort with BatchCancelled."""
+    route = respx.post(f"{BASE}/x").mock(return_value=httpx.Response(503))
+    cancel = threading.Event()
+    cancel.set()
+    # Large backoff base: if the wait weren't interruptible this would sleep for real seconds.
+    s = _settings(backoff_base=10.0, backoff_cap=30.0, request_delay=0.0)
+    with ApiClient("tok", s, cancel=cancel) as c, pytest.raises(BatchCancelled):
+        c.post("/x", {})
+    # It reached the server once, hit the backoff, and bailed instead of exhausting retries.
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_cancel_event_unset_allows_normal_retry():
+    """An un-set cancel event leaves retry behavior unchanged (regression guard)."""
+    cancel = threading.Event()  # never set
+    sleep = FakeSleep()
+    respx.post(f"{BASE}/x").mock(
+        side_effect=[httpx.Response(503), httpx.Response(200, json={"ok": 1})]
+    )
+    # With a cancel event present, waits go through Event.wait; force delay 0 so it returns at once.
+    s = _settings(backoff_base=0.0, backoff_cap=0.0, request_delay=0.0)
+    with ApiClient("tok", s, sleep=sleep, cancel=cancel) as c:
+        assert c.post("/x", {}) == {"ok": 1}

@@ -4,8 +4,7 @@ When the reader rejects the file up front (a required mapped column is absent), 
 both emit a ``problem`` (so the operator sees it in the results table) and ``failed`` (so the
 existing banner/lifecycle still runs) — and must not emit ``finished``.
 
-Runs without a QApplication: ValidateWorker is a plain QObject, and ``run()`` is called directly
-so its signals fire on the same thread via direct (synchronous) connections.
+``run()`` is called directly (no thread) so its signals fire synchronously.
 """
 
 from __future__ import annotations
@@ -13,8 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from openpyxl import Workbook
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
+from hssk.events import render_en
 from hssk.mapping import filter_for_delete, load_mapping
 from hssk_gui.workers import ValidateWorker, ValidationProblem
 
@@ -22,8 +22,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_MAPPING = REPO_ROOT / "config" / "mapping.example.yaml"
 EXAMPLE_OVERLAY = REPO_ROOT / "config" / "mapping.update.example.yaml"
 
-# A non-GUI application is enough for QObject signal/slot machinery; created once per process.
-_app = QCoreApplication.instance() or QCoreApplication([])
+# A full QApplication (not just QCoreApplication): pytest-qt's qapp/qtbot fixtures need one, and
+# a bare QCoreApplication singleton can't be upgraded after the fact — created once per process,
+# reused by pytest-qt's own fixture if this module collects first.
+_app = QApplication.instance() or QApplication([])
 
 
 def _delete_mapping():
@@ -47,12 +49,12 @@ def test_missing_column_emits_synthetic_row_and_fails(tmp_path: Path) -> None:
     xlsx = _xlsx_without_record_id(tmp_path)
 
     problems: list[ValidationProblem] = []
-    failures: list[str] = []
+    failures: list[tuple[str, object]] = []
     finishes: list[object] = []
 
     worker = ValidateWorker(xlsx, mapping)
     worker.problem.connect(problems.append)
-    worker.failed.connect(failures.append)
+    worker.failed.connect(lambda message, msg: failures.append((message, msg)))
     worker.finished.connect(finishes.append)
 
     worker.run()
@@ -62,7 +64,8 @@ def test_missing_column_emits_synthetic_row_and_fails(tmp_path: Path) -> None:
     assert isinstance(p, ValidationProblem)
     assert p.has_errors is True
     assert p.row_index == mapping.header_row
-    assert "is missing mapped column(s)" in p.message  # raw engine shape, localized downstream
-    assert "Mã hồ sơ" in p.message
+    error_text = render_en(p.errors[0])
+    assert "is missing mapped column(s)" in error_text  # raw engine shape, localized downstream
+    assert "Mã hồ sơ" in error_text
     assert len(failures) == 1
     assert finishes == []  # a structural failure never reports a normal summary

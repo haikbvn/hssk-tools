@@ -1,5 +1,122 @@
 # Changelog
 
+## v1.13.0 — 2026-07-07
+
+### Your login token now lives in the OS keychain
+
+- The saved login token moves from a file into the **operating-system keychain** (macOS Keychain,
+  Windows Credential Manager, Linux Secret Service). If the keychain isn't available for any reason,
+  the app **silently falls back** to the previous protected file, so logging in never breaks. An
+  existing token file is migrated into the keychain automatically the first time it's read.
+- Nothing else changes for you: log in as before. Exported support bundles still never include your
+  token.
+
+_Internal:_ the roadmap's plan to drop the ~130 MB bundled Chromium by switching login to the OS's
+native webview (pywebview) was **spiked and rejected** — on macOS, the system WebView can't load the
+site's WAF-protected single-sign-on login page. Playwright/Chromium stays; only the keychain change
+shipped from that phase.
+
+## v1.12.0 — 2026-07-07
+
+### Typed payload gate + API-drift warnings
+
+- **Malformed payloads are caught before sending.** The create/update body is now checked against a
+  strict field schema right before it would go out: any field the templates don't define — most
+  often a typo in your `mapping.yaml` `defaults` block, which nothing previously validated — turns
+  that row into a clean `INVALID` (with the offending field named), in dry-run and for real, instead
+  of a silent bad record on the server. Valid rows are unchanged: the check only inspects, it never
+  rewrites the payload, so what's sent is byte-for-byte what was sent before.
+- **A heads-up when the website's API may have changed.** The app has always guessed defensively at
+  the site's undocumented response shapes. Those guesses now live in one place and raise a one-time
+  "server response not recognised — dry-run and check before committing" banner when a search or
+  record-detail response doesn't look like anything expected — so an upstream change surfaces as a
+  visible warning instead of mysterious "no patient found" rows. A normal empty result is never
+  mistaken for drift.
+
+## v1.11.0 — 2026-07-07
+
+### PII hygiene & a one-click support bundle
+
+- **Rotating, redacted log.** The app now keeps a small rotating diagnostic log at
+  `<data-dir>/logs/hssk.log` so a field problem leaves a trace instead of vanishing. Bearer tokens
+  and JWT-shaped strings are scrubbed from every line, and only the app's own messages are recorded
+  at debug level — third-party libraries stay quiet, so patient data in request bodies never reaches
+  the file.
+- **Purge old reports.** File → "Purge old reports…" deletes run-report folders (which hold patient
+  data) older than the retention window — default 90 days, set via `HSSK_OUTPUT_RETENTION_DAYS`.
+  It always asks first and shows how many folders will go; **nothing is ever deleted automatically**.
+- **Export support bundle.** Help → "Export support bundle…" saves a local zip with the redacted
+  logs, your mapping files, and a versions/settings snapshot — enough to diagnose an issue without
+  ever including your saved login token. The latest run's event log (which can contain patient
+  identifiers) is added only if you tick the opt-in checkbox. Nothing is uploaded anywhere.
+
+## v1.10.0 — 2026-07-07
+
+### Internal — one hardened home for the GUI thread lifecycle
+
+- The four background jobs (login, update-check, validate, run) each hand-repeated the same
+  ~11-line `QThread` + worker teardown — the exact sequence whose mishandling once aborted the whole
+  process (SIGABRT, commit 5ea2803). That lifecycle now lives once in `hssk_gui/worker_thread.py`
+  (`WorkerHandle` + `run_in_thread`); `main_window.py` holds one handle per job instead of eight
+  raw thread/worker fields.
+- Fixes a latent teardown race in the process: the old wiring deleted each finished worker/thread
+  by two competing paths at once (Qt's `deleteLater` **and** dropping the Python reference in the
+  same handler), which could intermittently crash under fast start/stop cycling. `WorkerHandle`
+  uses a single deletion path, so a stopped thread is never freed twice.
+- New `tests/test_gui_threads.py` (pytest-qt) locks the behavior down: start→finish, Stop→cancel,
+  and close-while-running for all four jobs, asserting the window shuts down cleanly rather than
+  hanging or crashing.
+
+## v1.9.0 — 2026-07-06
+
+### Safety stepper + type-to-confirm production push
+
+- New **safety-ladder strip** at the top of the window: Login → File → Validated → Dry-run/Commit,
+  each step checked off as it completes. Purely a status display — it doesn't change what Start
+  allows — but the batch's safety prerequisites are now visible at a glance instead of only showing
+  up as a disabled-button tooltip.
+- The PRODUCTION push confirmation is now a custom **type-to-confirm** dialog (type `YES`, mirroring
+  the CLI's `--commit` prompt) instead of a plain Yes/No message box — a more deliberate, harder to
+  mis-click confirmation for the one action that sends live data.
+- The app keeps each OS's native widget style (Windows renders windows11, macOS renders Aqua) and
+  native fonts; a cross-platform-identical look (a pinned Fusion style, a bundled font, and a custom
+  design system) was built and evaluated but not kept — native look-and-feel per OS was the final
+  call.
+
+## v1.8.0 — 2026-07-06
+
+### Internal — typed events across the engine↔GUI boundary
+
+- The engine no longer authors human-readable English strings for row results and log lines.
+  It emits stable typed events (`hssk.events.MessageCode` + params); each frontend renders the
+  wording it needs. This removes a brittle, untested contract where the GUI re-parsed the engine's
+  English by prefix-matching — a reworded engine message used to silently fall back to untranslated
+  text in the Vietnamese UI. Adding a language (or rewording a message) no longer touches the engine.
+- The CLI and the written reports keep byte-identical English (`events.render_en`), pinned by a
+  golden test captured before the change. `events.jsonl` now additionally records each row's
+  message `codes` + params, so reports are machine-readable without re-parsing English.
+- The 221-line GUI string-parsing layer (`hssk_gui/messages.py`) is deleted, replaced by a small
+  `hssk_gui/render.py`; a contract test asserts every message code renders in both languages.
+
+No user-visible behavior change (one edge case is intentionally cleaner: an unexpected coercion
+crash now shows its raw detail verbatim instead of partially re-translating arbitrary text).
+
+## v1.7.0 — 2026-07-05
+
+### Safety guardrails
+
+- **Single-instance lock.** Only one push can run at a time, across both the GUI and CLI. An
+  advisory OS lock is held for the whole batch, so two windows (or a window + a CLI run) can no
+  longer race the dedup ledger and double-send the same row. A second GUI launch now shows a
+  short "already running" notice instead of opening; a blocked CLI run exits with a clear message.
+- **Responsive Stop.** Pressing Stop during a long server-requested back-off (a `Retry-After`
+  wait) now aborts almost immediately, instead of appearing frozen until the wait elapsed.
+
+### Internal
+
+- The token clock-skew margin is now a single `HSSK_TOKEN_EXP_SKEW` setting (default 120s) rather
+  than a constant repeated in several places.
+
 ## v1.6.0 — 2026-07-05
 
 ### Delete mode

@@ -1,0 +1,260 @@
+{
+  "messages": {
+    "row_created_bare": {
+      "kind": "message",
+      "raw": "created",
+      "vi": "Đã tạo",
+      "en": "Created"
+    },
+    "row_created_who": {
+      "kind": "message",
+      "raw": "created — Nguyễn Thị Hoa",
+      "vi": "Đã tạo — Nguyễn Thị Hoa",
+      "en": "Created — Nguyễn Thị Hoa"
+    },
+    "row_updated_bare": {
+      "kind": "message",
+      "raw": "updated",
+      "vi": "Đã cập nhật",
+      "en": "Updated"
+    },
+    "row_updated_who": {
+      "kind": "message",
+      "raw": "updated — Nguyễn Thị Hoa",
+      "vi": "Đã cập nhật — Nguyễn Thị Hoa",
+      "en": "Updated — Nguyễn Thị Hoa"
+    },
+    "row_deleted_bare": {
+      "kind": "message",
+      "raw": "deleted",
+      "vi": "Đã xoá",
+      "en": "Deleted"
+    },
+    "row_deleted_who": {
+      "kind": "message",
+      "raw": "deleted — Nguyễn Thị Hoa",
+      "vi": "Đã xoá — Nguyễn Thị Hoa",
+      "en": "Deleted — Nguyễn Thị Hoa"
+    },
+    "row_dryrun_bare": {
+      "kind": "message",
+      "raw": "payload built (not sent)",
+      "vi": "Đã dựng dữ liệu (chưa gửi)",
+      "en": "Payload built (not sent)"
+    },
+    "row_dryrun_who": {
+      "kind": "message",
+      "raw": "payload built (not sent) — Nguyễn Thị Hoa",
+      "vi": "Đã dựng dữ liệu (chưa gửi) — Nguyễn Thị Hoa",
+      "en": "Payload built (not sent) — Nguyễn Thị Hoa"
+    },
+    "row_created_no_rid": {
+      "kind": "message",
+      "raw": "created — Nguyễn Thị Hoa (no record id returned)",
+      "vi": "Đã tạo — Nguyễn Thị Hoa (không nhận được mã hồ sơ)",
+      "en": "Created — Nguyễn Thị Hoa (no record id returned)"
+    },
+    "row_created_bare_no_rid": {
+      "kind": "message",
+      "raw": "created (no record id returned)",
+      "vi": "Đã tạo (không nhận được mã hồ sơ)",
+      "en": "Created (no record id returned)"
+    },
+    "row_already": {
+      "kind": "message",
+      "raw": "already processed",
+      "vi": "Đã xử lý trước đó",
+      "en": "Already processed"
+    },
+    "row_id_blank": {
+      "kind": "message",
+      "raw": "identifier is blank",
+      "vi": "Mã định danh trống",
+      "en": "Identifier is blank"
+    },
+    "row_recordid_blank": {
+      "kind": "message",
+      "raw": "medicalRecordId is blank",
+      "vi": "medicalRecordId trống",
+      "en": "medicalRecordId is blank"
+    },
+    "row_coercion_error": {
+      "kind": "message",
+      "raw": "coercion error: 'Tuổi': cannot parse 'abc' as int (bad)",
+      "vi": "Lỗi chuyển đổi: 'Tuổi': cannot parse 'abc' as int (bad)",
+      "en": "Coercion error: 'Tuổi': cannot parse 'abc' as int (bad)"
+    },
+    "row_fetch_detail": {
+      "kind": "message",
+      "raw": "fetch detail: HTTP 404",
+      "vi": "Lỗi lấy chi tiết: HTTP 404",
+      "en": "Fetch detail: HTTP 404"
+    },
+    "row_no_patient": {
+      "kind": "message",
+      "raw": "no patient found for '027148003240'",
+      "vi": "không tìm thấy bệnh nhân với '027148003240'",
+      "en": "no patient found for '027148003240'"
+    },
+    "row_multi_match": {
+      "kind": "message",
+      "raw": "2 patients match '027148003240'",
+      "vi": "2 bệnh nhân khớp với '027148003240'",
+      "en": "2 patients match '027148003240'"
+    },
+    "row_multi_match_skip": {
+      "kind": "message",
+      "raw": "2 patients match '027148003240'; skipping",
+      "vi": "2 bệnh nhân khớp với '027148003240'; bỏ qua",
+      "en": "2 patients match '027148003240'; skipping"
+    },
+    "row_match_no_pid": {
+      "kind": "message",
+      "raw": "match for '027148003240' has no patientId field",
+      "vi": "khớp với '027148003240' không có trường patientId",
+      "en": "match for '027148003240' has no patientId field"
+    },
+    "coerce_cannot_parse": {
+      "kind": "coerce",
+      "raw": "'Tuổi': cannot parse 'abc' as int (invalid)",
+      "vi": "'Tuổi': không thể đọc 'abc' thành int (invalid)",
+      "en": "'Tuổi': cannot parse 'abc' as int (invalid)"
+    },
+    "coerce_range_warn": {
+      "kind": "coerce",
+      "raw": "⚠ Mạch=250 outside expected range 30–200",
+      "vi": "⚠ Mạch=250 nằm ngoài phạm vi 30–200",
+      "en": "⚠ Mạch=250 outside expected range 30–200"
+    },
+    "coerce_date_before": {
+      "kind": "coerce",
+      "raw": "finishExaminationDate (17/06/2026) is before examinationDate (18/06/2026)",
+      "vi": "finishExaminationDate (17/06/2026) trước examinationDate (18/06/2026)",
+      "en": "finishExaminationDate (17/06/2026) is before examinationDate (18/06/2026)"
+    },
+    "coerce_missing_required": {
+      "kind": "coerce",
+      "raw": "missing required column 'Mã định danh'",
+      "vi": "thiếu cột bắt buộc 'Mã định danh'",
+      "en": "missing required column 'Mã định danh'"
+    },
+    "file_missing_columns": {
+      "kind": "coerce",
+      "raw": "Excel foo.xlsx is missing mapped column(s): ['Mã hồ sơ']. Found headers: ['A', 'B']",
+      "vi": "File foo.xlsx thiếu cột bắt buộc: 'Mã hồ sơ' — dùng nút 'Mẫu Excel…' để tạo file đúng chế độ đã chọn.",
+      "en": "Excel foo.xlsx is missing required column(s): 'Mã hồ sơ' — use the Template button to generate a file for the selected mode."
+    },
+    "file_duplicate_columns": {
+      "kind": "coerce",
+      "raw": "Excel foo.xlsx has duplicate mapped column header(s): ['X']. Only the right-most copy would be read — rename or remove the duplicates.",
+      "vi": "File foo.xlsx có tiêu đề cột bị trùng: 'X' — chỉ cột ngoài cùng bên phải được đọc; hãy đổi tên hoặc xoá cột trùng.",
+      "en": "Excel foo.xlsx has duplicate column header(s): 'X' — only the right-most copy would be read; rename or remove the duplicates."
+    },
+    "coerce_unmapped": {
+      "kind": "coerce",
+      "raw": "ignoring 2 unmapped Excel column(s): 'A', 'B'",
+      "vi": "bỏ qua 2 cột Excel không có trong file mapping: 'A', 'B'",
+      "en": "ignoring 2 unmapped Excel column(s): 'A', 'B'"
+    },
+    "log_first_search": {
+      "kind": "log",
+      "raw": "Logged first search response for inspection.",
+      "vi": "Đã ghi phản hồi tìm kiếm đầu tiên để kiểm tra.",
+      "en": "Logged first search response for inspection."
+    },
+    "log_retry": {
+      "kind": "log",
+      "raw": "retry in 2.5s (attempt 3)",
+      "vi": "thử lại sau 2.5s (lần 3)",
+      "en": "retry in 2.5s (attempt 3)"
+    },
+    "log_no_record_id": {
+      "kind": "log",
+      "raw": "row 5: no record id in server response",
+      "vi": "dòng 5: máy chủ không trả về mã hồ sơ",
+      "en": "row 5: no record id in server response"
+    },
+    "log_ledger_corrupt": {
+      "kind": "log",
+      "raw": "3 unreadable ledger line(s) — those rows may be re-sent",
+      "vi": "3 dòng nhật ký gửi (ledger) không đọc được — các hàng đó có thể bị gửi lại",
+      "en": "3 unreadable ledger line(s) — those rows may be re-sent"
+    },
+    "log_saved_search": {
+      "kind": "log",
+      "raw": "saved search response for row 5 (search_response_row_5.json)",
+      "vi": "đã lưu phản hồi tìm kiếm cho dòng 5 (search_response_row_5.json)",
+      "en": "saved search response for row 5 (search_response_row_5.json)"
+    },
+    "log_unmapped": {
+      "kind": "log",
+      "raw": "ignoring 2 unmapped Excel column(s): 'A', 'B'",
+      "vi": "bỏ qua 2 cột Excel không có trong file mapping: 'A', 'B'",
+      "en": "ignoring 2 unmapped Excel column(s): 'A', 'B'"
+    },
+    "log_token_short": {
+      "kind": "log",
+      "raw": "token may expire before this batch finishes (~10 min needed, ~5 min left) — consider logging in again first",
+      "vi": "⚠ Token có thể hết hạn trước khi chạy xong lô này (cần ~10 phút, còn ~5 phút) — nên đăng nhập lại trước khi chạy",
+      "en": "token may expire before this batch finishes (~10 min needed, ~5 min left) — consider logging in again first"
+    },
+    "login_waiting": {
+      "kind": "login",
+      "raw": "Please log in in the browser window…",
+      "vi": "Vui lòng đăng nhập trong cửa sổ trình duyệt…",
+      "en": "Please log in in the browser window…"
+    },
+    "login_captured": {
+      "kind": "login",
+      "raw": "Token captured.",
+      "vi": "Đã lấy token.",
+      "en": "Token captured."
+    }
+  },
+  "statuses": {
+    "CREATED": {
+      "vi": "Đã tạo",
+      "en": "Created"
+    },
+    "UPDATED": {
+      "vi": "Đã cập nhật",
+      "en": "Updated"
+    },
+    "DELETED": {
+      "vi": "Đã xoá",
+      "en": "Deleted"
+    },
+    "DRY_RUN_OK": {
+      "vi": "Chạy thử OK",
+      "en": "Dry-run OK"
+    },
+    "SKIPPED_ALREADY": {
+      "vi": "Bỏ qua (đã gửi)",
+      "en": "Skipped (already sent)"
+    },
+    "INVALID": {
+      "vi": "Không hợp lệ",
+      "en": "Invalid"
+    },
+    "NO_PATIENT": {
+      "vi": "Không thấy bệnh nhân",
+      "en": "No patient found"
+    },
+    "MULTI_MATCH": {
+      "vi": "Trùng nhiều bệnh nhân",
+      "en": "Multiple matches"
+    },
+    "FAILED": {
+      "vi": "Thất bại",
+      "en": "Failed"
+    },
+    "AUTH_EXPIRED": {
+      "vi": "Token hết hạn",
+      "en": "Token expired"
+    },
+    "RATE_LIMITED": {
+      "vi": "Máy chủ bận",
+      "en": "Server busy"
+    }
+  }
+}

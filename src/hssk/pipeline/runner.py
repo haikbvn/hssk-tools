@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,12 +28,23 @@ from ..auth.profile import load_profile
 from ..auth.token_store import decode_exp
 from ..config import Settings, output_dir
 from ..config import settings as default_settings
-from ..errors import ApiError, AuthExpired, ConfigError, MultiMatch, PatientNotFound, RateLimited
+from ..errors import (
+    ApiError,
+    AuthExpired,
+    BatchCancelled,
+    ConfigError,
+    MultiMatch,
+    PatientNotFound,
+    PayloadInvalid,
+    RateLimited,
+)
+from ..events import LogEvent, MessageCode, Msg
 from ..excel import reader
 from ..excel.coerce import RowResult, coerce_row
 from ..mapping import MappingConfig
 from ..payload import builder, update_builder
 from .ledger import Ledger
+from .lock import RunLock
 from .results import RowOutcome, RunSummary, Status
 
 # Re-export so existing ``from hssk.pipeline.runner import Status`` imports keep working.
@@ -43,7 +55,7 @@ __all__ = ["Callbacks", "RowOutcome", "RunSummary", "Status", "run", "run_delete
 class Callbacks:
     on_progress: Callable[[int, int], None] = lambda done, total: None
     on_row: Callable[[RowOutcome], None] = lambda outcome: None
-    on_log: Callable[[str], None] = lambda msg: None
+    on_log: Callable[[LogEvent], None] = lambda event: None
 
 
 @dataclass
@@ -58,9 +70,7 @@ class _Proceed:
     patient_id: Any
     who: str
     success_status: Status  # CREATED / UPDATED / DELETED
-    success_verb: (
-        str  # "created"/"updated"/"deleted" (kept literal: the GUI matches on these heads)
-    )
+    success_code: MessageCode  # ROW_CREATED / ROW_UPDATED / ROW_DELETED
     send: Callable[
         [ApiClient], tuple[Any, Any]
     ]  # exams.create / records.update|delete → (rid, resp)
@@ -70,10 +80,24 @@ class _Proceed:
 
 # A mode returns a finished RowOutcome (emit & continue) or a _Proceed (run the shared tail).
 # It may raise AuthExpired / RateLimited; _run_batch catches those to abort cleanly.
-ProcessRow = Callable[[ApiClient, int, RowResult, Callable[[Any], None]], "RowOutcome | _Proceed"]
+# The two callbacks are ``raw_logger`` (dump the first/failing search response) and ``drift_logger``
+# (``(endpoint, detail)`` → one-per-endpoint LOG_DRIFT warning).
+ProcessRow = Callable[
+    [ApiClient, int, RowResult, Callable[[Any], None], Callable[[str, str], None]],
+    "RowOutcome | _Proceed",
+]
 
 _REQUEST_OVERHEAD_S = 0.8  # rough per-request network+server time (heuristic)
 _REQUESTS_PER_ROW = 2  # create: search + create; update/delete: fetch-detail + update|delete
+
+
+def _passthrough_outcome(
+    row_index: int, identifier: str | None, status: Status, exc: Exception
+) -> RowOutcome:
+    """Row outcome whose message is raw exception text (auth/rate abort, unexpected API error)."""
+    return RowOutcome(
+        row_index, identifier, status, msgs=[Msg(MessageCode.PASSTHROUGH, detail=str(exc))]
+    )
 
 
 def estimate_batch_seconds(rows: int, settings: Settings) -> float:
@@ -84,11 +108,11 @@ def estimate_batch_seconds(rows: int, settings: Settings) -> float:
 
 def token_expiry_warning(
     token: str, rows: int, settings: Settings, *, now: float | None = None
-) -> str | None:
-    """Warning string when the token likely expires before ``rows`` finish, else None.
+) -> Msg | None:
+    """Warning message when the token likely expires before ``rows`` finish, else None.
 
     Undecodable tokens return None — same stance as ``TokenData.is_valid`` (assume usable and
-    let a 401 catch it). Keep the wording stable: the GUI matches on it (hssk_gui/messages.py).
+    let a 401 catch it).
     """
     exp = decode_exp(token)
     if exp is None:
@@ -97,10 +121,9 @@ def token_expiry_warning(
     needed = estimate_batch_seconds(rows, settings)
     if remaining >= needed:
         return None
-    return (
-        "token may expire before this batch finishes "
-        f"(~{needed / 60:.0f} min needed, ~{max(remaining, 0) / 60:.0f} min left) — "
-        "consider logging in again first"
+    return Msg(
+        MessageCode.LOG_TOKEN_SHORT,
+        {"needed": f"{needed / 60:.0f}", "left": f"{max(remaining, 0) / 60:.0f}"},
     )
 
 
@@ -115,11 +138,45 @@ def _run_batch(
     callbacks: Callbacks | None,
     should_cancel: Callable[[], bool] | None,
     process_row: ProcessRow,
+    cancel: threading.Event | None = None,
+) -> RunSummary:
+    """Hold the single-batch lock, then run. The lock covers the whole batch (CLI and GUI),
+    closing the read-time dedup race where two instances both pass ``Ledger.done()``."""
+    with RunLock():
+        return _run_batch_locked(
+            input_path,
+            mapping,
+            token=token,
+            dry_run=dry_run,
+            limit=limit,
+            settings=settings,
+            callbacks=callbacks,
+            should_cancel=should_cancel,
+            process_row=process_row,
+            cancel=cancel,
+        )
+
+
+def _run_batch_locked(
+    input_path: str | Path,
+    mapping: MappingConfig,
+    *,
+    token: str,
+    dry_run: bool,
+    limit: int | None,
+    settings: Settings | None,
+    callbacks: Callbacks | None,
+    should_cancel: Callable[[], bool] | None,
+    process_row: ProcessRow,
+    cancel: threading.Event | None,
 ) -> RunSummary:
     s = settings or default_settings()
     cb = callbacks or Callbacks()
 
-    rows = reader.read_rows(input_path, mapping, on_warning=cb.on_log)
+    def log_warn(msg: Msg) -> None:
+        cb.on_log(LogEvent(msg.code, msg.params, msg.detail, level="warning"))
+
+    rows = reader.read_rows(input_path, mapping, on_warning=log_warn)
     if limit is not None:
         rows = rows[:limit]
     total = len(rows)
@@ -127,7 +184,7 @@ def _run_batch(
     if not dry_run:
         expiry_warning = token_expiry_warning(token, total, s)
         if expiry_warning:
-            cb.on_log(expiry_warning)
+            log_warn(expiry_warning)
 
     out_base = (s.data_dir / "output") if s.data_dir else output_dir()
     out_base.mkdir(parents=True, exist_ok=True)
@@ -139,6 +196,16 @@ def _run_batch(
     aborted = False
     abort_reason = ""
     logged_raw = False
+    drifted_endpoints: set[str] = set()
+
+    def drift_logger(endpoint: str, detail: str) -> None:
+        """Emit a LOG_DRIFT warning at most once per endpoint (a drift repeats on every row)."""
+        if endpoint in drifted_endpoints:
+            return
+        drifted_endpoints.add(endpoint)
+        cb.on_log(
+            LogEvent(MessageCode.LOG_DRIFT, {"endpoint": endpoint}, detail=detail, level="warning")
+        )
 
     def emit(outcome: RowOutcome) -> None:
         outcome.timestamp = dt.datetime.now().isoformat(timespec="seconds")
@@ -148,7 +215,7 @@ def _run_batch(
 
     last_raw: Any = None
 
-    with ApiClient(token, s, on_log=cb.on_log) as client:
+    with ApiClient(token, s, on_log=cb.on_log, cancel=cancel) as client:
 
         def raw_logger(data: Any) -> None:
             nonlocal logged_raw, last_raw
@@ -158,7 +225,7 @@ def _run_batch(
                 (run_dir / "first_search_response.json").write_text(
                     json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
-                cb.on_log("Logged first search response for inspection.")
+                cb.on_log(LogEvent(MessageCode.LOG_FIRST_SEARCH_SAVED))
 
         for i, (row_index, raw) in enumerate(rows, start=1):
             if should_cancel is not None and should_cancel():
@@ -169,7 +236,14 @@ def _run_batch(
             try:
                 coerced = coerce_row(raw, mapping, row_index)
             except Exception as exc:
-                emit(RowOutcome(row_index, None, Status.INVALID, message=f"coercion error: {exc}"))
+                emit(
+                    RowOutcome(
+                        row_index,
+                        None,
+                        Status.INVALID,
+                        msgs=[Msg(MessageCode.ROW_COERCE_ERROR, detail=str(exc))],
+                    )
+                )
                 continue
             identifier = coerced.identifier
 
@@ -179,20 +253,23 @@ def _run_batch(
                         row_index,
                         identifier,
                         Status.INVALID,
-                        message="; ".join(coerced.errors),
+                        msgs=list(coerced.errors),
                         warnings=coerced.warnings,
                     )
                 )
                 continue
 
             try:
-                step = process_row(client, row_index, coerced, raw_logger)
+                step = process_row(client, row_index, coerced, raw_logger, drift_logger)
+            except BatchCancelled:
+                aborted, abort_reason = True, "cancelled by user"
+                break
             except AuthExpired as exc:
-                emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
+                emit(_passthrough_outcome(row_index, identifier, Status.AUTH_EXPIRED, exc))
                 aborted, abort_reason = True, str(exc)
                 break
             except RateLimited as exc:
-                emit(RowOutcome(row_index, identifier, Status.RATE_LIMITED, message=str(exc)))
+                emit(_passthrough_outcome(row_index, identifier, Status.RATE_LIMITED, exc))
                 aborted, abort_reason = True, str(exc)
                 break
 
@@ -205,7 +282,12 @@ def _run_batch(
                     (run_dir / name).write_text(
                         json.dumps(last_raw, ensure_ascii=False, indent=2), encoding="utf-8"
                     )
-                    cb.on_log(f"saved search response for row {row_index} ({name})")
+                    cb.on_log(
+                        LogEvent(
+                            MessageCode.LOG_SEARCH_SAVED_ROW,
+                            {"row": row_index, "filename": name},
+                        )
+                    )
                 emit(step)
                 continue
 
@@ -221,7 +303,7 @@ def _run_batch(
                         Status.DRY_RUN_OK,
                         patient_id=step.patient_id,
                         record_id=step.dryrun_record_id,
-                        message=f"payload built (not sent) — {step.who}".strip(" —"),
+                        msgs=[Msg(MessageCode.ROW_DRY_RUN, {"who": step.who})],
                         warnings=coerced.warnings,
                     )
                 )
@@ -229,12 +311,15 @@ def _run_batch(
 
             try:
                 rid, _resp = step.send(client)
+            except BatchCancelled:
+                aborted, abort_reason = True, "cancelled by user"
+                break
             except AuthExpired as exc:
-                emit(RowOutcome(row_index, identifier, Status.AUTH_EXPIRED, message=str(exc)))
+                emit(_passthrough_outcome(row_index, identifier, Status.AUTH_EXPIRED, exc))
                 aborted, abort_reason = True, str(exc)
                 break
             except RateLimited as exc:
-                emit(RowOutcome(row_index, identifier, Status.RATE_LIMITED, message=str(exc)))
+                emit(_passthrough_outcome(row_index, identifier, Status.RATE_LIMITED, exc))
                 aborted, abort_reason = True, str(exc)
                 break
             except ApiError as exc:
@@ -244,7 +329,7 @@ def _run_batch(
                         identifier,
                         Status.FAILED,
                         patient_id=step.patient_id,
-                        message=str(exc),
+                        msgs=[Msg(MessageCode.PASSTHROUGH, detail=str(exc))],
                         warnings=coerced.warnings,
                     )
                 )
@@ -252,14 +337,16 @@ def _run_batch(
 
             if step.on_commit is not None:
                 step.on_commit(rid)
-            message = f"{step.success_verb} — {step.who}".strip(" —")
-            if rid is None and step.dryrun_record_id is None:
+            no_record_id = rid is None and step.dryrun_record_id is None
+            params: dict[str, Any] = {"who": step.who}
+            if no_record_id:
                 # Create mode with an unrecognised response shape: the record exists on the
                 # server but we could not learn its id (update mode falls back to the known
-                # medicalRecordId, so no warning there). Keep the suffix literal: the GUI
-                # matches on it (hssk_gui/messages.py).
-                cb.on_log(f"row {row_index}: no record id in server response")
-                message += " (no record id returned)"
+                # medicalRecordId, so no warning there).
+                cb.on_log(
+                    LogEvent(MessageCode.LOG_NO_RECORD_ID, {"row": row_index}, level="warning")
+                )
+                params["no_record_id"] = True
             emit(
                 RowOutcome(
                     row_index,
@@ -267,7 +354,7 @@ def _run_batch(
                     step.success_status,
                     patient_id=step.patient_id,
                     record_id=rid or step.dryrun_record_id,
-                    message=message,
+                    msgs=[Msg(step.success_code, params)],
                     warnings=coerced.warnings,
                 )
             )
@@ -296,6 +383,7 @@ def run(
     callbacks: Callbacks | None = None,
     ledger: Ledger | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    cancel: threading.Event | None = None,
 ) -> RunSummary:
     bad_targets = builder.validate_targets(mapping)
     if bad_targets:
@@ -306,14 +394,16 @@ def run(
     led = ledger if ledger is not None else Ledger.load()
     cb = callbacks or Callbacks()
     if led.corrupt_lines:
-        # Keep the wording stable: the GUI matches on the suffix (hssk_gui/messages.py).
-        cb.on_log(f"{led.corrupt_lines} unreadable ledger line(s) — those rows may be re-sent")
+        cb.on_log(
+            LogEvent(MessageCode.LOG_LEDGER_CORRUPT, {"n": led.corrupt_lines}, level="warning")
+        )
 
     def process_row(
         client: ApiClient,
         row_index: int,
         coerced: RowResult,
         raw_logger: Callable[[Any], None],
+        drift_logger: Callable[[str, str], None],
     ) -> RowOutcome | _Proceed:
         identifier = coerced.identifier
         key = Ledger.make_key(identifier, coerced.exam_date)
@@ -323,20 +413,26 @@ def run(
                 identifier,
                 Status.SKIPPED_ALREADY,
                 record_id=led.record_id(key),
-                message="already processed",
+                msgs=[Msg(MessageCode.ROW_ALREADY_PROCESSED)],
                 warnings=coerced.warnings,
             )
         if identifier is None:  # defense-in-depth: coerced.ok should guarantee this
-            return RowOutcome(row_index, None, Status.INVALID, message="identifier is blank")
+            return RowOutcome(row_index, None, Status.INVALID, msgs=[Msg(MessageCode.ROW_ID_BLANK)])
 
         try:
-            resolved = patients.resolve(client, identifier, mapping.search, on_raw=raw_logger)
+            resolved = patients.resolve(
+                client,
+                identifier,
+                mapping.search,
+                on_raw=raw_logger,
+                on_drift=lambda detail: drift_logger(patients.SEARCH_PATH, detail),
+            )
         except PatientNotFound as exc:
             return RowOutcome(
                 row_index,
                 identifier,
                 Status.NO_PATIENT,
-                message=str(exc),
+                msgs=[exc.msg or Msg(MessageCode.PASSTHROUGH, detail=str(exc))],
                 warnings=coerced.warnings,
             )
         except MultiMatch as exc:
@@ -344,7 +440,7 @@ def run(
                 row_index,
                 identifier,
                 Status.MULTI_MATCH,
-                message=str(exc),
+                msgs=[exc.msg or Msg(MessageCode.PASSTHROUGH, detail=str(exc))],
                 warnings=coerced.warnings,
             )
         except ApiError as exc:
@@ -352,24 +448,34 @@ def run(
                 row_index,
                 identifier,
                 Status.FAILED,
-                message=f"search: {exc}",
+                msgs=[Msg(MessageCode.ROW_SEARCH_FAILED, detail=str(exc))],
                 warnings=coerced.warnings,
             )
 
         pid = resolved.patient_id
-        payload = builder.build(
-            coerced,
-            payload_base,
-            pid,
-            medical_identifier_code=resolved.medical_identifier_code,
-            profile=profile,
-        )
+        try:
+            payload = builder.build(
+                coerced,
+                payload_base,
+                pid,
+                medical_identifier_code=resolved.medical_identifier_code,
+                profile=profile,
+            )
+        except PayloadInvalid as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.INVALID,
+                patient_id=pid,
+                msgs=[exc.msg or Msg(MessageCode.PASSTHROUGH, detail=str(exc))],
+                warnings=coerced.warnings,
+            )
         return _Proceed(
             payload=payload,
             patient_id=pid,
             who=resolved.fullname or "",
             success_status=Status.CREATED,
-            success_verb="created",
+            success_code=MessageCode.ROW_CREATED,
             send=lambda c: exams.create(c, payload),
             on_commit=lambda rid: led.mark_done(key, rid),
         )
@@ -384,6 +490,7 @@ def run(
         callbacks=cb,
         should_cancel=should_cancel,
         process_row=process_row,
+        cancel=cancel,
     )
 
 
@@ -397,6 +504,7 @@ def run_update(
     settings: Settings | None = None,
     callbacks: Callbacks | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    cancel: threading.Event | None = None,
 ) -> RunSummary:
     """Batch-update existing medical records by overlaying Excel row values onto fetched details.
 
@@ -424,6 +532,7 @@ def run_update(
         row_index: int,
         coerced: RowResult,
         raw_logger: Callable[[Any], None],
+        drift_logger: Callable[[str, str], None],
     ) -> RowOutcome | _Proceed:
         identifier = coerced.identifier
         medical_record_id = coerced.values.get("medicalRecordId")
@@ -432,7 +541,7 @@ def run_update(
                 row_index,
                 identifier,
                 Status.INVALID,
-                message="medicalRecordId is blank",
+                msgs=[Msg(MessageCode.ROW_RECORD_ID_BLANK)],
                 warnings=coerced.warnings,
             )
 
@@ -443,20 +552,33 @@ def run_update(
                 row_index,
                 identifier,
                 Status.FAILED,
-                message=f"fetch detail: {exc}",
+                msgs=[Msg(MessageCode.ROW_FETCH_DETAIL_FAILED, detail=str(exc))],
                 warnings=coerced.warnings,
             )
 
-        patient_id, mic = records.extract_patient_ref(detail)
-        payload = update_builder.build_update(
-            coerced,
-            mapping,
-            patient_id,
-            medical_record_id=medical_record_id,
-            medical_identifier_code=mic,
-            profile=profile,
-            _base=update_payload_base,
+        patient_id, mic = records.extract_patient_ref(
+            detail, on_drift=lambda d: drift_logger(records.DETAIL_PATH, d)
         )
+        try:
+            payload = update_builder.build_update(
+                coerced,
+                mapping,
+                patient_id,
+                medical_record_id=medical_record_id,
+                medical_identifier_code=mic,
+                profile=profile,
+                _base=update_payload_base,
+            )
+        except PayloadInvalid as exc:
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.INVALID,
+                patient_id=patient_id,
+                record_id=medical_record_id,
+                msgs=[exc.msg or Msg(MessageCode.PASSTHROUGH, detail=str(exc))],
+                warnings=coerced.warnings,
+            )
         who = (detail.get("medicalRecordInfo") or detail.get("medicalRecords") or {}).get(
             "doctorName"
         ) or ""
@@ -465,7 +587,7 @@ def run_update(
             patient_id=patient_id,
             who=who,
             success_status=Status.UPDATED,
-            success_verb="updated",
+            success_code=MessageCode.ROW_UPDATED,
             send=lambda c: records.update(c, payload),
             dryrun_record_id=medical_record_id,
         )
@@ -480,6 +602,7 @@ def run_update(
         callbacks=callbacks,
         should_cancel=should_cancel,
         process_row=process_row,
+        cancel=cancel,
     )
 
 
@@ -493,6 +616,7 @@ def run_delete(
     settings: Settings | None = None,
     callbacks: Callbacks | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    cancel: threading.Event | None = None,
 ) -> RunSummary:
     """Batch-delete existing medical records by ``medicalRecordId``.
 
@@ -519,6 +643,7 @@ def run_delete(
         row_index: int,
         coerced: RowResult,
         raw_logger: Callable[[Any], None],
+        drift_logger: Callable[[str, str], None],
     ) -> RowOutcome | _Proceed:
         identifier = coerced.identifier
         medical_record_id = coerced.values.get("medicalRecordId")
@@ -527,7 +652,7 @@ def run_delete(
                 row_index,
                 identifier,
                 Status.INVALID,
-                message="medicalRecordId is blank",
+                msgs=[Msg(MessageCode.ROW_RECORD_ID_BLANK)],
                 warnings=coerced.warnings,
             )
 
@@ -538,11 +663,13 @@ def run_delete(
                 row_index,
                 identifier,
                 Status.FAILED,
-                message=f"fetch detail: {exc}",
+                msgs=[Msg(MessageCode.ROW_FETCH_DETAIL_FAILED, detail=str(exc))],
                 warnings=coerced.warnings,
             )
 
-        patient_id, mic = records.extract_patient_ref(detail)
+        patient_id, mic = records.extract_patient_ref(
+            detail, on_drift=lambda d: drift_logger(records.DETAIL_PATH, d)
+        )
         who = (detail.get("medicalRecordInfo") or detail.get("medicalRecords") or {}).get(
             "doctorName"
         ) or ""
@@ -559,7 +686,7 @@ def run_delete(
             patient_id=patient_id,
             who=who,
             success_status=Status.DELETED,
-            success_verb="deleted",
+            success_code=MessageCode.ROW_DELETED,
             send=lambda c: records.delete(c, medical_record_id),
             dryrun_record_id=medical_record_id,
         )
@@ -574,4 +701,5 @@ def run_delete(
         callbacks=callbacks,
         should_cancel=should_cancel,
         process_row=process_row,
+        cancel=cancel,
     )

@@ -10,6 +10,7 @@ from typing import Any
 from openpyxl import load_workbook
 
 from ..errors import ConfigError
+from ..events import MessageCode, Msg, render_en
 from ..mapping import MappingConfig
 
 
@@ -25,7 +26,7 @@ def read_rows(
     path: str | Path,
     mapping: MappingConfig,
     *,
-    on_warning: Callable[[str], None] | None = None,
+    on_warning: Callable[[Msg], None] | None = None,
 ) -> list[tuple[int, dict[str, Any]]]:
     """Return ``[(excel_row_number, {header: value})]`` for every non-empty data row.
 
@@ -66,11 +67,11 @@ def read_rows(
     return rows
 
 
-def check_headers(headers: list[str], mapping: MappingConfig) -> list[str]:
+def check_headers(headers: list[str], mapping: MappingConfig) -> list[Msg]:
     """Non-fatal header diagnostics: Excel columns not in the mapping that will be ignored.
 
-    Returns at most one combined message (a stable shape the GUI matches on) so spreadsheets with
-    many decorative columns stay quiet in the log/table.
+    Returns at most one combined message so spreadsheets with many decorative columns stay quiet
+    in the log/table.
     """
     seen: set[str] = set()
     extra: list[str] = []
@@ -81,19 +82,19 @@ def check_headers(headers: list[str], mapping: MappingConfig) -> list[str]:
     if not extra:
         return []
     cols = ", ".join(repr(h) for h in extra)
-    return [f"ignoring {len(extra)} unmapped Excel column(s): {cols}"]
+    return [Msg(MessageCode.LOG_UNMAPPED_COLUMNS, {"n": len(extra), "cols": cols})]
 
 
 def _check_columns(headers: list[str], mapping: MappingConfig, path: Path) -> None:
     present = set(headers)
     missing = [c for c in mapping.columns if c not in present]
     if missing:
-        raise ConfigError(
-            f"Excel {path.name} is missing mapped column(s): {missing}. Found headers: {headers}"
+        msg = Msg(
+            MessageCode.FILE_MISSING_COLUMNS,
+            {"name": path.name, "missing": missing, "headers": headers},
         )
+        raise ConfigError(render_en(msg), msg=msg)
     dups = [h for h, n in Counter(h for h in headers if h in mapping.columns).items() if n > 1]
     if dups:
-        raise ConfigError(
-            f"Excel {path.name} has duplicate mapped column header(s): {dups}. "
-            "Only the right-most copy would be read — rename or remove the duplicates."
-        )
+        msg = Msg(MessageCode.FILE_DUPLICATE_COLUMNS, {"name": path.name, "dups": dups})
+        raise ConfigError(render_en(msg), msg=msg)

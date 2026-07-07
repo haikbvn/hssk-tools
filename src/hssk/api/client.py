@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+import threading
 import time
 from collections.abc import Callable
 from email.utils import parsedate_to_datetime
@@ -20,7 +21,8 @@ import httpx
 from .. import __version__
 from ..config import Settings
 from ..config import settings as default_settings
-from ..errors import ApiError, AuthExpired, RateLimited
+from ..errors import ApiError, AuthExpired, BatchCancelled, RateLimited
+from ..events import LogEvent, MessageCode
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -31,15 +33,17 @@ class ApiClient:
         token: str,
         settings: Settings | None = None,
         *,
-        on_log: Callable[[str], None] | None = None,
+        on_log: Callable[[LogEvent], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
+        cancel: threading.Event | None = None,
     ) -> None:
         self.s = settings or default_settings()
         self.token = token
         self.on_log = on_log or (lambda _m: None)
         self._sleep = sleep
         self._monotonic = monotonic
+        self._cancel = cancel
         self._last_request = 0.0
         self._consecutive_failures = 0
         self._client = httpx.Client(
@@ -68,12 +72,26 @@ class ApiClient:
 
     # -- internals ----------------------------------------------------------------------
 
+    def _wait(self, delay: float) -> None:
+        """Sleep ``delay`` seconds, aborting promptly with ``BatchCancelled`` if cancelled.
+
+        With a ``cancel`` event set, waits on it (so a Stop during a long ``Retry-After`` backoff
+        returns at once instead of blocking the whole delay). Without one, uses the injected
+        ``sleep`` — keeping existing tests and the CLI path unchanged.
+        """
+        if delay <= 0:
+            return
+        if self._cancel is not None:
+            if self._cancel.wait(delay):
+                raise BatchCancelled("cancelled by user")
+        else:
+            self._sleep(delay)
+
     def _throttle(self) -> None:
         wait = self.s.request_delay - (self._monotonic() - self._last_request)
-        if wait > 0:
-            self._sleep(wait)
+        self._wait(wait)
         if self.s.jitter > 0:
-            self._sleep(random.uniform(0, self.s.jitter))
+            self._wait(random.uniform(0, self.s.jitter))
         self._last_request = self._monotonic()
 
     def _backoff(self, attempt: int, retry_after: float | None) -> None:
@@ -82,8 +100,13 @@ class ApiClient:
         else:
             capped = min(self.s.backoff_cap, self.s.backoff_base * (2**attempt))
             delay = random.uniform(0, capped)  # full jitter
-        self.on_log(f"retry in {delay:.1f}s (attempt {attempt + 1})")
-        self._sleep(delay)
+        self.on_log(
+            LogEvent(
+                MessageCode.LOG_RETRY,
+                {"delay": f"{delay:.1f}", "attempt": str(attempt + 1)},
+            )
+        )
+        self._wait(delay)
 
     @staticmethod
     def _retry_after(resp: httpx.Response) -> float | None:

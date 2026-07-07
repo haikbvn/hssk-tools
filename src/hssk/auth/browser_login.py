@@ -20,20 +20,25 @@ from typing import Any
 from ..config import Settings, auth_profile_dir
 from ..config import settings as default_settings
 from ..errors import AuthExpired, HsskError
+from ..events import MessageCode, Msg
+from ..logging_setup import JWT_BODY
 from .profile import fetch_profile, save_profile
 from .token_store import TokenData, decode_exp, save_token
 
 # DEBUG-level only — see auth/profile.py; the engine never prints.
 logger = logging.getLogger(__name__)
 
-_JWT_RE = re.compile(r"^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$")
+# Anchored full-string match of the shared JWT shape (logging_setup uses it unanchored to redact).
+_JWT_RE = re.compile(rf"^{JWT_BODY}$")
 
-StatusFn = Callable[[str], None]
+StatusFn = Callable[[Msg], None]
 CancelFn = Callable[[], bool]
 
 
-def _token_unexpired(token: str, skew: int = 120) -> bool:
+def _token_unexpired(token: str, skew: int | None = None) -> bool:
     """Return True if token's exp is in the future (with skew), or if exp is undecodable."""
+    if skew is None:
+        skew = default_settings().token_exp_skew
     exp = decode_exp(token)
     return exp is None or exp > time.time() + skew
 
@@ -89,7 +94,7 @@ def capture_token(
         raise HsskError("Playwright is not installed. Run: playwright install chromium") from exc
 
     s = settings or default_settings()
-    status = on_status or (lambda _m: None)
+    status: StatusFn = on_status or (lambda _m: None)
     captured: dict[str, str | None] = {"token": None}
 
     def on_request(req: Any) -> None:
@@ -120,7 +125,7 @@ def capture_token(
             ctx.on("request", on_request)
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.goto(s.login_url, wait_until="domcontentloaded")
-            status("Please log in in the browser window…")
+            status(Msg(MessageCode.LOGIN_WAITING))
 
             deadline = time.time() + timeout
             while captured["token"] is None and time.time() < deadline:
@@ -140,7 +145,7 @@ def capture_token(
         raise AuthExpired("Timed out waiting for login — no token captured.")
 
     data = save_token(captured["token"])
-    status("Token captured.")
+    status(Msg(MessageCode.LOGIN_TOKEN_CAPTURED))
     # Fetch and persist the operator profile (best-effort; never fails login).
     profile = fetch_profile(captured["token"], s)
     if profile is not None:

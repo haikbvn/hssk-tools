@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .adapters import extract_patient_ref, extract_record_id
 from .client import ApiClient
-from .record_id import extract_record_id
 
 DETAIL_PATH = "/api/v1/medical-record/medical-record/health-examination/get-detail"
 
@@ -13,33 +13,17 @@ UPDATE_PATH = "/api/v1/medical-record/medical-record/health-examination/update"
 
 DELETE_PATH = "/api/v1/medical-record/medical-record/medical-record-object-information/delete"
 
-
-def extract_patient_ref(detail: Any) -> tuple[Any, str | None]:
-    """Extract (patientId, medicalIdentifierCode) from a GET-detail response.
-
-    The response shape is not formally documented so this probes several candidate
-    locations — same defensive style as ``_find_patient_list`` in ``api/patients.py``.
-    """
-    if not isinstance(detail, dict):
-        return None, None
-
-    # Unwrap a data envelope if present
-    candidate = detail.get("data")
-    if isinstance(candidate, dict):
-        detail = candidate
-
-    for container_key in ("medicalRecordInfo", "medicalRecords"):
-        container = detail.get(container_key)
-        if isinstance(container, dict):
-            pid = container.get("patientId")
-            mic = container.get("medicalIdentifierCode")
-            if pid is not None:
-                return pid, mic
-
-    # Flat top-level fallback
-    pid = detail.get("patientId")
-    mic = detail.get("medicalIdentifierCode")
-    return pid, mic
+# Response probing lives in api/adapters.py; re-exported so callers keep ``records.extract_*``.
+__all__ = [
+    "DELETE_PATH",
+    "DETAIL_PATH",
+    "UPDATE_PATH",
+    "delete",
+    "extract_patient_ref",
+    "extract_record_id",
+    "fetch_detail",
+    "update",
+]
 
 
 def fetch_detail(client: ApiClient, medical_record_id: Any) -> dict[str, Any]:

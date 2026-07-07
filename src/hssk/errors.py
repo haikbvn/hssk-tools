@@ -2,13 +2,34 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .events import Msg
+
 
 class HsskError(Exception):
     """Base class for all hssk errors."""
 
 
 class ConfigError(HsskError):
-    """Invalid mapping / configuration."""
+    """Invalid mapping / configuration.
+
+    Structural file errors (missing/duplicate mapped columns) attach a typed ``msg`` so the GUI
+    can localize them; developer-facing config errors leave it None and show ``str(exc)``.
+    """
+
+    def __init__(self, message: str, *, msg: Msg | None = None):
+        super().__init__(message)
+        self.msg = msg
+
+
+class AlreadyRunning(HsskError):
+    """Another hssk batch already holds the run lock (guards the dedup ledger)."""
+
+
+class BatchCancelled(HsskError):
+    """The user cancelled the batch while the client was waiting (throttle/backoff)."""
 
 
 class AuthExpired(HsskError):
@@ -31,10 +52,27 @@ class RateLimited(HsskError):
 class PatientNotFound(HsskError):
     """Patient search returned no exact match for the medical identifier code."""
 
+    def __init__(self, message: str, *, msg: Msg | None = None):
+        super().__init__(message)
+        self.msg = msg
+
+
+class PayloadInvalid(HsskError):
+    """The assembled create payload failed the pydantic gate (unknown field / bad shape).
+
+    Carries a typed ``msg`` so the GUI can localize it; the runner turns it into a per-row INVALID
+    outcome (in dry-run and commit) instead of sending a malformed body.
+    """
+
+    def __init__(self, message: str, *, msg: Msg | None = None):
+        super().__init__(message)
+        self.msg = msg
+
 
 class MultiMatch(HsskError):
     """Patient search returned more than one candidate and policy forbids guessing."""
 
-    def __init__(self, message: str, *, candidates: list | None = None):
+    def __init__(self, message: str, *, candidates: list | None = None, msg: Msg | None = None):
         super().__init__(message)
         self.candidates = candidates or []
+        self.msg = msg

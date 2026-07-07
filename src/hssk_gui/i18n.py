@@ -10,6 +10,113 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "HSSK Tools v{version} — Health checkup uploader",
         "vi": "HSSK Tools v{version} — Tải lên dữ liệu khám sức khoẻ",
     },
+    "msg_gui_already_running": {
+        "en": "HSSK Tools is already running. Please use the window that is already open.",
+        "vi": "HSSK Tools đang chạy. Vui lòng dùng cửa sổ đang mở.",
+    },
+    # -- safety-ladder stepper (components/stepper.py) --
+    "step_login": {"en": "Login", "vi": "Đăng nhập"},
+    "step_file": {"en": "File", "vi": "File"},
+    "step_validated": {"en": "Validated", "vi": "Đã kiểm tra"},
+    "step_dryrun": {"en": "Dry-run", "vi": "Chạy thử"},
+    "step_commit": {"en": "Commit", "vi": "Gửi thật"},
+    # -- engine event codes (hssk.events.MessageCode) rendered by hssk_gui/render.py --
+    "msg_ROW_CREATED": {"en": "Created", "vi": "Đã tạo"},
+    "msg_ROW_UPDATED": {"en": "Updated", "vi": "Đã cập nhật"},
+    "msg_ROW_DELETED": {"en": "Deleted", "vi": "Đã xoá"},
+    "msg_ROW_DRY_RUN": {"en": "Payload built (not sent)", "vi": "Đã dựng dữ liệu (chưa gửi)"},
+    "msg_no_record_id": {"en": "no record id returned", "vi": "không nhận được mã hồ sơ"},
+    "msg_ROW_ALREADY_PROCESSED": {"en": "Already processed", "vi": "Đã xử lý trước đó"},
+    "msg_ROW_ID_BLANK": {"en": "Identifier is blank", "vi": "Mã định danh trống"},
+    "msg_ROW_RECORD_ID_BLANK": {"en": "medicalRecordId is blank", "vi": "medicalRecordId trống"},
+    "msg_ROW_COERCE_ERROR": {"en": "Coercion error: ", "vi": "Lỗi chuyển đổi: "},
+    "msg_ROW_FETCH_DETAIL_FAILED": {"en": "Fetch detail: ", "vi": "Lỗi lấy chi tiết: "},
+    "msg_ROW_PAYLOAD_INVALID": {
+        "en": "Payload failed validation: ",
+        "vi": "Dữ liệu gửi không hợp lệ: ",
+    },
+    "msg_ROW_NO_PATIENT": {
+        "en": "no patient found for {query}",
+        "vi": "không tìm thấy bệnh nhân với {query}",
+    },
+    "msg_ROW_MULTI_MATCH": {
+        "en": "{count} patients match {query}",
+        "vi": "{count} bệnh nhân khớp với {query}",
+    },
+    "msg_multi_match_skip": {"en": "; skipping", "vi": "; bỏ qua"},
+    "msg_ROW_MATCH_NO_PATIENT_ID": {
+        "en": "match for {query} has no patientId field",
+        "vi": "khớp với {query} không có trường patientId",
+    },
+    "msg_COERCE_CANNOT_PARSE": {
+        "en": "{col}: cannot parse {value} as {type} ({detail})",
+        "vi": "{col}: không thể đọc {value} thành {type} ({detail})",
+    },
+    "msg_COERCE_MISSING_REQUIRED": {
+        "en": "missing required column {col}",
+        "vi": "thiếu cột bắt buộc {col}",
+    },
+    "msg_COERCE_RANGE": {
+        "en": "{target}={value} outside expected range {lo}–{hi}",
+        "vi": "{target}={value} nằm ngoài phạm vi {lo}–{hi}",
+    },
+    "msg_COERCE_DATE_BEFORE": {
+        "en": "finishExaminationDate ({finish}) is before examinationDate ({start})",
+        "vi": "finishExaminationDate ({finish}) trước examinationDate ({start})",
+    },
+    "msg_FILE_MISSING_COLUMNS": {
+        "en": "Excel {name} is missing required column(s): {cols} — use the Template button "
+        "to generate a file for the selected mode.",
+        "vi": "File {name} thiếu cột bắt buộc: {cols} — dùng nút 'Mẫu Excel…' để tạo file "
+        "đúng chế độ đã chọn.",
+    },
+    "msg_FILE_DUPLICATE_COLUMNS": {
+        "en": "Excel {name} has duplicate column header(s): {cols} — only the right-most copy "
+        "would be read; rename or remove the duplicates.",
+        "vi": "File {name} có tiêu đề cột bị trùng: {cols} — chỉ cột ngoài cùng bên phải được "
+        "đọc; hãy đổi tên hoặc xoá cột trùng.",
+    },
+    "msg_LOG_UNMAPPED_COLUMNS": {
+        "en": "ignoring {n} unmapped Excel column(s): {cols}",
+        "vi": "bỏ qua {n} cột Excel không có trong file mapping: {cols}",
+    },
+    "msg_LOG_FIRST_SEARCH_SAVED": {
+        "en": "Logged first search response for inspection.",
+        "vi": "Đã ghi phản hồi tìm kiếm đầu tiên để kiểm tra.",
+    },
+    "msg_LOG_RETRY": {
+        "en": "retry in {delay}s (attempt {attempt})",
+        "vi": "thử lại sau {delay}s (lần {attempt})",
+    },
+    "msg_LOG_NO_RECORD_ID": {
+        "en": "row {row}: no record id in server response",
+        "vi": "dòng {row}: máy chủ không trả về mã hồ sơ",
+    },
+    "msg_LOG_LEDGER_CORRUPT": {
+        "en": "{n} unreadable ledger line(s) — those rows may be re-sent",
+        "vi": "{n} dòng nhật ký gửi (ledger) không đọc được — các hàng đó có thể bị gửi lại",
+    },
+    "msg_LOG_SEARCH_SAVED_ROW": {
+        "en": "saved search response for row {row} ({filename})",
+        "vi": "đã lưu phản hồi tìm kiếm cho dòng {row} ({filename})",
+    },
+    "msg_LOG_TOKEN_SHORT": {
+        "en": "token may expire before this batch finishes "
+        "(~{needed} min needed, ~{left} min left) — consider logging in again first",
+        "vi": "⚠ Token có thể hết hạn trước khi chạy xong lô này "
+        "(cần ~{needed} phút, còn ~{left} phút) — nên đăng nhập lại trước khi chạy",
+    },
+    "msg_LOG_DRIFT": {
+        "en": "⚠ Server response from {endpoint} was not recognised — the website's API may have "
+        "changed. Dry-run and check the results before committing.",
+        "vi": "⚠ Phản hồi máy chủ từ {endpoint} không nhận dạng được — API của website có thể đã "
+        "thay đổi. Hãy chạy thử và kiểm tra kết quả trước khi gửi thật.",
+    },
+    "msg_LOGIN_WAITING": {
+        "en": "Please log in in the browser window…",
+        "vi": "Vui lòng đăng nhập trong cửa sổ trình duyệt…",
+    },
+    "msg_LOGIN_TOKEN_CAPTURED": {"en": "Token captured.", "vi": "Đã lấy token."},
     "group_login": {"en": "1 · Login", "vi": "1 · Đăng nhập"},
     "group_data": {"en": "2 · Data", "vi": "2 · Dữ liệu"},
     "group_run": {"en": "3 · Run", "vi": "3 · Chạy"},
@@ -77,6 +184,20 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Open reports folder (all runs)",
         "vi": "Mở thư mục báo cáo (tất cả các lần chạy)",
     },
+    "menu_purge_reports": {"en": "Purge old reports…", "vi": "Xoá báo cáo cũ…"},
+    "dlg_purge_title": {"en": "Purge old reports", "vi": "Xoá báo cáo cũ"},
+    "msg_purge_confirm": {
+        "en": "Delete {n} report folder(s) older than {days} days?\nThis cannot be undone.",
+        "vi": "Xoá {n} thư mục báo cáo cũ hơn {days} ngày?\nThao tác này không thể hoàn tác.",
+    },
+    "msg_purge_none": {
+        "en": "No report folders are older than {days} days.",
+        "vi": "Không có thư mục báo cáo nào cũ hơn {days} ngày.",
+    },
+    "msg_purge_done": {
+        "en": "Deleted {n} old report folder(s).",
+        "vi": "Đã xoá {n} thư mục báo cáo cũ.",
+    },
     "msg_recent_missing": {
         "en": "File no longer exists: {path}",
         "vi": "File không còn tồn tại: {path}",
@@ -85,6 +206,26 @@ _STRINGS: dict[str, dict[str, str]] = {
     "menu_settings_action": {"en": "Settings…", "vi": "Cài đặt…"},
     "menu_help": {"en": "Help", "vi": "Trợ giúp"},
     "menu_user_guide": {"en": "User Guide", "vi": "Hướng dẫn sử dụng"},
+    "menu_support_bundle": {"en": "Export support bundle…", "vi": "Xuất gói hỗ trợ…"},
+    "dlg_support_title": {"en": "Export support bundle", "vi": "Xuất gói hỗ trợ"},
+    "msg_support_intro": {
+        "en": (
+            "Creates a zip with the app logs, your mapping, and version info to send to support. "
+            "Your saved login token is never included."
+        ),
+        "vi": (
+            "Tạo tệp zip gồm nhật ký ứng dụng, cấu hình ánh xạ và thông tin phiên bản để gửi cho "
+            "bộ phận hỗ trợ. Mã đăng nhập đã lưu sẽ không bao giờ được đưa vào."
+        ),
+    },
+    "chk_support_events": {
+        "en": "Include latest run's event log (may contain patient identifiers)",
+        "vi": "Kèm nhật ký sự kiện của lần chạy gần nhất (có thể chứa mã bệnh nhân)",
+    },
+    "msg_support_done": {
+        "en": "Support bundle saved: {path}",
+        "vi": "Đã lưu gói hỗ trợ: {path}",
+    },
     "guide_title": {
         "en": "HSSK Tools — User Guide",
         "vi": "HSSK Tools — Hướng dẫn sử dụng",
@@ -189,62 +330,6 @@ _STRINGS: dict[str, dict[str, str]] = {
     "status_FAILED": {"en": "Failed", "vi": "Thất bại"},
     "status_AUTH_EXPIRED": {"en": "Token expired", "vi": "Token hết hạn"},
     "status_RATE_LIMITED": {"en": "Server busy", "vi": "Máy chủ bận"},
-    # engine-authored row messages (results table Message column). Raw API/exception and
-    # per-cell coercion detail is passed through untranslated.
-    "msg_row_created": {"en": "Created", "vi": "Đã tạo"},
-    "msg_row_updated": {"en": "Updated", "vi": "Đã cập nhật"},
-    "msg_row_deleted": {"en": "Deleted", "vi": "Đã xoá"},
-    "msg_row_dryrun": {"en": "Payload built (not sent)", "vi": "Đã dựng dữ liệu (chưa gửi)"},
-    "msg_row_already": {"en": "Already processed", "vi": "Đã xử lý trước đó"},
-    "msg_row_id_blank": {"en": "Identifier is blank", "vi": "Mã định danh trống"},
-    "msg_row_recordid_blank": {"en": "medicalRecordId is blank", "vi": "medicalRecordId trống"},
-    "msg_row_coercion": {"en": "Coercion error: ", "vi": "Lỗi chuyển đổi: "},
-    "msg_row_fetch": {"en": "Fetch detail: ", "vi": "Lỗi lấy chi tiết: "},
-    # patient-search error fragments (variable parts are the quoted identifier or count)
-    "msg_no_patient_for": {"en": "no patient found for ", "vi": "không tìm thấy bệnh nhân với "},
-    "msg_match_for": {"en": "match for ", "vi": "khớp với "},
-    "msg_no_patient_id": {"en": " has no patientId field", "vi": " không có trường patientId"},
-    "msg_patients_match": {"en": " patients match ", "vi": " bệnh nhân khớp với "},
-    "msg_multi_match_skip": {"en": "; skipping", "vi": "; bỏ qua"},
-    # individual coerce error/warning fragments (variable tails are field names / raw values)
-    "msg_coerce_missing_col": {
-        "en": "missing required column ",
-        "vi": "thiếu cột bắt buộc ",
-    },
-    "msg_coerce_cannot_parse": {
-        "en": ": cannot parse ",
-        "vi": ": không thể đọc ",
-    },
-    "msg_coerce_as_type": {"en": " as ", "vi": " thành "},
-    "msg_coerce_range": {
-        "en": " outside expected range ",
-        "vi": " nằm ngoài phạm vi ",
-    },
-    "msg_coerce_date_before": {"en": " is before ", "vi": " trước "},
-    "msg_unmapped_columns": {
-        "en": "ignoring {n} unmapped Excel column(s): {cols}",
-        "vi": "bỏ qua {n} cột Excel không có trong file mapping: {cols}",
-    },
-    "msg_missing_columns": {
-        "en": (
-            "Excel {name} is missing required column(s): {cols} — "
-            "use the Template button to generate a file for the selected mode."
-        ),
-        "vi": (
-            "File {name} thiếu cột bắt buộc: {cols} — "
-            "dùng nút 'Mẫu Excel…' để tạo file đúng chế độ đã chọn."
-        ),
-    },
-    "msg_duplicate_columns": {
-        "en": (
-            "Excel {name} has duplicate column header(s): {cols} — "
-            "only the right-most copy would be read; rename or remove the duplicates."
-        ),
-        "vi": (
-            "File {name} có tiêu đề cột bị trùng: {cols} — "
-            "chỉ cột ngoài cùng bên phải được đọc; hãy đổi tên hoặc xoá cột trùng."
-        ),
-    },
     # mode combo (run box)
     "lbl_mode": {"en": "Mode:", "vi": "Chế độ:"},
     "mode_create": {"en": "Create", "vi": "Tạo mới"},
@@ -277,6 +362,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": ("This will PERMANENTLY DELETE medical records on hososuckhoe.com.vn.\n\nProceed?"),
         "vi": ("Thao tác này sẽ XOÁ VĨNH VIỄN hồ sơ y tế trên hososuckhoe.com.vn.\n\nTiếp tục?"),
     },
+    "dlg_type_to_confirm_hint": {
+        "en": "Type YES to proceed:",
+        "vi": "Nhập YES để tiếp tục:",
+    },
+    "btn_confirm_push": {"en": "Confirm", "vi": "Xác nhận"},
     "dlg_update_needs_record_id": {
         "en": "Update mode — mapping error",
         "vi": "Chế độ cập nhật — lỗi mapping",
@@ -418,38 +508,6 @@ _STRINGS: dict[str, dict[str, str]] = {
     "log_token_expired": {
         "en": "⛔ Login token expired — please log in again.",
         "vi": "⛔ Token đăng nhập đã hết hạn — vui lòng đăng nhập lại.",
-    },
-    "log_first_search_response": {
-        "en": "Logged first search response for inspection.",
-        "vi": "Đã ghi phản hồi tìm kiếm đầu tiên để kiểm tra.",
-    },
-    "log_retry_in": {"en": "retry in ", "vi": "thử lại sau "},
-    "log_retry_attempt": {"en": " (attempt ", "vi": " (lần "},
-    "log_no_record_id": {
-        "en": "row {row}: no record id in server response",
-        "vi": "dòng {row}: máy chủ không trả về mã hồ sơ",
-    },
-    "msg_no_record_id": {
-        "en": "no record id returned",
-        "vi": "không nhận được mã hồ sơ",
-    },
-    "log_ledger_corrupt": {
-        "en": "{n} unreadable ledger line(s) — those rows may be re-sent",
-        "vi": "{n} dòng nhật ký gửi (ledger) không đọc được — các hàng đó có thể bị gửi lại",
-    },
-    "log_saved_search_response": {
-        "en": "saved search response for row ",
-        "vi": "đã lưu phản hồi tìm kiếm cho dòng ",
-    },
-    "log_token_short_for_batch": {
-        "en": (
-            "token may expire before this batch finishes "
-            "(~{needed} min needed, ~{left} min left) — consider logging in again first"
-        ),
-        "vi": (
-            "⚠ Token có thể hết hạn trước khi chạy xong lô này "
-            "(cần ~{needed} phút, còn ~{left} phút) — nên đăng nhập lại trước khi chạy"
-        ),
     },
     # close while running
     "dlg_still_stopping": {
@@ -651,8 +709,6 @@ _STRINGS: dict[str, dict[str, str]] = {
     "tab_security": {"en": "Security", "vi": "Bảo mật"},
     "btn_accept": {"en": "Accept", "vi": "Chấp nhận"},
     "btn_decline": {"en": "Decline", "vi": "Từ chối"},
-    "btn_yes": {"en": "Yes", "vi": "Có"},
-    "btn_no": {"en": "No", "vi": "Không"},
     # preferences — record default field labels
     "rec_normal_desc_value": {"en": "Normal description", "vi": "Mô tả bình thường"},
     "rec_doctorName": {"en": "Doctor (default)", "vi": "Bác sĩ (mặc định)"},

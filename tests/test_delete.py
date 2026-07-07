@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from hssk.api import records
 from hssk.config import Settings
 from hssk.errors import ConfigError
+from hssk.events import render_en
 from hssk.mapping import filter_for_delete, load_mapping
 from hssk.pipeline import runner
 from hssk.pipeline.runner import Status
@@ -197,7 +198,7 @@ def test_full_update_template_excel_works(tmp_path):
         token="t",
         dry_run=True,
         settings=_settings(tmp_path),
-        callbacks=runner.Callbacks(on_log=logs.append),
+        callbacks=runner.Callbacks(on_log=lambda e: logs.append(render_en(e))),
     )
 
     assert summary.counts.get(Status.DRY_RUN_OK) == 1

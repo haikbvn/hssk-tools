@@ -8,6 +8,7 @@ from openpyxl import Workbook
 
 from hssk.api import exams, patients
 from hssk.config import Settings
+from hssk.events import MessageCode, render_en
 from hssk.pipeline import runner
 from hssk.pipeline.ledger import Ledger
 from hssk.pipeline.runner import Status
@@ -142,6 +143,17 @@ def _two_row_xlsx(tmp: Path) -> Path:
     return path
 
 
+def _two_valid_row_xlsx(tmp: Path) -> Path:
+    wb = Workbook()
+    ws = wb.active
+    ws.append(_ALL_HEADERS)
+    ws.append(_make_row("2700020596A"))
+    ws.append(_make_row("2700020597B"))
+    path = tmp / "in_valid.xlsx"
+    wb.save(path)
+    return path
+
+
 def _mock_search(found: bool):
     content = [{"patientId": 372954970, "medicalIdentifierCode": "2700020596A"}] if found else []
     respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
@@ -184,7 +196,7 @@ def test_no_patient(mapping, tmp_path):
         dry_run=False,
         settings=s,
         ledger=Ledger(tmp_path / "l.jsonl"),
-        callbacks=runner.Callbacks(on_log=logs.append),
+        callbacks=runner.Callbacks(on_log=lambda e: logs.append(render_en(e))),
     )
     assert summary.counts.get(Status.NO_PATIENT) == 1
     # The failed lookup's exact server response is kept for debugging.
@@ -276,7 +288,7 @@ def test_corrupt_ledger_line_warns_on_run(mapping, tmp_path):
         dry_run=True,
         settings=s,
         ledger=Ledger.load(ledger_file),
-        callbacks=runner.Callbacks(on_log=logs.append),
+        callbacks=runner.Callbacks(on_log=lambda e: logs.append(render_en(e))),
     )
     assert any("1 unreadable ledger line(s)" in m for m in logs)
 
@@ -296,13 +308,84 @@ def test_create_without_record_id_still_created_but_warns(mapping, tmp_path):
         dry_run=False,
         settings=s,
         ledger=Ledger(tmp_path / "l.jsonl"),
-        callbacks=runner.Callbacks(on_log=logs.append),
+        callbacks=runner.Callbacks(on_log=lambda e: logs.append(render_en(e))),
     )
     assert summary.created == 1
     outcome = next(o for o in summary.outcomes if o.status is Status.CREATED)
     assert outcome.record_id is None
     assert outcome.message.endswith(" (no record id returned)")
     assert any("no record id in server response" in m for m in logs)
+
+
+@respx.mock
+def test_bad_default_key_yields_invalid_via_gate(mapping, tmp_path):
+    """A typo in the mapping's `defaults` block (which validate_targets never checks) is caught by
+    the pydantic gate: the row becomes INVALID with ROW_PAYLOAD_INVALID, not a silent bad send."""
+    _mock_search(found=True)
+    create_route = respx.post(f"{BASE}{exams.CREATE_PATH}").mock(
+        return_value=httpx.Response(200, json={"data": {"medicalRecordId": 1}})
+    )
+    bad = mapping.model_copy(deep=True)
+    bad.defaults.medicalRecordInfo["symptomss"] = "typo"  # unknown field
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    summary = runner.run(
+        xlsx, bad, token="t", dry_run=True, settings=s, ledger=Ledger(tmp_path / "l.jsonl")
+    )
+    # The valid row is INVALID (gate); the blank-identifier row is INVALID too → 2 total, 0 ok.
+    assert summary.counts.get(Status.INVALID) == 2
+    assert summary.counts.get(Status.DRY_RUN_OK) is None
+    assert create_route.call_count == 0
+    invalid = next(
+        o for o in summary.outcomes if o.status is Status.INVALID and o.identifier == "2700020596A"
+    )
+    assert invalid.msgs[0].code == MessageCode.ROW_PAYLOAD_INVALID
+    assert "symptomss" in (invalid.msgs[0].detail or "")
+
+
+@respx.mock
+def test_drifted_search_shape_emits_one_drift_log(mapping, tmp_path):
+    """An unrecognised search-response shape emits exactly one LOG_DRIFT for the endpoint (deduped
+    across rows) and the rows fall through as NO_PATIENT."""
+    respx.post(f"{BASE}{patients.SEARCH_PATH}").mock(
+        return_value=httpx.Response(200, json={"unexpected": "shape"})
+    )
+    xlsx = _two_valid_row_xlsx(tmp_path)  # two rows both hit search
+    s = _settings(tmp_path)
+    events: list = []
+    summary = runner.run(
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=True,
+        settings=s,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        callbacks=runner.Callbacks(on_log=lambda e: events.append(e)),
+    )
+    drift = [e for e in events if e.code == MessageCode.LOG_DRIFT]
+    assert len(drift) == 1  # deduped: two drifting rows, one warning
+    assert drift[0].params["endpoint"] == patients.SEARCH_PATH
+    assert drift[0].level == "warning"
+    assert summary.counts.get(Status.NO_PATIENT) == 2
+
+
+@respx.mock
+def test_no_drift_on_legitimate_empty_search(mapping, tmp_path):
+    """A well-formed but empty search response is a normal no-match — never a drift warning."""
+    _mock_search(found=False)  # {"data": {"content": []}} — located but empty
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    events: list = []
+    runner.run(
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=True,
+        settings=s,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        callbacks=runner.Callbacks(on_log=lambda e: events.append(e)),
+    )
+    assert not [e for e in events if e.code == MessageCode.LOG_DRIFT]
 
 
 @respx.mock

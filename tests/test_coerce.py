@@ -4,6 +4,7 @@ import datetime as dt
 
 import pytest
 
+from hssk.events import render_en
 from hssk.excel.coerce import _coerce_one, _parse_default_time, coerce_row
 from hssk.mapping import ColumnSpec
 
@@ -86,20 +87,20 @@ def test_finish_before_start_is_error(mapping):
     }
     res = coerce_row(raw, mapping, row_index=3)
     assert not res.ok
-    assert any("before" in e for e in res.errors)
+    assert any("before" in render_en(e) for e in res.errors)
 
 
 def test_required_missing_is_error(mapping):
     res = coerce_row({"Mã định danh": None}, mapping, row_index=4)
     assert not res.ok
-    assert any("required" in e for e in res.errors)
+    assert any("required" in render_en(e) for e in res.errors)
 
 
 def test_out_of_range_warns(mapping):
     raw = {"Mã định danh": "X", "Mạch": 300, **_REQ}
     res = coerce_row(raw, mapping, row_index=5)
     assert res.ok  # warning, not error
-    assert any("pulse" in w for w in res.warnings)
+    assert any("pulse" in render_en(w) for w in res.warnings)
 
 
 def test_list_semicolon_split():
@@ -132,7 +133,7 @@ def test_non_finite_value_is_per_cell_error(mapping):
     raw = {"Mã định danh": "X", "Cân nặng": "inf", **_REQ}
     res = coerce_row(raw, mapping, row_index=7)
     assert not res.ok
-    assert any("Cân nặng" in e for e in res.errors)
+    assert any("Cân nặng" in render_en(e) for e in res.errors)
     assert "bmi" not in res.values
 
 
@@ -141,4 +142,4 @@ def test_overflow_to_infinity_is_per_cell_error(mapping):
     raw = {"Mã định danh": "X", "Cân nặng": "1e400", **_REQ}
     res = coerce_row(raw, mapping, row_index=8)
     assert not res.ok
-    assert any("Cân nặng" in e for e in res.errors)
+    assert any("Cân nặng" in render_en(e) for e in res.errors)

@@ -13,6 +13,7 @@ authors = [{ name = "hssk-tools" }]
 dependencies = [
     "httpx>=0.28",
     "playwright>=1.60",
+    "keyring>=25",
     "openpyxl>=3.1",
     "pydantic>=2.13",
     "pydantic-settings>=2.14",
@@ -26,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=9",
+    "pytest-qt>=4.5",
     "respx>=0.23",
     "ruff>=0.15",
     "mypy>=2.1",

@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from hssk.api import exams, records
 from hssk.config import Settings
 from hssk.errors import ConfigError
+from hssk.events import MessageCode
 from hssk.mapping import load_mapping
 from hssk.pipeline import runner
 from hssk.pipeline.runner import Status
@@ -254,6 +255,30 @@ def test_auth_expired_on_detail_aborts_batch(tmp_path):
 
     assert summary.aborted
     assert summary.counts.get(Status.AUTH_EXPIRED) == 1
+
+
+@respx.mock
+def test_drifted_detail_shape_emits_drift_log(tmp_path):
+    """An unrecognised get-detail shape (no patient container, no patientId) emits a LOG_DRIFT for
+    the detail endpoint — the update proceeds (patientId=None) but the operator is warned."""
+    mapping = load_mapping(_make_update_mapping(tmp_path))
+    respx.get(f"{BASE}{records.DETAIL_PATH}/388261169").mock(
+        return_value=httpx.Response(200, json={"unexpected": "shape"})
+    )
+    respx.post(f"{BASE}{records.UPDATE_PATH}").mock(return_value=httpx.Response(200, json={}))
+    xlsx = _make_xlsx(tmp_path)
+    events: list = []
+    runner.run_update(
+        xlsx,
+        mapping,
+        token="t",
+        dry_run=True,
+        settings=_settings(tmp_path),
+        callbacks=runner.Callbacks(on_log=lambda e: events.append(e)),
+    )
+    drift = [e for e in events if e.code == MessageCode.LOG_DRIFT]
+    assert len(drift) == 1
+    assert drift[0].params["endpoint"] == records.DETAIL_PATH
 
 
 def test_missing_record_id_column_raises_config_error(tmp_path):

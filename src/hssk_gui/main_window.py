@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -42,17 +43,21 @@ from hssk.auth.token_store import TokenData, load_token
 from hssk.config import ensure_mapping_file, ensure_update_overlay_file, output_dir
 from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
+from hssk.events import LogEvent, MessageCode, Msg
 from hssk.mapping import filter_for_delete, load_mapping
 from hssk.pipeline.results import RunSummary, Status
 
 from . import theme
 from .banner import NoticeBanner
+from .components.stepper import SafetyStepper
+from .confirm_dialog import ConfirmProductionDialog
 from .i18n import tr
-from .messages import _tr_file_error, _tr_log, _tr_login_status
 from .preferences_dialog import PreferencesDialog
+from .render import render
 from .results_panel import ResultsPanel
 from .settings import UiSettings
 from .update_check import is_newer
+from .worker_thread import WorkerHandle, run_in_thread
 from .workers import (
     LoginWorker,
     RunWorker,
@@ -63,6 +68,10 @@ from .workers import (
 
 # Run modes, indexed to match the mode combo (create=0, update=1, delete=2).
 _MODES = ("create", "update", "delete")
+
+# File-level ConfigError codes that ValidateWorker already surfaces as a synthetic table row —
+# _on_validate_failed skips the banner for these to avoid saying the same thing twice.
+_FILE_ERROR_CODES = (MessageCode.FILE_MISSING_COLUMNS, MessageCode.FILE_DUPLICATE_COLUMNS)
 
 
 def _with_shortcut(text: str, button: QPushButton) -> str:
@@ -155,15 +164,13 @@ class MainWindow(QMainWindow):
         self._validated_path: Path | None = None  # last file a validation pass completed on
         self._validated_invalid = 0  # invalid-row count from that pass
 
-        # thread/worker handles (kept alive while running)
-        self._login_thread: QThread | None = None
-        self._login_worker: LoginWorker | None = None
-        self._validate_thread: QThread | None = None
-        self._validate_worker: ValidateWorker | None = None
-        self._run_thread: QThread | None = None
-        self._run_worker: RunWorker | None = None
-        self._update_thread: QThread | None = None
-        self._update_worker: UpdateCheckWorker | None = None
+        # One WorkerHandle per background job, non-None only while that job is running. Each owns
+        # its QThread + worker and the full teardown lifecycle (see worker_thread.py); "handle is
+        # None ⇔ that job is idle" is the invariant every idle-state reader below relies on.
+        self._login_handle: WorkerHandle | None = None
+        self._validate_handle: WorkerHandle | None = None
+        self._run_handle: WorkerHandle | None = None
+        self._update_handle: WorkerHandle | None = None
 
         self._build_ui()
         self.results.restore_splitter(self._ui.results_splitter)
@@ -194,6 +201,8 @@ class MainWindow(QMainWindow):
         # Separate instance for the newer-version hint so an error never overwrites it.
         self.update_banner = NoticeBanner()
         root.addWidget(self.update_banner)
+        self.stepper = SafetyStepper()
+        root.addWidget(self.stepper)
         root.addWidget(self._build_login_box())
         root.addWidget(self._build_data_box())
         root.addWidget(self._build_run_box())
@@ -216,8 +225,9 @@ class MainWindow(QMainWindow):
         return footer
 
     def _render_footer_link(self) -> None:
+        muted = theme.color("muted")
         self._footer_link.setText(
-            f'<a href="#sponsor" style="color: grey; font-size: small; text-decoration: none;">'
+            f'<a href="#sponsor" style="color: {muted}; font-size: small; text-decoration: none;">'
             f'{tr("footer_sponsor")} <span style="color: #e05050;">♥</span></a>'
         )
 
@@ -233,6 +243,11 @@ class MainWindow(QMainWindow):
         reports_action.triggered.connect(self._open_reports_root)
         file_menu.addAction(reports_action)
 
+        purge_action = QAction(tr("menu_purge_reports"), self)
+        purge_action.setMenuRole(QAction.MenuRole.NoRole)
+        purge_action.triggered.connect(self._purge_old_reports)
+        file_menu.addAction(purge_action)
+
         settings_menu = self.menuBar().addMenu(tr("menu_settings"))
         prefs_action = QAction(tr("menu_settings_action"), self)
         prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
@@ -246,6 +261,12 @@ class MainWindow(QMainWindow):
         guide_action.setMenuRole(QAction.MenuRole.NoRole)
         guide_action.triggered.connect(self._show_guide)
         help_menu.addAction(guide_action)
+
+        support_action = QAction(tr("menu_support_bundle"), self)
+        support_action.setMenuRole(QAction.MenuRole.NoRole)
+        support_action.triggered.connect(self._export_support_bundle)
+        help_menu.addAction(support_action)
+
         help_menu.addSeparator()
 
         terms_action = QAction(tr("menu_terms"), self)
@@ -308,6 +329,72 @@ class MainWindow(QMainWindow):
         base = (s.data_dir / "output") if s.data_dir else output_dir()
         base.mkdir(parents=True, exist_ok=True)  # openUrl fails silently on a missing path
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(base)))
+
+    def _purge_old_reports(self) -> None:
+        # Report folders hold patient PII (results.xlsx, search_response_*.json). Deletion is only
+        # ever operator-initiated + confirmed here — nothing is ever purged automatically.
+        from hssk.maintenance import find_old_runs, purge_runs
+
+        s = engine_settings()
+        base = (s.data_dir / "output") if s.data_dir else output_dir()
+        days = s.output_retention_days
+        old = find_old_runs(base, days)
+        if not old:
+            self.error_banner.show_message(tr("msg_purge_none").format(days=days), severity="info")
+            return
+        confirmed = QMessageBox.question(
+            self,
+            tr("dlg_purge_title"),
+            tr("msg_purge_confirm").format(n=len(old), days=days),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,  # default to the safe choice
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+        removed = purge_runs(old)
+        self.error_banner.show_message(tr("msg_purge_done").format(n=removed), severity="info")
+
+    def _ui_snapshot(self) -> dict[str, object]:
+        """Non-PII UI settings for the support snapshot — no file paths or the recent-files list."""
+        return {
+            "language": self._ui.language,
+            "dry_run": self._ui.dry_run,
+            "check_updates": self._ui.check_updates,
+            "delay": self._ui.delay,
+            "limit": self._ui.limit,
+            "mode": self._ui.mode,
+        }
+
+    def _export_support_bundle(self) -> None:
+        # A diagnostics zip for a maintainer: redacted logs + mapping + versions. The saved token
+        # and profile are never included; patient event data is opt-in via the checkbox.
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("dlg_support_title"))
+        box.setText(tr("msg_support_intro"))
+        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Ok)
+        events_check = QCheckBox(tr("chk_support_events"))
+        box.setCheckBox(events_check)
+        if box.exec() != QMessageBox.StandardButton.Ok:
+            return
+        default_name = f"hssk-support-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+        path, _ = QFileDialog.getSaveFileName(
+            self, tr("dlg_support_title"), default_name, "Zip (*.zip)"
+        )
+        if not path:
+            return
+        from hssk.support_bundle import build_support_bundle
+
+        try:
+            dest = build_support_bundle(
+                Path(path),
+                include_events=events_check.isChecked(),
+                extra_snapshot=self._ui_snapshot(),
+            )
+        except OSError as exc:
+            self.error_banner.show_message(f"{tr('dlg_support_title')}: {exc}")
+            return
+        self.error_banner.show_message(tr("msg_support_done").format(path=dest), severity="info")
 
     def _show_guide(self) -> None:
         from .guide_dialog import GuideDialog
@@ -511,6 +598,7 @@ class MainWindow(QMainWindow):
         self._refresh_run_controls()
         self._render_token_label()
         self.file_label.setStyleSheet(f"color: {theme.color('muted')};")
+        self._render_footer_link()
         self.error_banner.refresh_theme()
         self.update_banner.refresh_theme()
         self.results.on_theme_changed()
@@ -574,54 +662,35 @@ class MainWindow(QMainWindow):
         self.error_banner.clear()
         self.login_btn.setEnabled(False)
         self._set_token_label(tr("lbl_opening_browser"), "info")
-        self._login_thread = QThread()
-        self._login_worker = LoginWorker()
-        self._login_worker.moveToThread(self._login_thread)
-        self._login_thread.started.connect(self._login_worker.run)
-        self._login_worker.status.connect(
-            lambda m: self._set_token_label(_tr_login_status(m), "info")
+        worker = LoginWorker()
+        worker.status.connect(lambda m: self._set_token_label(render(m), "info"))
+        worker.finished.connect(self._on_login_finished)
+        worker.failed.connect(self._on_login_failed)
+        self._login_handle = run_in_thread(
+            worker, on_thread_finished=self._on_login_thread_finished
         )
-        # Stop the thread first, then update UI; only drop our references once the thread has
-        # fully finished (dropping a running QThread is a fatal crash).
-        self._login_worker.finished.connect(self._login_thread.quit)
-        self._login_worker.failed.connect(self._login_thread.quit)
-        self._login_worker.finished.connect(self._on_login_finished)
-        self._login_worker.failed.connect(self._on_login_failed)
-        self._login_thread.finished.connect(self._login_worker.deleteLater)
-        self._login_thread.finished.connect(self._login_thread.deleteLater)
-        self._login_thread.finished.connect(self._on_login_thread_finished)
-        self._login_thread.start()
 
     def _on_login_finished(self, _data: object) -> None:
         self.login_btn.setEnabled(True)
         self._refresh_token_status()
         self._update_start_enabled()
 
-    def _on_login_failed(self, message: str) -> None:
+    def _on_login_failed(self, message: str, _msg: Msg | None) -> None:
         self.login_btn.setEnabled(True)
         self._refresh_token_status()
         self.error_banner.show_message(f"{tr('dlg_login_failed')}: {message}")
 
     def _on_login_thread_finished(self) -> None:
-        self._login_thread = None
-        self._login_worker = None
+        self._login_handle = None
 
     # -- update notification --------------------------------------------------------------
 
     def _start_update_check(self) -> None:
-        self._update_thread = QThread()
-        self._update_worker = UpdateCheckWorker()
-        self._update_worker.moveToThread(self._update_thread)
-        self._update_thread.started.connect(self._update_worker.run)
-        # Same lifecycle as the login worker: quit first, then UI handler, deleteLater and
-        # reference drops only once the thread has fully finished.
-        self._update_worker.finished.connect(self._update_thread.quit)
-        self._update_worker.failed.connect(self._update_thread.quit)
-        self._update_worker.finished.connect(self._on_update_check_finished)
-        self._update_thread.finished.connect(self._update_worker.deleteLater)
-        self._update_thread.finished.connect(self._update_thread.deleteLater)
-        self._update_thread.finished.connect(self._on_update_thread_finished)
-        self._update_thread.start()
+        worker = UpdateCheckWorker()
+        worker.finished.connect(self._on_update_check_finished)
+        self._update_handle = run_in_thread(
+            worker, on_thread_finished=self._on_update_thread_finished
+        )
 
     def _on_update_check_finished(self, result: object) -> None:
         from hssk import __version__
@@ -638,8 +707,7 @@ class MainWindow(QMainWindow):
             )
 
     def _on_update_thread_finished(self) -> None:
-        self._update_thread = None
-        self._update_worker = None
+        self._update_handle = None
 
     # -- data ---------------------------------------------------------------------------
 
@@ -742,22 +810,16 @@ class MainWindow(QMainWindow):
         self._validated_path = None
         self._validated_invalid = 0
         self.results.reset(for_validation=True)
-        self._validate_thread = QThread()
-        self._validate_worker = ValidateWorker(self._excel_path, mapping)
-        self._validate_worker.moveToThread(self._validate_thread)
-        self._validate_thread.started.connect(self._validate_worker.run)
-        self._validate_worker.progress.connect(self.results.set_progress)
-        self._validate_worker.problem.connect(self.results.add_validation_row)
-        self._validate_worker.finished.connect(self._validate_thread.quit)
-        self._validate_worker.failed.connect(self._validate_thread.quit)
-        self._validate_worker.finished.connect(self._on_validate_finished)
-        self._validate_worker.failed.connect(self._on_validate_failed)
-        self._validate_thread.finished.connect(self._validate_worker.deleteLater)
-        self._validate_thread.finished.connect(self._validate_thread.deleteLater)
-        self._validate_thread.finished.connect(self._on_validate_thread_finished)
+        worker = ValidateWorker(self._excel_path, mapping)
+        worker.progress.connect(self.results.set_progress)
+        worker.problem.connect(self.results.add_validation_row)
+        worker.finished.connect(self._on_validate_finished)
+        worker.failed.connect(self._on_validate_failed)
         self.stop_btn.setEnabled(True)
-        self._update_start_enabled()  # _validate_thread is set, so this disables Start/Validate
-        self._validate_thread.start()
+        self._validate_handle = run_in_thread(
+            worker, on_thread_finished=self._on_validate_thread_finished
+        )
+        self._update_start_enabled()  # handle is set, so this disables Start/Validate
 
     def _on_validate_finished(self, summary: ValidationSummary) -> None:
         self.results.flush_now()  # ensure every buffered row is in the table before summarising
@@ -781,20 +843,19 @@ class MainWindow(QMainWindow):
             self._validated_path = self._excel_path
             self._validated_invalid = summary.invalid
 
-    def _on_validate_failed(self, message: str) -> None:
+    def _on_validate_failed(self, message: str, msg: Msg | None) -> None:
         self.results.flush_now()
         self.results.set_status(tr("lbl_error"))
         # A file-level structural error (missing/duplicate mapped column) is already shown as a
         # synthetic INVALID row in the results table by ValidateWorker, so don't repeat it in the
         # banner. Other validation failures have no table row, so they still surface in the banner.
-        if _tr_file_error(message) is not None:
+        if msg is not None and msg.code in _FILE_ERROR_CODES:
             return
         self.error_banner.show_message(f"{tr('dlg_validation')}: {message}")
 
     def _on_validate_thread_finished(self) -> None:
-        self._validate_thread = None
-        self._validate_worker = None
-        self.stop_btn.setEnabled(self._run_thread is not None)
+        self._validate_handle = None
+        self.stop_btn.setEnabled(self._run_handle is not None)
         self._update_start_enabled()  # re-enables Validate/Start now that idle is true
 
     # -- run ----------------------------------------------------------------------------
@@ -822,6 +883,7 @@ class MainWindow(QMainWindow):
         else:
             self.start_btn.setText(tr(live_btn_key))
             self.start_btn.setStyleSheet(theme.danger_button_qss())
+        self._refresh_stepper()
 
     def _on_dryrun_toggled(self) -> None:
         self._refresh_run_controls()
@@ -831,13 +893,23 @@ class MainWindow(QMainWindow):
 
     def _update_start_enabled(self) -> None:
         ready = self._excel_path is not None and self._token is not None
-        idle = self._run_thread is None and self._validate_thread is None
+        idle = self._run_handle is None and self._validate_handle is None
         self.start_btn.setEnabled(ready and idle)
         self.mode_combo.setEnabled(idle)
         # Validate shares the table/progress with a run, so keep it mutually exclusive: only
         # offer it when a file is loaded and nothing else is running.
         self.validate_btn.setEnabled(self._excel_path is not None and idle)
         self.start_btn.setToolTip(self._start_disabled_reason(ready, idle))
+        self._refresh_stepper()
+
+    def _refresh_stepper(self) -> None:
+        """Reflect current state on the safety-ladder strip — display only, changes no gating."""
+        self.stepper.update_state(
+            logged_in=self._token is not None,
+            file_chosen=self._excel_path is not None,
+            validated=self._validated_path is not None and self._validated_path == self._excel_path,
+            dry_run=self.dryrun_check.isChecked(),
+        )
 
     def _start_disabled_reason(self, ready: bool, idle: bool) -> str:
         if not idle:
@@ -868,15 +940,7 @@ class MainWindow(QMainWindow):
                 msg = tr("msg_not_validated_warn") + msg
             elif self._validated_invalid > 0:
                 msg = tr("msg_validation_had_errors").format(n=self._validated_invalid) + msg
-            box = QMessageBox(self)
-            box.setIcon(QMessageBox.Icon.Question)
-            box.setWindowTitle(tr("dlg_confirm_push"))
-            box.setText(msg)
-            yes_btn = box.addButton(tr("btn_yes"), QMessageBox.ButtonRole.YesRole)
-            no_btn = box.addButton(tr("btn_no"), QMessageBox.ButtonRole.NoRole)
-            box.setDefaultButton(no_btn)
-            box.exec()
-            if box.clickedButton() is not yes_btn:
+            if not ConfirmProductionDialog.confirm(msg, parent=self):
                 return
 
         try:
@@ -908,8 +972,7 @@ class MainWindow(QMainWindow):
         limit = self.limit_spin.value() or None
 
         self.results.reset()
-        self._run_thread = QThread()
-        self._run_worker = RunWorker(
+        worker = RunWorker(
             self._excel_path,
             mapping,
             self._token,
@@ -918,37 +981,28 @@ class MainWindow(QMainWindow):
             settings=settings,
             mode=mode,  # type: ignore[arg-type]
         )
-        self._run_worker.moveToThread(self._run_thread)
-        self._run_thread.started.connect(self._run_worker.run)
-        self._run_worker.progress.connect(self.results.set_progress)
-        self._run_worker.row.connect(self.results.add_row)
-        self._run_worker.log.connect(self._on_run_log)
-        # Stop the thread first, then run the UI handlers; drop references only after the thread
-        # has fully finished — destroying a running QThread aborts the process.
-        self._run_worker.finished.connect(self._run_thread.quit)
-        self._run_worker.failed.connect(self._run_thread.quit)
-        self._run_worker.finished.connect(self._on_run_finished)
-        self._run_worker.failed.connect(self._on_run_failed)
-        self._run_thread.finished.connect(self._run_worker.deleteLater)
-        self._run_thread.finished.connect(self._run_thread.deleteLater)
-        self._run_thread.finished.connect(self._on_run_thread_finished)
+        worker.progress.connect(self.results.set_progress)
+        worker.row.connect(self.results.add_row)
+        worker.log.connect(self._on_run_log)
+        worker.finished.connect(self._on_run_finished)
+        worker.failed.connect(self._on_run_failed)
 
         self.stop_btn.setEnabled(True)
-        self._update_start_enabled()  # _run_thread is set, so this also disables Start/Validate
-        self._run_thread.start()
+        self._run_handle = run_in_thread(worker, on_thread_finished=self._on_run_thread_finished)
+        self._update_start_enabled()  # handle is set, so this also disables Start/Validate
 
-    def _on_run_log(self, msg: str) -> None:
-        self.results.append_log(_tr_log(msg))
-        # The engine's pre-run token-lifetime estimate is easy to miss in the log pane —
-        # mirror it in the banner (wording matched in hssk_gui/messages.py).
-        if msg.startswith("token may expire before this batch finishes"):
-            self.error_banner.show_message(_tr_log(msg), severity="warning")
+    def _on_run_log(self, event: LogEvent) -> None:
+        self.results.append_log(render(event))
+        # A couple of log lines are too important to leave only in the log pane — mirror them in
+        # the banner: the pre-run token-lifetime estimate, and an API-drift warning.
+        if event.code in (MessageCode.LOG_TOKEN_SHORT, MessageCode.LOG_DRIFT):
+            self.error_banner.show_message(render(event), severity="warning")
 
     def _stop_run(self) -> None:
-        if self._run_worker is not None:
-            self._run_worker.cancel()
-        if self._validate_worker is not None:
-            self._validate_worker.cancel()
+        if self._run_handle is not None:
+            self._run_handle.cancel()
+        if self._validate_handle is not None:
+            self._validate_handle.cancel()
         self.stop_btn.setEnabled(False)
 
     def _on_run_finished(self, summary: RunSummary) -> None:
@@ -982,16 +1036,15 @@ class MainWindow(QMainWindow):
         # buttons are enabled above — surface the detail + recovery guidance in the log pane.
         self.results.append_log("\n" + "\n".join(parts))
 
-    def _on_run_failed(self, message: str) -> None:
+    def _on_run_failed(self, message: str, msg: Msg | None) -> None:
         self.results.flush_now()
         self.results.set_status(tr("lbl_error"))
-        text = _tr_file_error(message) or message
+        text = render(msg) if msg is not None else message
         self.error_banner.show_message(f"{tr('dlg_run_failed')}: {text}")
 
     def _on_run_thread_finished(self) -> None:
-        # Thread has fully stopped — now it is safe to drop references and re-enable Start.
-        self._run_thread = None
-        self._run_worker = None
+        # Thread has fully stopped — now it is safe to drop the handle and re-enable Start.
+        self._run_handle = None
         self.stop_btn.setEnabled(False)
         self._update_start_enabled()
 
@@ -1011,7 +1064,7 @@ class MainWindow(QMainWindow):
         self._central.set_drop_active(on)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        idle = self._run_thread is None and self._validate_thread is None
+        idle = self._run_handle is None and self._validate_handle is None
         if idle and self._excel_from_mime(event) is not None:
             self._set_drop_highlight(True)
             event.acceptProposedAction()
@@ -1029,18 +1082,21 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         # Never let the window (and its QThreads) be torn down while a worker is still running.
         # If a thread doesn't stop within the timeout, refuse the close rather than risk SIGABRT.
+        # cancel() lets a blocked run() return; quit() then stops the thread's event loop directly
+        # (the worker.finished→quit hop can't fire — this main thread is blocked in wait()).
         still_running = False
-        for worker, thread in (
-            (self._run_worker, self._run_thread),
-            (self._validate_worker, self._validate_thread),
-            (self._login_worker, self._login_thread),
-            (self._update_worker, self._update_thread),
+        for handle in (
+            self._run_handle,
+            self._validate_handle,
+            self._login_handle,
+            self._update_handle,
         ):
-            if worker is not None:
-                worker.cancel()
-            if thread is not None and thread.isRunning():
-                thread.quit()
-                if not thread.wait(10000):
+            if handle is None:
+                continue
+            handle.cancel()
+            if handle.is_running:
+                handle.quit()
+                if not handle.wait(10000):
                     still_running = True
 
         if still_running:

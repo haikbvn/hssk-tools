@@ -6,6 +6,7 @@ import base64
 import json
 
 from hssk.config import Settings
+from hssk.events import MessageCode, render_en
 from hssk.pipeline.runner import estimate_batch_seconds, token_expiry_warning
 
 
@@ -37,15 +38,17 @@ def test_near_exp_warns_with_estimates() -> None:
     token = _make_jwt(exp=60)
     warning = token_expiry_warning(token, rows=100, settings=_settings(), now=0.0)
     assert warning is not None
-    assert warning.startswith("token may expire before this batch finishes")
-    assert "(~6 min needed, ~1 min left)" in warning
+    assert warning.code == MessageCode.LOG_TOKEN_SHORT
+    assert warning.params == {"needed": "6", "left": "1"}
+    assert render_en(warning).startswith("token may expire before this batch finishes")
+    assert "(~6 min needed, ~1 min left)" in render_en(warning)
 
 
 def test_already_expired_clamps_to_zero_minutes() -> None:
     token = _make_jwt(exp=0)
     warning = token_expiry_warning(token, rows=100, settings=_settings(), now=1000.0)
     assert warning is not None
-    assert "~0 min left" in warning
+    assert warning.params["left"] == "0"
 
 
 def test_undecodable_token_no_warning() -> None:
