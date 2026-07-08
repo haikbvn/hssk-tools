@@ -49,18 +49,29 @@ jobs:
         # GitHub-hosted Intel macOS runners are retired, so the Intel (x86_64) DMG is
         # cross-built on the arm64 runner under Rosetta. setup-python provides a
         # universal2 framework Python; prefixing every Python call with `arch -x86_64`
-        # (matrix.pyrun) runs it in x86_64 mode, so pip pulls x86_64 wheels, Playwright
-        # fetches the x86_64 Chromium, and PyInstaller emits an x86_64 app.
+        # (matrix.pyrun) runs it in x86_64 mode, so pip pulls x86_64 wheels and PyInstaller
+        # emits an x86_64 app. BUT `arch -x86_64` does NOT reach Playwright's bundled Node
+        # driver, which detects the runner's real arm64 hardware and would fetch the arm64
+        # Chromium into the x64 app (login then fails: "Executable doesn't exist at
+        # .../chrome-mac-x64/..."). `pw_override` forces the driver's host platform so the
+        # Intel job downloads the x64 Chromium; a verify step below fails the build on any
+        # arch mismatch. `pw_chrome` is the chrome-mac-* dir each build must contain.
         include:
           - os: windows-latest
             label: windows
             pyrun: ""
+            pw_override: ""
+            pw_chrome: ""
           - os: macos-14          # Apple Silicon (arm64), native
             label: macos-arm64
             pyrun: ""
+            pw_override: ""
+            pw_chrome: "chrome-mac-arm64"
           - os: macos-14          # Intel (x86_64), cross-built via Rosetta
             label: macos-intel
             pyrun: "arch -x86_64"
+            pw_override: "mac14"   # force Playwright's Node driver to fetch the x64 Chromium
+            pw_chrome: "chrome-mac-x64"
 
     steps:
       - uses: actions/checkout@v7
@@ -85,17 +96,31 @@ jobs:
 
       # Cache the ~130 MB Chromium per platform/arch (matrix.label) and Playwright version
       # (pinned in constraints.txt). On a hit, the install step below verifies and skips the
-      # download; on a miss it downloads and this cache saves it for next time.
+      # download; on a miss it downloads and this cache saves it for next time. The `pw_override`
+      # in the key intentionally busts the old macos-intel caches that held the wrong (arm64) build.
       - name: Cache Playwright browsers
         uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/pw-browsers
-          key: playwright-${{ matrix.label }}-${{ hashFiles('constraints.txt') }}
+          key: playwright-${{ matrix.label }}-${{ matrix.pw_override }}-${{ hashFiles('constraints.txt') }}
 
       - name: Install Playwright Chromium (into bundle dir)
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/pw-browsers
+          PLAYWRIGHT_HOST_PLATFORM_OVERRIDE: ${{ matrix.pw_override }}
         run: ${{ matrix.pyrun }} python -m playwright install --no-shell chromium
+
+      # Guard against the arch mismatch above: the bundled Chromium must match the app's arch.
+      - name: Verify bundled Chromium arch (macOS)
+        if: matrix.pw_chrome != ''
+        run: |
+          if ls -d "${{ github.workspace }}/pw-browsers"/chromium-*/"${{ matrix.pw_chrome }}" >/dev/null 2>&1; then
+            echo "OK: bundled ${{ matrix.pw_chrome }}"
+          else
+            echo "::error::expected ${{ matrix.pw_chrome }} in the browser cache, but it is missing (arch mismatch)"
+            ls -1 "${{ github.workspace }}/pw-browsers"/chromium-*/ || true
+            exit 1
+          fi
 
       - name: Build app
         env:
