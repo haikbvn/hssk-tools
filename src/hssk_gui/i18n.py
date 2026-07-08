@@ -362,10 +362,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": ("This will PERMANENTLY DELETE medical records on hososuckhoe.com.vn.\n\nProceed?"),
         "vi": ("Thao tác này sẽ XOÁ VĨNH VIỄN hồ sơ y tế trên hososuckhoe.com.vn.\n\nTiếp tục?"),
     },
-    "dlg_type_to_confirm_hint": {
-        "en": "Type YES to proceed:",
-        "vi": "Nhập YES để tiếp tục:",
-    },
     "btn_confirm_push": {"en": "Confirm", "vi": "Xác nhận"},
     "dlg_update_needs_record_id": {
         "en": "Update mode — mapping error",

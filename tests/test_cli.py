@@ -307,6 +307,22 @@ def test_cmd_run_commit_aborts_on_non_interactive_stdin(
     _s.cache_clear()
 
 
+@pytest.mark.parametrize("answer", ["y", "yes", "Y", "YES"])
+def test_confirm_production_accepts_y_variants(monkeypatch: pytest.MonkeyPatch, answer: str):
+    from hssk.cli import _confirm_production
+
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: answer)
+    assert _confirm_production("create") is True
+
+
+@pytest.mark.parametrize("answer", ["n", "no", "", "sure", "YESS"])
+def test_confirm_production_rejects_anything_else(monkeypatch: pytest.MonkeyPatch, answer: str):
+    from hssk.cli import _confirm_production
+
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: answer)
+    assert _confirm_production("create") is False
+
+
 # -- delete ----------------------------------------------------------------------------
 
 

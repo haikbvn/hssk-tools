@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.14.0 — 2026-07-08
+
+### Friendlier production confirmation
+
+- The live-push confirmation no longer makes you type `YES`. In the app, confirming a real send to
+  hososuckhoe.com.vn is now a single click on a plain Confirm/Cancel dialog (Cancel is the default
+  action, so an accidental Enter can't trigger it). In the CLI, `--commit` now asks a simple
+  `Proceed? [y/N]` instead of requiring the typed word.
+- Everything else about the safety flow is unchanged: dry-run is still on by default, you still have
+  to untick it, and the Start button still turns red before a live push.
+
 ## v1.13.1 — 2026-07-08
 
 ### Fix: the Intel (x86_64) macOS build couldn't open the login browser
