@@ -1,8 +1,8 @@
-"""Confirm-dialog i18n + the confirm word contract, without instantiating a live QDialog.
+"""Confirm-dialog i18n + widget-level behavior for the one-click PRODUCTION confirm.
 
-Widget-lifecycle testing (actually typing into the QLineEdit, clicking buttons) is deferred to
-the pytest-qt harness added in a later phase; this pins what's testable without a display: the
-literal word the CLI and GUI both require, and that every dialog string translates.
+``dlg_type_to_confirm_hint`` and the typed-``YES`` gate were removed in favor of a plain
+Confirm/Cancel dialog (still custom-drawn, so it renders identically on both OSes) with Cancel
+defaulted so a stray Enter can't fire a live push.
 """
 
 from __future__ import annotations
@@ -10,8 +10,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QDialog, QDialogButtonBox
 
-from hssk_gui.confirm_dialog import CONFIRM_WORD
+from hssk_gui.confirm_dialog import ConfirmProductionDialog
 from hssk_gui.i18n import set_language, tr
 
 _CONFIRM_KEYS = [
@@ -19,7 +21,6 @@ _CONFIRM_KEYS = [
     "msg_confirm_push",
     "msg_confirm_push_update",
     "msg_confirm_push_delete",
-    "dlg_type_to_confirm_hint",
     "btn_confirm_push",
     "btn_cancel",
 ]
@@ -31,12 +32,6 @@ def _reset_language() -> Iterator[None]:
     set_language("vi")
 
 
-def test_confirm_word_matches_cli() -> None:
-    # cli.py:_confirm_production requires the operator to type this exact word; the GUI dialog
-    # must require the same one so CLI and GUI teach one shared safety habit.
-    assert CONFIRM_WORD == "YES"
-
-
 @pytest.mark.parametrize("lang", ["en", "vi"])
 def test_all_confirm_keys_translate(lang: str) -> None:
     set_language(lang)
@@ -46,9 +41,37 @@ def test_all_confirm_keys_translate(lang: str) -> None:
         assert text != key, f"{key!r} fell through to key itself for lang={lang}"
 
 
-def test_confirm_hint_is_not_translated_into_a_different_word() -> None:
-    # The hint text may be phrased differently per language, but must still tell the operator to
-    # type the literal, untranslated CONFIRM_WORD (translating "YES" itself would break the gate).
-    for lang in ("en", "vi"):
-        set_language(lang)
-        assert CONFIRM_WORD in tr("dlg_type_to_confirm_hint")
+def test_ok_button_enabled_immediately(qtbot) -> None:
+    dlg = ConfirmProductionDialog("test message")
+    qtbot.addWidget(dlg)
+    ok_btn = dlg._buttons.button(QDialogButtonBox.StandardButton.Ok)
+    assert ok_btn.isEnabled()  # no typed-word gate — one click is enough
+
+
+def test_cancel_is_the_default_action(qtbot) -> None:
+    # isDefault() is what actually controls Enter-key activation; hasFocus() additionally needs
+    # real window-manager activation, which the offscreen test platform doesn't reliably grant.
+    dlg = ConfirmProductionDialog("test message")
+    qtbot.addWidget(dlg)
+    ok_btn = dlg._buttons.button(QDialogButtonBox.StandardButton.Ok)
+    cancel_btn = dlg._buttons.button(QDialogButtonBox.StandardButton.Cancel)
+    assert cancel_btn.isDefault()
+    assert not ok_btn.isDefault()
+
+
+def test_confirm_accept_returns_true(qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
+    assert ConfirmProductionDialog.confirm("msg") is True
+
+
+def test_confirm_reject_returns_false(qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
+    assert ConfirmProductionDialog.confirm("msg") is False
+
+
+def test_ok_click_accepts_dialog(qtbot) -> None:
+    dlg = ConfirmProductionDialog("test message")
+    qtbot.addWidget(dlg)
+    ok_btn = dlg._buttons.button(QDialogButtonBox.StandardButton.Ok)
+    qtbot.mouseClick(ok_btn, Qt.MouseButton.LeftButton)
+    assert dlg.result() == QDialog.DialogCode.Accepted

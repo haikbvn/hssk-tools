@@ -30,18 +30,18 @@ def _resolve_mapping(path: str | None, *, update: bool = False, delete: bool = F
 
 
 def _confirm_production(action: str) -> bool:
-    """Require an explicit typed 'YES' before sending live data.
+    """Require an explicit y/N confirmation before sending live data.
 
     Returns False (abort) when stdin isn't interactive, so a piped or closed stdin can never
     silently fall through to a live run.
     """
     print(f"⚠️  PRODUCTION — this will {action} LIVE medical records.")
     try:
-        answer = input("   Type YES to proceed: ").strip()
+        answer = input("   Proceed? [y/N]: ").strip().lower()
     except EOFError:
         print("Aborted (no interactive input).")
         return False
-    if answer != "YES":
+    if answer not in ("y", "yes"):
         print("Aborted.")
         return False
     return True

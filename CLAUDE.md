@@ -230,9 +230,9 @@ bare English string the GUI must parse. `Msg.detail` carries raw server/exceptio
 Dialogs: `preferences_dialog` (run defaults + record defaults — the latter edits the mapping's
 `defaults` block in place), `legal_dialog` (Terms/Privacy/Security, also opened read-only from Help),
 `guide_dialog`, `sponsor_dialog` (VietQR + MoMo QR images, reachable from the Help menu and a grey
-footer link), and `confirm_dialog.ConfirmProductionDialog` (type-to-confirm PRODUCTION push — the
-operator must type the literal `YES`, mirroring the CLI's `--commit` prompt; replaces a plain
-Yes/No message box). `results_panel` is the live results table.
+footer link), and `confirm_dialog.ConfirmProductionDialog` (one-click Confirm/Cancel for a PRODUCTION
+push, custom-drawn so it renders identically on both OSes; Cancel is the default/focused action so a
+stray Enter can't fire a live push). `results_panel` is the live results table.
 
 **Native look per OS, on purpose.** No app-wide style, palette, or stylesheet is installed —
 Windows renders the windows11 style, macOS renders Aqua, and each follows its own OS Light/Dark
