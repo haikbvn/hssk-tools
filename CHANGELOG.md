@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.13.1 — 2026-07-08
+
+### Fix: the Intel (x86_64) macOS build couldn't open the login browser
+
+The Intel `.dmg` shipped an **arm64** Chromium inside an x86_64 app, so login failed with
+`Executable doesn't exist at …/chrome-mac-x64/…`. The Intel DMG is cross-built on an Apple-Silicon
+CI runner under Rosetta; `arch -x86_64` makes PyInstaller emit an x64 app but does **not** reach
+Playwright's bundled Node driver, which detected the runner's real arm64 hardware and downloaded the
+wrong Chromium. The build now forces the driver's host platform (`PLAYWRIGHT_HOST_PLATFORM_OVERRIDE`)
+for the Intel job and adds a CI check that fails the build on any app/Chromium arch mismatch. Apple
+Silicon and Windows builds were unaffected.
+
 ## v1.13.0 — 2026-07-07
 
 ### Your login token now lives in the OS keychain
