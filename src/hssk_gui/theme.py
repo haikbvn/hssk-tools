@@ -149,6 +149,22 @@ QWidget#noticeBanner {{
 }}
 QLabel {{ color: {fg}; background: transparent; border: none; }}
 QToolButton {{ color: {fg}; background: transparent; border: none; font-weight: bold; }}
+QPushButton {{
+    color: {fg};
+    background: transparent;
+    border: 1px solid {fg};
+    border-radius: 4px;
+    padding: 1px 10px;
+}}
+QPushButton:hover {{ background: {border}; }}
+QProgressBar {{
+    border: 1px solid {border};
+    border-radius: 4px;
+    background: transparent;
+    text-align: center;
+    color: {fg};
+}}
+QProgressBar::chunk {{ background: {fg}; border-radius: 3px; }}
 """
 
 

@@ -17,6 +17,8 @@ from hssk.errors import ConfigError
 from hssk.events import MessageCode, Msg
 from hssk.mapping import MappingConfig
 
+from .update_check import Asset
+
 _PROGRESS_INTERVAL_S = 0.1  # ~10 Hz cap on progress signals crossing the thread boundary
 
 
@@ -93,9 +95,9 @@ class LoginWorker(QObject):
 
 
 class UpdateCheckWorker(QObject):
-    """Fetch the latest GitHub release tag in the background (startup notification)."""
+    """Fetch the latest GitHub release (tag, html_url, assets) in the background (startup)."""
 
-    finished = Signal(object)  # (tag, html_url) tuple or None
+    finished = Signal(object)  # ReleaseInfo or None
     failed = Signal(str, object)  # never emitted in practice; kept for lifecycle symmetry
 
     def __init__(self) -> None:
@@ -107,12 +109,54 @@ class UpdateCheckWorker(QObject):
 
     @Slot()
     def run(self) -> None:
-        from .update_check import fetch_latest_release
+        from .update_check import fetch_release_info
 
-        # fetch_latest_release cannot raise, so `finished` fires on every path and the
+        # fetch_release_info cannot raise, so `finished` fires on every path and the
         # thread's quit is always triggered.
-        result = fetch_latest_release()
+        result = fetch_release_info()
         self.finished.emit(None if self._cancel else result)
+
+
+class DownloadUpdateWorker(QObject):
+    """Stream a release asset to disk and verify it (assisted-install auto-updater)."""
+
+    progress = Signal(int, int)  # bytes done, total
+    finished = Signal(object)  # downloaded Path, or None if cancelled
+    failed = Signal(str, object)  # str(exc), and "verify" if size/checksum failed (else None)
+
+    def __init__(self, asset: Asset) -> None:
+        super().__init__()
+        self._asset = asset
+        # Mirrors RunWorker: a threading.Event (not just a bool) so a Stop click aborts a
+        # blocked network read immediately rather than waiting for the next chunk to be checked.
+        self._cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        self._cancel_event.set()
+
+    @Slot()
+    def run(self) -> None:
+        from .update_download import DownloadCancelled, DownloadError, download_asset
+
+        throttle = ProgressThrottle()
+
+        def on_progress(done: int, total: int) -> None:
+            if done >= total or throttle.allow():
+                self.progress.emit(done, total)
+
+        try:
+            path = download_asset(
+                self._asset,
+                on_progress=on_progress,
+                should_cancel=self._cancel_event.is_set,
+            )
+            self.finished.emit(path)
+        except DownloadCancelled:
+            self.finished.emit(None)
+        except DownloadError as exc:
+            self.failed.emit(str(exc), "verify")
+        except Exception as exc:
+            self.failed.emit(str(exc), None)
 
 
 class ValidateWorker(QObject):

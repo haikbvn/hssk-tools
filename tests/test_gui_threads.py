@@ -37,6 +37,7 @@ from hssk.auth.token_store import TokenData, save_token
 from hssk.mapping import MappingConfig
 from hssk.pipeline.results import RunSummary
 from hssk_gui.main_window import MainWindow
+from hssk_gui.update_check import Asset, ReleaseInfo
 from hssk_gui.workers import ValidationSummary
 
 _WAIT_MS = 5000
@@ -201,6 +202,26 @@ class _FakeRunWorker(QObject):
         self._on_run(self)
 
 
+class _FakeDownloadWorker(QObject):
+    progress = Signal(int, int)
+    finished = Signal(object)
+    failed = Signal(str, object)
+
+    def __init__(self, on_run: Callable[[Any], None]) -> None:
+        super().__init__()
+        self._on_run = on_run
+        self._stop = threading.Event()
+        self.cancelled = False
+
+    def cancel(self) -> None:
+        self.cancelled = True
+        self._stop.set()
+
+    @Slot()
+    def run(self) -> None:
+        self._on_run(self)
+
+
 def _factory(fake_cls: type, on_run: Callable[[Any], None]) -> Callable[..., Any]:
     """A drop-in for the real worker class: accepts (and ignores) whatever positional/keyword
     args main_window.py passes to the real constructor, and returns a configured fake."""
@@ -246,6 +267,14 @@ def _fake_validation_summary() -> ValidationSummary:
     return ValidationSummary(valid=1, invalid=0, warns=0, total=1)
 
 
+def _fake_asset() -> Asset:
+    return Asset(name="app.exe", url="https://example.com/app.exe", size=10, sha256=None)
+
+
+def _fake_release_info() -> ReleaseInfo:
+    return ReleaseInfo(tag="v99.0.0", html_url="https://example.com/rel", assets=[_fake_asset()])
+
+
 # -- login ----------------------------------------------------------------------------------
 
 
@@ -277,17 +306,33 @@ def test_login_close_while_running(qtbot, make_window, monkeypatch: pytest.Monke
 
 
 def test_update_check_start_and_finish(qtbot, make_window, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Asserts the worker's own signal fires (proving the thread ran and completed normally) —
-    # NOT window.update_banner.isVisible(). That would additionally exercise a pre-existing,
-    # separate bug (spawn_task-flagged): _on_update_check_finished currently runs on the worker
-    # thread instead of the main thread, so NoticeBanner.show_message()'s widget-child creation
-    # silently fails cross-thread. Out of scope for thread-*lifecycle* safety (this file's
-    # purpose) — the close-while-running test below is what actually matters for that.
     window = make_window()
-    fake = _FakeUpdateCheckWorker(_finish_soon(("v99.0.0", "https://example.com/rel")))
+    fake = _FakeUpdateCheckWorker(_finish_soon(_fake_release_info()))
     monkeypatch.setattr("hssk_gui.main_window.UpdateCheckWorker", lambda: fake)
     with qtbot.waitSignal(fake.finished, timeout=_WAIT_MS):
         window._start_update_check()
+
+
+def test_update_check_offers_download_when_asset_matches(
+    qtbot, make_window, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The window must actually be shown for isVisible() to reflect reality — a widget whose
+    # top-level ancestor was never shown always reports isVisible() == False regardless of
+    # whether show_message()/show() ran correctly, which would make this assertion meaningless.
+    window = make_window()
+    window.show()
+    qtbot.waitExposed(window)
+    monkeypatch.setattr(
+        "hssk_gui.main_window.select_asset",
+        lambda assets: _fake_asset(),
+    )
+    fake = _FakeUpdateCheckWorker(_finish_soon(_fake_release_info()))
+    monkeypatch.setattr("hssk_gui.main_window.UpdateCheckWorker", lambda: fake)
+    with qtbot.waitSignal(fake.finished, timeout=_WAIT_MS):
+        window._start_update_check()
+    qtbot.waitUntil(lambda: window.update_banner.isVisible(), timeout=_WAIT_MS)
+    assert "99.0.0" in window.update_banner._label.text()
+    window.close()
 
 
 def test_update_check_close_while_running(
@@ -299,6 +344,57 @@ def test_update_check_close_while_running(
         _factory(_FakeUpdateCheckWorker, _block_until_cancelled(None)),
     )
     window._start_update_check()
+    assert window.close() is True
+    assert not window.isVisible()
+
+
+# -- download update (assisted install) --------------------------------------------------------
+
+
+def test_download_update_start_and_finish(
+    qtbot, make_window, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    window = make_window()
+    fake_path = tmp_path / "fake-installer"
+    installed: list[Path] = []
+    # _install_update does real platform-specific process handoff (installer launch / `open` on
+    # macOS) — stub it so this lifecycle test never spawns a real process; that behavior isn't
+    # this file's concern (see the file docstring).
+    monkeypatch.setattr(window, "_install_update", lambda path, _url: installed.append(path))
+    monkeypatch.setattr(
+        "hssk_gui.main_window.DownloadUpdateWorker",
+        _factory(_FakeDownloadWorker, _finish_soon(fake_path)),
+    )
+    window._start_update_download(_fake_asset(), "https://example.com/rel")
+    qtbot.waitUntil(lambda: window._download_handle is None, timeout=_WAIT_MS)
+    assert installed == [fake_path]
+
+
+def test_download_update_cancelled_clears_banner(
+    qtbot, make_window, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = make_window()
+    window.show()
+    qtbot.waitExposed(window)
+    monkeypatch.setattr(
+        "hssk_gui.main_window.DownloadUpdateWorker",
+        _factory(_FakeDownloadWorker, _finish_soon(None)),  # None finished payload == cancelled
+    )
+    window._start_update_download(_fake_asset(), "https://example.com/rel")
+    qtbot.waitUntil(lambda: window._download_handle is None, timeout=_WAIT_MS)
+    assert not window.update_banner.isVisible()
+    window.close()
+
+
+def test_download_update_close_while_running(
+    qtbot, make_window, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = make_window()
+    monkeypatch.setattr(
+        "hssk_gui.main_window.DownloadUpdateWorker",
+        _factory(_FakeDownloadWorker, _block_until_cancelled(None)),
+    )
+    window._start_update_download(_fake_asset(), "https://example.com/rel")
     assert window.close() is True
     assert not window.isVisible()
 

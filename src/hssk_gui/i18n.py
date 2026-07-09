@@ -540,14 +540,50 @@ _STRINGS: dict[str, dict[str, str]] = {
         "vi": "Kiểm tra phiên bản mới khi khởi động",
     },
     "tip_check_updates": {
-        "en": "Quietly asks GitHub for the latest release once per launch. Nothing is installed.",
-        "vi": "Âm thầm hỏi GitHub về bản phát hành mới nhất mỗi lần mở. Không tự cài đặt gì.",
+        "en": (
+            "Quietly asks GitHub for the latest release once per launch. "
+            "Downloading and installing always needs your click to start."
+        ),
+        "vi": (
+            "Âm thầm hỏi GitHub về bản phát hành mới nhất mỗi lần mở. "
+            "Tải về và cài đặt luôn cần bạn bấm để bắt đầu."
+        ),
     },
     "update_available": {
         "en": "A new version is available: {version}",
         "vi": "Đã có phiên bản mới: {version}",
     },
     "update_link": {"en": "Download", "vi": "Tải về"},
+    "update_download_install": {"en": "Download && Install", "vi": "Tải về && Cài đặt"},
+    "update_downloading": {
+        "en": "Downloading update… {pct}%",
+        "vi": "Đang tải bản cập nhật… {pct}%",
+    },
+    "update_downloaded": {
+        "en": "Update downloaded and verified.",
+        "vi": "Đã tải và xác minh xong bản cập nhật.",
+    },
+    "update_verify_failed": {
+        "en": "The downloaded update failed verification — try again, or download manually.",
+        "vi": "Bản cập nhật tải về không xác minh được — hãy thử lại hoặc tải thủ công.",
+    },
+    "update_download_failed": {
+        "en": "Couldn't download the update — try again, or download manually.",
+        "vi": "Không tải được bản cập nhật — hãy thử lại hoặc tải thủ công.",
+    },
+    "update_install_win_confirm_title": {
+        "en": "Install update",
+        "vi": "Cài đặt bản cập nhật",
+    },
+    "update_install_win_confirm": {
+        "en": ("The installer will open and this app will close to finish updating.\n\nContinue?"),
+        "vi": ("Trình cài đặt sẽ mở và ứng dụng này sẽ đóng để hoàn tất cập nhật.\n\nTiếp tục?"),
+    },
+    "update_install_mac_hint": {
+        "en": "Drag HSSK Tools onto Applications to replace the old version, then reopen it.",
+        "vi": "Kéo HSSK Tools vào thư mục Applications để thay bản cũ, rồi mở lại ứng dụng.",
+    },
+    "update_open_in_browser": {"en": "Open in browser", "vi": "Mở trong trình duyệt"},
     "note_record_defaults": {
         "en": (
             "These values are stamped on every uploaded record when the matching Excel "
