@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.15.0 — 2026-07-09
+
+### Update notifications now offer one-click install
+
+- When a new version is available, the banner now offers a **Download & Install** button instead
+  of just a link to the GitHub releases page. Click it and the app downloads the right installer
+  for your computer (Windows, Apple Silicon Mac, or Intel Mac) in the background with a progress
+  bar, checks that the download is intact, then opens it for you to confirm — on Windows the
+  installer launches and the app closes to finish updating; on macOS the disk image opens so you
+  can drag the app into Applications.
+- If a release doesn't have a matching installer, or the download fails, the banner falls back to
+  a plain "open in browser" link like before — nothing changes if you'd rather download it
+  yourself.
+- The startup "check for new versions" setting in Preferences is unchanged: it only controls
+  whether the app quietly asks about new versions, never whether anything downloads or installs
+  without your click.
+
 ## v1.14.0 — 2026-07-08
 
 ### Friendlier production confirmation

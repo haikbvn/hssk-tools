@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
@@ -56,9 +59,10 @@ from .preferences_dialog import PreferencesDialog
 from .render import render
 from .results_panel import ResultsPanel
 from .settings import UiSettings
-from .update_check import is_newer
+from .update_check import Asset, ReleaseInfo, is_newer, select_asset
 from .worker_thread import WorkerHandle, run_in_thread
 from .workers import (
+    DownloadUpdateWorker,
     LoginWorker,
     RunWorker,
     UpdateCheckWorker,
@@ -171,6 +175,8 @@ class MainWindow(QMainWindow):
         self._validate_handle: WorkerHandle | None = None
         self._run_handle: WorkerHandle | None = None
         self._update_handle: WorkerHandle | None = None
+        self._download_handle: WorkerHandle | None = None
+        self._pending_download_html_url = ""
 
         self._build_ui()
         self.results.restore_splitter(self._ui.results_splitter)
@@ -683,7 +689,7 @@ class MainWindow(QMainWindow):
     def _on_login_thread_finished(self) -> None:
         self._login_handle = None
 
-    # -- update notification --------------------------------------------------------------
+    # -- update notification + assisted install --------------------------------------------
 
     def _start_update_check(self) -> None:
         worker = UpdateCheckWorker()
@@ -695,19 +701,107 @@ class MainWindow(QMainWindow):
     def _on_update_check_finished(self, result: object) -> None:
         from hssk import __version__
 
-        if not (isinstance(result, tuple) and len(result) == 2):
+        if not isinstance(result, ReleaseInfo):
             return  # network failure / rate limit / malformed payload / cancelled → silent
-        tag, url = result
-        if is_newer(tag, __version__):
+        if not is_newer(result.tag, __version__):
+            return
+        version = result.tag.lstrip("vV")
+        asset = select_asset(result.assets)
+        if asset is None:
+            # No installer/DMG matches this OS/arch (or the release has none) — fall back to
+            # today's link-only notification.
             self.update_banner.show_message(
-                tr("update_available").format(version=tag.lstrip("vV")),
+                tr("update_available").format(version=version),
                 severity="info",
                 link_text=tr("update_link"),
-                link_url=url,
+                link_url=result.html_url,
             )
+            return
+        self.update_banner.show_message(
+            tr("update_available").format(version=version),
+            severity="info",
+            action_text=tr("update_download_install"),
+            on_action=lambda: self._start_update_download(asset, result.html_url),
+        )
 
     def _on_update_thread_finished(self) -> None:
         self._update_handle = None
+
+    def _start_update_download(self, asset: Asset, html_url: str) -> None:
+        # Stashed on self rather than captured in a lambda: connecting finished/failed straight
+        # to bound methods (like every other worker in this file) is what lets Qt detect the
+        # receiver's thread and marshal the callback back to the main thread. A lambda closure
+        # has no QObject affinity of its own, so Qt can't tell it needs queuing — the callback
+        # would fire on the worker thread instead, corrupting any widget it touches.
+        self._pending_download_html_url = html_url
+        worker = DownloadUpdateWorker(asset)
+        worker.progress.connect(self._on_download_progress)
+        worker.finished.connect(self._on_download_finished)
+        worker.failed.connect(self._on_download_failed)
+        self.update_banner.show_message(
+            tr("update_downloading").format(pct=0),
+            severity="info",
+            on_close=self._cancel_update_download,
+        )
+        self.update_banner.begin_progress()
+        self._download_handle = run_in_thread(
+            worker, on_thread_finished=self._on_download_thread_finished
+        )
+
+    def _cancel_update_download(self) -> None:
+        if self._download_handle is not None:
+            self._download_handle.cancel()
+
+    def _on_download_progress(self, done: int, total: int) -> None:
+        pct = int(done * 100 / total) if total else 0
+        text = tr("update_downloading").format(pct=pct)
+        self.update_banner.update_progress_text(text, done, total)
+
+    def _on_download_finished(self, path: object) -> None:
+        self.update_banner.end_progress()
+        if path is None:
+            self.update_banner.clear()  # cancelled
+            return
+        self._install_update(Path(str(path)), self._pending_download_html_url)
+
+    def _on_download_failed(self, _message: str, kind: object) -> None:
+        self.update_banner.end_progress()
+        text = tr("update_verify_failed") if kind == "verify" else tr("update_download_failed")
+        self.update_banner.show_message(
+            text,
+            severity="warning",
+            link_text=tr("update_open_in_browser"),
+            link_url=self._pending_download_html_url,
+        )
+
+    def _on_download_thread_finished(self) -> None:
+        self._download_handle = None
+
+    def _install_update(self, path: Path, html_url: str) -> None:
+        self.update_banner.clear()
+        if sys.platform == "win32":
+            confirmed = QMessageBox.question(
+                self,
+                tr("update_install_win_confirm_title"),
+                tr("update_install_win_confirm"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,  # default to the safe choice
+            )
+            if confirmed != QMessageBox.StandardButton.Yes:
+                return
+            os.startfile(path)  # noqa: S606 — operator-confirmed installer launch
+            self.close()
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+            self.update_banner.show_message(tr("update_install_mac_hint"), severity="success")
+        else:
+            # No scripted handoff on this platform — same fallback as a download failure.
+            self.update_banner.show_message(
+                tr("update_downloaded"),
+                severity="info",
+                link_text=tr("update_open_in_browser"),
+                link_url=html_url,
+            )
 
     # -- data ---------------------------------------------------------------------------
 
@@ -1090,6 +1184,7 @@ class MainWindow(QMainWindow):
             self._validate_handle,
             self._login_handle,
             self._update_handle,
+            self._download_handle,
         ):
             if handle is None:
                 continue
