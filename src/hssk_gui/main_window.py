@@ -707,9 +707,9 @@ class MainWindow(QMainWindow):
             return
         version = result.tag.lstrip("vV")
         asset = select_asset(result.assets)
-        if asset is None:
-            # No installer/DMG matches this OS/arch (or the release has none) — fall back to
-            # today's link-only notification.
+        if asset is None or not asset.sha256:
+            # No installer/DMG matches this OS/arch (or the release has none), or the release
+            # published no checksum for it — fall back to today's link-only notification.
             self.update_banner.show_message(
                 tr("update_available").format(version=version),
                 severity="info",

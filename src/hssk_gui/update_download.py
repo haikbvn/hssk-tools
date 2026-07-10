@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -19,6 +20,12 @@ from hssk.config import data_dir
 from .update_check import Asset
 
 _CHUNK_SIZE = 1 << 16  # 64 KiB
+
+# Only the initial request is checked; redirects stay allowed (GitHub serves assets via a
+# redirect to its own CDN) because the connection is TLS-verified end to end regardless of host.
+_ALLOWED_HOSTS = frozenset(
+    {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+)
 
 
 class DownloadError(Exception):
@@ -72,6 +79,13 @@ def download_asset(
     file is removed), or :class:`DownloadError` if the size/checksum don't match. Network
     failures propagate as ``httpx`` exceptions — callers treat any exception here as a failure.
     """
+    if not asset.sha256:
+        raise DownloadError("release asset has no sha256 digest — refusing unverifiable download")
+
+    parts = urlsplit(asset.url)
+    if parts.scheme != "https" or parts.hostname not in _ALLOWED_HOSTS:
+        raise DownloadError(f"refusing download from unexpected URL host: {parts.hostname!r}")
+
     dest = dest_dir if dest_dir is not None else updates_dir()
     final_path = dest / asset.name
     tmp_path = dest / f"{asset.name}.part"
