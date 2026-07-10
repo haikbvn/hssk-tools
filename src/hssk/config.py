@@ -95,6 +95,11 @@ def profile_path() -> Path:
 def auth_profile_dir() -> Path:
     d = data_dir() / "browser-profile"
     d.mkdir(parents=True, exist_ok=True)
+    # Holds the live session + JWT (what browser_login sniffs) — same protection as secrets/.
+    try:
+        d.chmod(0o700)
+    except OSError:
+        pass  # best effort (e.g. Windows)
     return d
 
 

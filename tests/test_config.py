@@ -147,3 +147,19 @@ def test_secrets_dir_is_chmod_700(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         assert not (mode & stat.S_IRWXO)
     finally:
         _settings_cached.cache_clear()
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="chmod is Unix-only")
+def test_auth_profile_dir_is_chmod_700(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The Chromium profile holds the live session + JWT — same protection as secrets/."""
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+    from hssk.config import settings as _settings_cached
+
+    _settings_cached.cache_clear()
+    try:
+        from hssk.config import auth_profile_dir
+
+        d = auth_profile_dir()
+        assert d.stat().st_mode & 0o777 == 0o700
+    finally:
+        _settings_cached.cache_clear()
