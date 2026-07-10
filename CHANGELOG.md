@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.17.0 — 2026-07-10
+
+### Old reports can now be cleaned up automatically (opt-in)
+
+- New Preferences option: **"Delete reports older than the retention window on launch"** — off by
+  default. Report folders hold patient data, and until now the only way to clear out old ones was
+  the manual File → "Purge old reports…" action. Turning this on deletes reports older than your
+  retention window (90 days by default) every time you start the app, so they don't pile up.
+- Turning it on shows a one-time confirmation explaining that this permanently deletes old reports
+  and can't be undone. After that, each launch that actually removes something shows a quick
+  "Removed N old report folder(s)" notice — otherwise it's silent.
+- The manual "Purge old reports…" action is unchanged and still available regardless of this
+  setting.
+
 ## v1.16.0 — 2026-07-10
 
 ### Interrupted sends no longer risk creating a duplicate record
