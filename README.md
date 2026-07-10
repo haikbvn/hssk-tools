@@ -119,6 +119,7 @@ bash packaging/make_dmg.sh         # reads version from hssk.__version__
 ```powershell
 .venv\Scripts\pyinstaller packaging\hssk_gui.spec
 # Install Inno Setup from https://jrsoftware.org/isinfo.php, then:
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=1.3.0 packaging\hssk_gui.iss
+# use the current app version (must match hssk.__version__):
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=<version> packaging\hssk_gui.iss
 # → out\HSSK-Tools-Setup-<version>.exe
 ```
