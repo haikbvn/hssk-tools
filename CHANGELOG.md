@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.16.0 — 2026-07-10
+
+### Interrupted sends no longer risk creating a duplicate record
+
+- If sending a new record was interrupted right after the server received it — a timeout, a crash,
+  a power loss — the app had no way to tell whether it had actually gone through, and re-running
+  could create a duplicate medical record. Every send is now marked *before* it's attempted; if the
+  app can't confirm success, that row comes back as **"Needs verification"** instead of being
+  silently resent. Check the record on the website, then re-run with `--retry-pending` (CLI) to
+  send it for real once you've confirmed it wasn't created.
+
+### One-click update install is more defensively verified
+
+- The assisted installer download (added in v1.15.0) now refuses to offer an install when the
+  release has no checksum to verify against, and only ever downloads from GitHub's own hosts —
+  closing a couple of defense-in-depth gaps in that new path. The release-publishing CI job is also
+  pinned to a specific, verified commit rather than a movable tag.
+
+### Smaller fixes
+
+- The browser login profile (which holds your active session) is now access-restricted the same
+  way your saved login token already was.
+- The "finish time is before start time" check no longer silently skips validation if you've
+  customized the date/time format in your mapping file — it used to just not fire.
+- Cleaned up the CLI's internals (the create/update/delete commands shared almost all their code)
+  and added test coverage for the one-click updater's install step and for keeping the Vietnamese
+  and English translations in sync — no visible change, just fewer places for a future bug to hide.
+
 ## v1.15.0 — 2026-07-09
 
 ### Update notifications now offer one-click install
