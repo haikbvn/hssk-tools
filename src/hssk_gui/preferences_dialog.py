@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import QSignalBlocker, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from hssk.auth.profile import load_profile
 from hssk.config import ensure_mapping_file, example_mapping_path
+from hssk.config import settings as engine_settings
 from hssk.errors import ConfigError, HsskError
 from hssk.mapping import MappingConfig, load_mapping, save_record_defaults
 
@@ -95,6 +96,9 @@ class PreferencesDialog(QDialog):
         # Values as of the last apply; dirty state is "widgets now" vs these snapshots.
         self._run_snapshot: dict[str, Any] = {}
         self._record_snapshot: dict[str, Any] | None = None
+        # Re-entrancy guard: reverting the checkbox in _on_auto_purge_toggled calls
+        # setChecked(False), which re-emits toggled — this flag makes that re-entry a no-op.
+        self._auto_purge_reverting = False
 
         # Build the button box first, so a dirty-UI refresh fired while the tabs are being
         # populated has an Apply button to toggle.
@@ -175,6 +179,12 @@ class PreferencesDialog(QDialog):
         self._updates_check.setToolTip(tr("tip_check_updates"))
         self._updates_check.setChecked(self._ui.check_updates)
         app_form.addRow("", self._updates_check)
+
+        self._auto_purge_check = QCheckBox(tr("chk_auto_purge"))
+        self._auto_purge_check.setToolTip(tr("tip_auto_purge"))
+        self._auto_purge_check.setChecked(self._ui.auto_purge)
+        self._auto_purge_check.toggled.connect(self._on_auto_purge_toggled)
+        app_form.addRow("", self._auto_purge_check)
 
         self._lang_combo = QComboBox()
         self._lang_combo.addItem("Tiếng Việt", "vi")
@@ -287,7 +297,38 @@ class PreferencesDialog(QDialog):
         self._limit_spin.valueChanged.connect(self._refresh_dirty_ui)
         self._dryrun_check.toggled.connect(self._refresh_dirty_ui)
         self._updates_check.toggled.connect(self._refresh_dirty_ui)
+        self._auto_purge_check.toggled.connect(self._refresh_dirty_ui)
         self._lang_combo.currentIndexChanged.connect(self._refresh_dirty_ui)
+
+    def _on_auto_purge_toggled(self, checked: bool) -> None:
+        """Enable-time confirmation: ticking the box ON pops a one-time explainer; declining
+        reverts it. ``setChecked(False)`` always re-emits ``toggled`` even for a no-op change of
+        an already-connected signal, which would recurse back into this handler — guarded two
+        ways: ``_auto_purge_reverting`` short-circuits any re-entrant call immediately, and the
+        revert itself is wrapped in ``QSignalBlocker`` so the nested emission never happens in the
+        first place. ``_refresh_dirty_ui`` is called explicitly afterward so dirty-tracking still
+        resyncs to the reverted (unchanged) state.
+        """
+        if self._auto_purge_reverting:
+            return
+        if not checked:
+            return
+        days = engine_settings().output_retention_days
+        confirmed = QMessageBox.question(
+            self,
+            tr("dlg_auto_purge_enable_title"),
+            tr("msg_auto_purge_enable_confirm").format(days=days),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            self._auto_purge_reverting = True
+            try:
+                with QSignalBlocker(self._auto_purge_check):
+                    self._auto_purge_check.setChecked(False)
+            finally:
+                self._auto_purge_reverting = False
+            self._refresh_dirty_ui()
 
     def _watch(self, w: QWidget) -> None:
         """Connect the appropriate change signal of a record widget to the dirty refresh."""
@@ -304,6 +345,7 @@ class PreferencesDialog(QDialog):
             "limit": self._limit_spin.value(),
             "dry_run": self._dryrun_check.isChecked(),
             "check_updates": self._updates_check.isChecked(),
+            "auto_purge": self._auto_purge_check.isChecked(),
             "language": self._lang_combo.currentData(),
         }
 
@@ -413,6 +455,8 @@ class PreferencesDialog(QDialog):
             self._ui.dry_run = cur["dry_run"]
         if cur["check_updates"] != snap.get("check_updates"):
             self._ui.check_updates = cur["check_updates"]
+        if cur["auto_purge"] != snap.get("auto_purge"):
+            self._ui.auto_purge = cur["auto_purge"]
         language_changed = cur["language"] != snap.get("language")
         if language_changed:
             self._ui.language = cur["language"]
@@ -445,6 +489,10 @@ class PreferencesDialog(QDialog):
         self._limit_spin.setValue(UiSettings.LIMIT_DEFAULT)
         self._dryrun_check.setChecked(UiSettings.DRY_RUN_DEFAULT)
         self._updates_check.setChecked(UiSettings.CHECK_UPDATES_DEFAULT)
+        # Restoring to the (off) factory default never needs the enable-time confirmation —
+        # block the toggled signal so _on_auto_purge_toggled doesn't re-fire for a no-op/OFF set.
+        with QSignalBlocker(self._auto_purge_check):
+            self._auto_purge_check.setChecked(UiSettings.AUTO_PURGE_DEFAULT)
         # Language is an identity/environment choice, not a run default — leave it unchanged.
         self._refresh_dirty_ui()
 
@@ -491,6 +539,8 @@ class PreferencesDialog(QDialog):
         self._dryrun_check.setToolTip(tr("tip_dryrun"))
         self._updates_check.setText(tr("chk_check_updates"))
         self._updates_check.setToolTip(tr("tip_check_updates"))
+        self._auto_purge_check.setText(tr("chk_auto_purge"))
+        self._auto_purge_check.setToolTip(tr("tip_auto_purge"))
         self._lang_combo.setToolTip(tr("tip_language"))
         self._record_note.setText(tr("note_record_defaults"))
         self._record_grp.setTitle(tr("grp_record_defaults"))

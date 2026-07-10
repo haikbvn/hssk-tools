@@ -208,6 +208,24 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Deleted {n} old report folder(s).",
         "vi": "Đã xoá {n} thư mục báo cáo cũ.",
     },
+    "msg_auto_purge_done": {
+        "en": "Removed {n} old report folder(s) on launch.",
+        "vi": "Đã xoá {n} thư mục báo cáo cũ khi khởi động.",
+    },
+    "dlg_auto_purge_enable_title": {
+        "en": "Enable automatic cleanup?",
+        "vi": "Bật tự động dọn dẹp?",
+    },
+    "msg_auto_purge_enable_confirm": {
+        "en": (
+            "When enabled, each launch permanently deletes report folders older than {days} "
+            "days. These contain patient data and cannot be recovered. Enable?"
+        ),
+        "vi": (
+            "Khi bật, mỗi lần khởi động sẽ xoá vĩnh viễn các thư mục báo cáo cũ hơn {days} "
+            "ngày. Chúng chứa dữ liệu bệnh nhân và không thể khôi phục. Bật?"
+        ),
+    },
     "msg_recent_missing": {
         "en": "File no longer exists: {path}",
         "vi": "File không còn tồn tại: {path}",
@@ -558,6 +576,20 @@ _STRINGS: dict[str, dict[str, str]] = {
         "vi": (
             "Âm thầm hỏi GitHub về bản phát hành mới nhất mỗi lần mở. "
             "Tải về và cài đặt luôn cần bạn bấm để bắt đầu."
+        ),
+    },
+    "chk_auto_purge": {
+        "en": "Delete reports older than the retention window on launch",
+        "vi": "Xoá báo cáo cũ hơn thời hạn lưu trữ khi khởi động",
+    },
+    "tip_auto_purge": {
+        "en": (
+            "When on, each launch permanently deletes run-report folders older than the "
+            "retention window (default 90 days). Off by default."
+        ),
+        "vi": (
+            "Khi bật, mỗi lần khởi động sẽ xoá vĩnh viễn các thư mục báo cáo cũ hơn thời hạn "
+            "lưu trữ (mặc định 90 ngày). Mặc định tắt."
         ),
     },
     "update_available": {

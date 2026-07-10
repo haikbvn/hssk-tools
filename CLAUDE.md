@@ -279,8 +279,10 @@ turns CI red rather than shipping.
   scrubs Bearer/JWT strings; it turns up only the `hssk`/`hssk_gui` loggers to DEBUG so third-party
   request bodies (patient PII) never hit disk. The shared JWT shape lives in `logging_setup.JWT_BODY`
   (`browser_login` anchors it). `maintenance.find_old_runs`/`purge_runs` back the File → "Purge old
-  reports…" action — retention (`Settings.output_retention_days`, default 90) is **never** enforced
-  automatically, only via that confirmed action. `support_bundle.build_support_bundle` (engine-side,
+  reports…" action — retention (`Settings.output_retention_days`, default 90) is **not** enforced
+  automatically by default; an operator may opt in via Preferences (`UiSettings.auto_purge`, default
+  off) to a launch-time purge that silently reuses the same helpers and shows a count banner, gated
+  by a one-time enable-time confirmation. `support_bundle.build_support_bundle` (engine-side,
   UI-free) zips redacted logs + mapping + a versions/settings snapshot for Help → "Export support
   bundle…"; it **never** includes `secrets/` (token + profile), and the latest run's `events.jsonl`
   only on the GUI's opt-in checkbox. Keep those exclusions when touching either file.

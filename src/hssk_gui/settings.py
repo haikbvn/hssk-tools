@@ -25,6 +25,7 @@ class UiSettings:
     LIMIT_DEFAULT = 0
     DRY_RUN_DEFAULT = True
     CHECK_UPDATES_DEFAULT = True
+    AUTO_PURGE_DEFAULT = False
     LANGUAGE_DEFAULT = "vi"
 
     def __init__(self) -> None:
@@ -101,6 +102,14 @@ class UiSettings:
     @check_updates.setter
     def check_updates(self, value: bool) -> None:
         self._s.setValue("check_updates", value)
+
+    @property
+    def auto_purge(self) -> bool:
+        return bool(self._s.value("auto_purge", self.AUTO_PURGE_DEFAULT, type=bool))
+
+    @auto_purge.setter
+    def auto_purge(self, value: bool) -> None:
+        self._s.setValue("auto_purge", value)
 
     @property
     def geometry(self) -> QByteArray:

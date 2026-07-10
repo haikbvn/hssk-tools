@@ -4,10 +4,12 @@ Each batch writes an ``output_dir()/run-<stamp>/`` folder holding ``results.xlsx
 ``search_response_row_N.json`` dumps, and payloads — all of which contain patient data and
 otherwise accumulate forever. These helpers find and delete folders older than a retention window.
 
-Deletion is **never automatic**: the GUI calls these only from an explicit, confirmed "Purge old
-reports" action. The functions are pure enough to unit-test with a faked ``now`` and touched
-mtimes, and they only ever touch ``run-*`` directories directly under ``base`` — never files, never
-anything else in the data dir.
+Deletion is **never automatic by default**: the GUI calls these from an explicit, confirmed "Purge
+old reports" action, or — only when the operator has opted in via GUI Preferences (default off) —
+from a launch-time purge that runs these same helpers silently. The engine helpers themselves never
+delete on their own; they are pure enough to unit-test with a faked ``now`` and touched mtimes, and
+they only ever touch ``run-*`` directories directly under ``base`` — never files, never anything
+else in the data dir.
 """
 
 from __future__ import annotations
