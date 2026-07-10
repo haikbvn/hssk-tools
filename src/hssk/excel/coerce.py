@@ -160,7 +160,7 @@ def coerce_row(raw: dict[str, Any], mapping: MappingConfig, row_index: int) -> R
         _range_check(spec.target, coerced, result)
 
     _compute_bmi(mapping, result)
-    _check_dates(result)
+    _check_dates(result, mapping)
     return result
 
 
@@ -206,16 +206,19 @@ def _compute_bmi(mapping: MappingConfig, result: RowResult) -> None:
     result.values["bmi"] = _format_number_str(bmi)
 
 
-def _check_dates(result: RowResult) -> None:
+def _check_dates(result: RowResult, mapping: MappingConfig) -> None:
+    formats = {
+        spec.target: spec.out_format for spec in mapping.columns.values() if spec.type == "datetime"
+    }
     start = result.values.get("examinationDate")
     finish = result.values.get("finishExaminationDate")
     if not start or not finish:
         return
     try:
-        s = dt.datetime.strptime(start, "%d/%m/%Y %H:%M:%S")
-        f = dt.datetime.strptime(finish, "%d/%m/%Y %H:%M:%S")
+        s = dt.datetime.strptime(start, formats.get("examinationDate", "%d/%m/%Y %H:%M:%S"))
+        f = dt.datetime.strptime(finish, formats.get("finishExaminationDate", "%d/%m/%Y %H:%M:%S"))
     except ValueError:
-        return
+        return  # value didn't come from the datetime coercion path (e.g. mapped as str)
     if f < s:
         result.errors.append(
             Msg(MessageCode.COERCE_DATE_BEFORE, {"finish": finish, "start": start})

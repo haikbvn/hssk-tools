@@ -90,6 +90,46 @@ def test_finish_before_start_is_error(mapping):
     assert any("before" in render_en(e) for e in res.errors)
 
 
+def _with_custom_date_format(mapping, out_format: str):
+    """Deep-copy `mapping` with a custom out_format on both datetime columns.
+
+    Regression coverage for _check_dates: it must honor each column's real out_format instead
+    of a hardcoded one, or the finish-before-start check silently disappears when an operator
+    customizes the mapping.
+    """
+    columns = dict(mapping.columns)
+    for header, spec in mapping.columns.items():
+        if spec.type == "datetime":
+            columns[header] = spec.model_copy(update={"out_format": out_format})
+    return mapping.model_copy(update={"columns": columns}, deep=True)
+
+
+def test_finish_before_start_is_error_with_custom_out_format(mapping):
+    """Regression: before the fix, a custom out_format made _check_dates silently no-op."""
+    custom_mapping = _with_custom_date_format(mapping, "%d/%m/%Y %H:%M")
+    raw = {
+        "Mã định danh": "X",
+        **_REQ,
+        "Ngày khám": dt.datetime(2026, 6, 17, 8, 0, 0),
+        "Giờ kết thúc": dt.datetime(2026, 6, 17, 7, 0, 0),
+    }
+    res = coerce_row(raw, custom_mapping, row_index=9)
+    assert not res.ok
+    assert any("before" in render_en(e) for e in res.errors)
+
+
+def test_finish_after_start_with_custom_out_format_is_ok(mapping):
+    custom_mapping = _with_custom_date_format(mapping, "%d/%m/%Y %H:%M")
+    raw = {
+        "Mã định danh": "X",
+        **_REQ,
+        "Ngày khám": dt.datetime(2026, 6, 17, 7, 0, 0),
+        "Giờ kết thúc": dt.datetime(2026, 6, 17, 8, 0, 0),
+    }
+    res = coerce_row(raw, custom_mapping, row_index=10)
+    assert res.ok, res.errors
+
+
 def test_required_missing_is_error(mapping):
     res = coerce_row({"Mã định danh": None}, mapping, row_index=4)
     assert not res.ok
