@@ -307,6 +307,65 @@ def test_cmd_run_commit_aborts_on_non_interactive_stdin(
     _s.cache_clear()
 
 
+def test_cmd_run_retry_pending_flag_reaches_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """--retry-pending (Plan 004) must reach runner.run as retry_pending=True."""
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+
+    mapping_path = _copy_mapping(tmp_path)
+    xlsx = _make_xlsx(tmp_path)
+    monkeypatch.setattr("hssk.auth.token_store.load_valid_token", lambda **kw: "fake-token")
+
+    captured: dict = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        from hssk.pipeline.results import RunSummary
+
+        return RunSummary(total=0, counts={}, outcomes=[], run_dir=tmp_path)
+
+    monkeypatch.setattr("hssk.cli.runner.run", fake_run)
+
+    result = main(["run", "-m", str(mapping_path), "-i", str(xlsx), "--retry-pending"])
+    assert result == 0
+    assert captured.get("retry_pending") is True
+
+    _s.cache_clear()
+
+
+def test_cmd_run_without_retry_pending_flag_defaults_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+
+    mapping_path = _copy_mapping(tmp_path)
+    xlsx = _make_xlsx(tmp_path)
+    monkeypatch.setattr("hssk.auth.token_store.load_valid_token", lambda **kw: "fake-token")
+
+    captured: dict = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        from hssk.pipeline.results import RunSummary
+
+        return RunSummary(total=0, counts={}, outcomes=[], run_dir=tmp_path)
+
+    monkeypatch.setattr("hssk.cli.runner.run", fake_run)
+
+    result = main(["run", "-m", str(mapping_path), "-i", str(xlsx)])
+    assert result == 0
+    assert captured.get("retry_pending") is False
+
+    _s.cache_clear()
+
+
 @pytest.mark.parametrize("answer", ["y", "yes", "Y", "YES"])
 def test_confirm_production_accepts_y_variants(monkeypatch: pytest.MonkeyPatch, answer: str):
     from hssk.cli import _confirm_production

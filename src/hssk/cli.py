@@ -126,6 +126,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         settings=s,
         callbacks=cb,
         ledger=led,
+        retry_pending=args.retry_pending,
     )
 
     print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")
@@ -254,6 +255,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--limit", type=int, help="Process at most N rows")
     r.add_argument("--delay", type=float, help="Min seconds between requests")
     r.add_argument("--reset-ledger", action="store_true", help="Clear the processed-rows ledger")
+    r.add_argument(
+        "--retry-pending",
+        action="store_true",
+        help="Re-send rows a previous interrupted run left in 'pending' state "
+        "(only after verifying on the website that they were NOT created)",
+    )
     r.add_argument("--yes", action="store_true", help="Skip the production confirmation prompt")
     r.set_defaults(func=cmd_run)
 

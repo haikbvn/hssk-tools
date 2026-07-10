@@ -120,3 +120,63 @@ def test_jsonl_format_is_correct(tmp_path):
     assert rec["key"] == "MIC001|01/01/2024 00:00:00"
     assert rec["recordId"] == "rec-123"
     assert "ts" in rec
+
+
+def test_mark_pending_persists_and_is_found_but_not_done(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    led = Ledger.load(path)
+    led.mark_pending("MIC001|01/01/2024 00:00:00")
+
+    reloaded = Ledger.load(path)
+    assert reloaded.pending("MIC001|01/01/2024 00:00:00")
+    assert not reloaded.done("MIC001|01/01/2024 00:00:00")
+
+
+def test_mark_pending_then_mark_done_upgrades(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    led = Ledger.load(path)
+    led.mark_pending("MIC001|01/01/2024 00:00:00")
+    led.mark_done("MIC001|01/01/2024 00:00:00", 42)
+
+    reloaded = Ledger.load(path)
+    assert not reloaded.pending("MIC001|01/01/2024 00:00:00")
+    assert reloaded.done("MIC001|01/01/2024 00:00:00")
+    assert reloaded.record_id("MIC001|01/01/2024 00:00:00") == 42
+
+
+def test_pending_line_for_one_key_does_not_affect_another(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    led = Ledger.load(path)
+    led.mark_pending("KEY_A|2024-01-01")
+    led.mark_done("KEY_B|2024-01-01", "rec-B")
+
+    reloaded = Ledger.load(path)
+    assert reloaded.pending("KEY_A|2024-01-01")
+    assert not reloaded.done("KEY_A|2024-01-01")
+    assert not reloaded.pending("KEY_B|2024-01-01")
+    assert reloaded.done("KEY_B|2024-01-01")
+    # Corrupt-line counting is unaffected by valid pending/done lines.
+    assert reloaded.corrupt_lines == 0
+
+
+def test_mark_pending_jsonl_format_is_correct(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    led = Ledger.load(path)
+    led.mark_pending("MIC001|01/01/2024 00:00:00")
+
+    line = path.read_text(encoding="utf-8").strip()
+    rec = json.loads(line)
+    assert rec["key"] == "MIC001|01/01/2024 00:00:00"
+    assert rec["pending"] is True
+    assert "ts" in rec
+
+
+def test_reset_clears_pending_too(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    led = Ledger.load(path)
+    led.mark_pending("MIC001|date")
+    assert led.pending("MIC001|date")
+
+    led.reset()
+    assert not led.pending("MIC001|date")
+    assert not path.exists()

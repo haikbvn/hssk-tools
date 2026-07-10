@@ -72,6 +72,7 @@ _PROBLEM_STATUSES = frozenset(
         Status.FAILED,
         Status.AUTH_EXPIRED,
         Status.RATE_LIMITED,
+        Status.PENDING_VERIFY,
     }
 )
 
@@ -494,7 +495,13 @@ class ResultsPanel(QGroupBox):
         skipped = self._counts.get(Status.SKIPPED_ALREADY, 0)
         failed = sum(
             self._counts.get(s, 0)
-            for s in (Status.FAILED, Status.NO_PATIENT, Status.MULTI_MATCH, Status.INVALID)
+            for s in (
+                Status.FAILED,
+                Status.NO_PATIENT,
+                Status.MULTI_MATCH,
+                Status.INVALID,
+                Status.PENDING_VERIFY,
+            )
         )
         aborted = self._counts.get(Status.AUTH_EXPIRED, 0) + self._counts.get(
             Status.RATE_LIMITED, 0

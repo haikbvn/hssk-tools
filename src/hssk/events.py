@@ -25,6 +25,7 @@ class MessageCode(StrEnum):
     ROW_DELETED = "ROW_DELETED"
     ROW_DRY_RUN = "ROW_DRY_RUN"
     ROW_ALREADY_PROCESSED = "ROW_ALREADY_PROCESSED"
+    ROW_PENDING_VERIFY = "ROW_PENDING_VERIFY"
     ROW_ID_BLANK = "ROW_ID_BLANK"
     ROW_RECORD_ID_BLANK = "ROW_RECORD_ID_BLANK"
     ROW_COERCE_ERROR = "ROW_COERCE_ERROR"  # coerce_row itself raised (detail = exception text)
@@ -111,6 +112,11 @@ def render_en(msg: Msg | LogEvent) -> str:
 
     if c == MessageCode.ROW_ALREADY_PROCESSED:
         return "already processed"
+    if c == MessageCode.ROW_PENDING_VERIFY:
+        return (
+            "a previous run was interrupted while sending this row — verify on the website "
+            "whether the record exists, then re-run with --retry-pending to send it"
+        )
     if c == MessageCode.ROW_ID_BLANK:
         return "identifier is blank"
     if c == MessageCode.ROW_RECORD_ID_BLANK:

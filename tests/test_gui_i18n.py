@@ -121,6 +121,8 @@ _CODES_WITHOUT_GOLDEN_CASE = {
     MessageCode.PASSTHROUGH,  # not a real code — no template, always render_en passthrough
     MessageCode.ROW_PAYLOAD_INVALID,  # Phase 5, no pre-refactor golden — tested below
     MessageCode.LOG_DRIFT,  # Phase 5, no pre-refactor golden — tested below
+    # Plan 004, no pre-refactor golden — tested in test_pipeline/test_events
+    MessageCode.ROW_PENDING_VERIFY,
 }
 
 
