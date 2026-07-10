@@ -268,7 +268,7 @@ def _fake_validation_summary() -> ValidationSummary:
 
 
 def _fake_asset() -> Asset:
-    return Asset(name="app.exe", url="https://example.com/app.exe", size=10, sha256=None)
+    return Asset(name="app.exe", url="https://example.com/app.exe", size=10, sha256="0" * 64)
 
 
 def _fake_release_info() -> ReleaseInfo:
@@ -332,6 +332,33 @@ def test_update_check_offers_download_when_asset_matches(
         window._start_update_check()
     qtbot.waitUntil(lambda: window.update_banner.isVisible(), timeout=_WAIT_MS)
     assert "99.0.0" in window.update_banner._label.text()
+    window.close()
+
+
+def test_update_check_asset_without_digest_gets_link_only_banner(
+    qtbot, make_window, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A release asset with no published sha256 must not offer a one-click download (that path
+    # would fail closed anyway in update_download.download_asset) — it gets the same link-only
+    # fallback as "no matching asset".
+    window = make_window()
+    window.show()
+    qtbot.waitExposed(window)
+    digestless_asset = Asset(
+        name="app.exe", url="https://example.com/app.exe", size=10, sha256=None
+    )
+    monkeypatch.setattr(
+        "hssk_gui.main_window.select_asset",
+        lambda assets: digestless_asset,
+    )
+    fake = _FakeUpdateCheckWorker(_finish_soon(_fake_release_info()))
+    monkeypatch.setattr("hssk_gui.main_window.UpdateCheckWorker", lambda: fake)
+    with qtbot.waitSignal(fake.finished, timeout=_WAIT_MS):
+        window._start_update_check()
+    qtbot.waitUntil(lambda: window.update_banner.isVisible(), timeout=_WAIT_MS)
+    assert "99.0.0" in window.update_banner._label.text()
+    assert window.update_banner._link.isVisible()  # link-only fallback ...
+    assert not window.update_banner._action.isVisible()  # ... never the download-offer action
     window.close()
 
 

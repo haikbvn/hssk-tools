@@ -19,14 +19,21 @@ from hssk_gui.update_download import (
     updates_dir,
 )
 
-_URL = "https://example.com/dl/app.exe"
+_URL = "https://github.com/haikbvn/hssk-tools/releases/download/v99.0.0/app.exe"
 _CONTENT = b"x" * 5000  # exceeds one chunk boundary isn't required for these tests
+_DIGEST = hashlib.sha256(_CONTENT).hexdigest()
 
 
-def _asset(*, size: int | None = None, sha256: str | None = None, name: str = "app.exe") -> Asset:
+def _asset(
+    *,
+    size: int | None = None,
+    sha256: str | None = _DIGEST,
+    name: str = "app.exe",
+    url: str = _URL,
+) -> Asset:
     return Asset(
         name=name,
-        url=_URL,
+        url=url,
         size=len(_CONTENT) if size is None else size,
         sha256=sha256,
     )
@@ -54,9 +61,11 @@ def test_download_writes_file_and_reports_progress(tmp_path: Path) -> None:
 @respx.mock
 def test_download_follows_redirects(tmp_path: Path) -> None:
     respx.get(_URL).mock(
-        return_value=httpx.Response(302, headers={"Location": "https://cdn.example.com/app.exe"})
+        return_value=httpx.Response(
+            302, headers={"Location": "https://objects.githubusercontent.com/app.exe"}
+        )
     )
-    respx.get("https://cdn.example.com/app.exe").mock(
+    respx.get("https://objects.githubusercontent.com/app.exe").mock(
         return_value=httpx.Response(200, content=_CONTENT)
     )
     path = download_asset(_asset(), tmp_path)
@@ -88,6 +97,30 @@ def test_download_checksum_mismatch_raises_and_deletes(tmp_path: Path) -> None:
     with pytest.raises(DownloadError, match="checksum mismatch"):
         download_asset(_asset(sha256="0" * 64), tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+@respx.mock
+def test_download_missing_sha256_fails_closed(tmp_path: Path) -> None:
+    with pytest.raises(DownloadError, match="no sha256"):
+        download_asset(_asset(sha256=None), tmp_path)
+    assert list(tmp_path.iterdir()) == []
+    assert respx.calls.call_count == 0  # refused before any request was made
+
+
+@respx.mock
+def test_download_rejects_http_scheme(tmp_path: Path) -> None:
+    with pytest.raises(DownloadError):
+        download_asset(_asset(url="http://github.com/haikbvn/hssk-tools/app.exe"), tmp_path)
+    assert list(tmp_path.iterdir()) == []
+    assert respx.calls.call_count == 0  # refused before any request was made
+
+
+@respx.mock
+def test_download_rejects_off_host_url(tmp_path: Path) -> None:
+    with pytest.raises(DownloadError):
+        download_asset(_asset(url="https://evil.example.com/app.exe"), tmp_path)
+    assert list(tmp_path.iterdir()) == []
+    assert respx.calls.call_count == 0  # refused before any request was made
 
 
 # -- cancellation -------------------------------------------------------------------------
