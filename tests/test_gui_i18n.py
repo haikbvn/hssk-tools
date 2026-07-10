@@ -18,7 +18,7 @@ import pytest
 
 from hssk.events import MessageCode, Msg, render_en
 from hssk.pipeline.results import Status
-from hssk_gui.i18n import set_language, tr
+from hssk_gui.i18n import set_language
 from hssk_gui.render import render, render_all, render_status, render_validation_row
 from hssk_gui.workers import ValidationSummary
 
@@ -227,72 +227,19 @@ def test_render_validation_row_prefixes_warnings() -> None:
 
 
 # -- UI vocabulary keys resolve in both languages ------------------------------------------
-
-_V140_KEYS = [
-    "msg_no_record_id",
-    "tip_dismiss_banner",
-    "a11y_error_banner",
-    "filter_all_statuses",
-    "btn_clear_log",
-    "tip_status_filter",
-    "menu_file",
-    "menu_open_recent",
-    "menu_recent_empty",
-    "menu_open_reports_root",
-    "msg_recent_missing",
-    "tip_choose_excel",
-    "tip_validate",
-    "tip_stop",
-    "tip_start_ready",
-    "update_available",
-    "update_link",
-    "chk_check_updates",
-    "tip_check_updates",
-]
+#
+# One sweep over the whole _STRINGS table replaces the previous per-release hand-curated key
+# lists: every key must have a non-empty vi + en entry, so a future key added in only one
+# language fails here instead of shipping as a raw key string.
 
 
-def test_v140_keys_resolve_in_both_languages() -> None:
-    for lang in ("vi", "en"):
-        set_language(lang)
-        for key in _V140_KEYS:
-            assert tr(key) != key, f"missing {lang} entry for {key}"
+def test_every_ui_key_has_both_languages_nonempty() -> None:
+    from hssk_gui.i18n import _STRINGS
 
-
-_UI_POLISH_KEYS = [
-    "counter_ok",
-    "counter_skipped",
-    "counter_failed",
-    "counter_aborted",
-    "counter_valid",
-    "counter_warns",
-    "counter_invalid",
-    "msg_validation_done",
-]
-
-
-def test_ui_polish_keys_resolve_in_both_languages() -> None:
-    for lang in ("vi", "en"):
-        set_language(lang)
-        for key in _UI_POLISH_KEYS:
-            assert tr(key) != key, f"missing {lang} entry for {key}"
-
-
-_DELETE_KEYS = [
-    "mode_delete",
-    "btn_start_delete_live",
-    "banner_production_delete",
-    "msg_confirm_push_delete",
-    "status_DELETED",
-    "dlg_delete_needs_record_id",
-    "msg_delete_needs_record_id",
-]
-
-
-def test_delete_keys_resolve_in_both_languages() -> None:
-    for lang in ("vi", "en"):
-        set_language(lang)
-        for key in _DELETE_KEYS:
-            assert tr(key) != key, f"missing {lang} entry for {key}"
+    for key, langs in _STRINGS.items():
+        assert set(langs) == {"vi", "en"}, f"{key}: has {set(langs)}, needs exactly vi+en"
+        for lang, text in langs.items():
+            assert isinstance(text, str) and text.strip(), f"{key}/{lang}: empty translation"
 
 
 # -- ValidationSummary contract -------------------------------------------------------------
