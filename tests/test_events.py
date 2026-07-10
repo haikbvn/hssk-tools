@@ -112,3 +112,12 @@ def test_render_en_drift():
         "server response from /api/v1/report/patient/search was not recognised — the site's API "
         "may have changed; dry-run and check the results before committing"
     )
+
+
+def test_render_en_pending_verify():
+    """Plan 004: no pre-refactor golden — the wording is pinned here directly."""
+    msg = Msg(MessageCode.ROW_PENDING_VERIFY)
+    assert render_en(msg) == (
+        "a previous run was interrupted while sending this row — verify on the website "
+        "whether the record exists, then re-run with --retry-pending to send it"
+    )

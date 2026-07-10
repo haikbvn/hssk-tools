@@ -75,6 +75,8 @@ class _Proceed:
         [ApiClient], tuple[Any, Any]
     ]  # exams.create / records.update|delete → (rid, resp)
     on_commit: Callable[[Any], None] | None = None  # create: ledger mark_done; update/delete: None
+    # create: ledger mark_pending before send; update/delete: None
+    on_pending: Callable[[], None] | None = None
     dryrun_record_id: str | None = None  # create: None; update/delete: medicalRecordId
 
 
@@ -309,6 +311,9 @@ def _run_batch_locked(
                 )
                 continue
 
+            if step.on_pending is not None:
+                step.on_pending()
+
             try:
                 rid, _resp = step.send(client)
             except BatchCancelled:
@@ -384,6 +389,7 @@ def run(
     ledger: Ledger | None = None,
     should_cancel: Callable[[], bool] | None = None,
     cancel: threading.Event | None = None,
+    retry_pending: bool = False,
 ) -> RunSummary:
     bad_targets = builder.validate_targets(mapping)
     if bad_targets:
@@ -414,6 +420,14 @@ def run(
                 Status.SKIPPED_ALREADY,
                 record_id=led.record_id(key),
                 msgs=[Msg(MessageCode.ROW_ALREADY_PROCESSED)],
+                warnings=coerced.warnings,
+            )
+        if not retry_pending and led.pending(key):
+            return RowOutcome(
+                row_index,
+                identifier,
+                Status.PENDING_VERIFY,
+                msgs=[Msg(MessageCode.ROW_PENDING_VERIFY)],
                 warnings=coerced.warnings,
             )
         if identifier is None:  # defense-in-depth: coerced.ok should guarantee this
@@ -478,6 +492,7 @@ def run(
             success_code=MessageCode.ROW_CREATED,
             send=lambda c: exams.create(c, payload),
             on_commit=lambda rid: led.mark_done(key, rid),
+            on_pending=lambda: led.mark_pending(key),
         )
 
     return _run_batch(

@@ -416,3 +416,114 @@ def test_dry_run_writes_payload_and_does_not_create(mapping, tmp_path):
     assert (summary.run_dir / "results.xlsx").exists()
     # No failed lookups → no per-row search-response dumps.
     assert not list(summary.run_dir.glob("search_response_row_*.json"))
+
+
+# -- Plan 004: write-ahead "pending" ledger marker closes the duplicate-create window --
+
+
+@respx.mock
+def test_interrupted_send_leaves_pending_marker_and_second_run_makes_no_create_call(
+    mapping, tmp_path
+):
+    """THE REGRESSION CASE. If the create request is sent but the response never arrives (here
+    simulated as an ApiError from the send call), the write-ahead marker written just before the
+    send must survive in the ledger. A later run must NOT silently re-create the row — it must
+    surface PENDING_VERIFY and, critically, must not call the create endpoint again."""
+    _mock_search(found=True)
+    create_route = respx.post(f"{BASE}{exams.CREATE_PATH}").mock(
+        return_value=httpx.Response(400, json={"message": "simulated interrupted send"})
+    )
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    ledger_file = tmp_path / "ledger.jsonl"
+
+    summary1 = runner.run(
+        xlsx, mapping, token="t", dry_run=False, settings=s, ledger=Ledger(ledger_file)
+    )
+    assert summary1.counts.get(Status.FAILED) == 1
+    assert create_route.call_count == 1
+    assert ledger_file.exists()
+    lines = ledger_file.read_text(encoding="utf-8").splitlines()
+    assert any('"pending": true' in ln for ln in lines)
+
+    led2 = Ledger.load(ledger_file)
+    summary2 = runner.run(xlsx, mapping, token="t", dry_run=False, settings=s, ledger=led2)
+    assert summary2.counts.get(Status.PENDING_VERIFY) == 1
+    assert summary2.created == 0
+    # The whole point: no second create call was made for the pending row.
+    assert create_route.call_count == 1
+
+
+@respx.mock
+def test_retry_pending_resends_and_upgrades_ledger_then_third_run_skips(mapping, tmp_path):
+    _mock_search(found=True)
+    create_route = respx.post(f"{BASE}{exams.CREATE_PATH}").mock(
+        side_effect=[
+            httpx.Response(400, json={"message": "simulated interrupted send"}),
+            httpx.Response(200, json={"data": {"medicalRecordId": 555}}),
+        ]
+    )
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    ledger_file = tmp_path / "ledger.jsonl"
+
+    summary1 = runner.run(
+        xlsx, mapping, token="t", dry_run=False, settings=s, ledger=Ledger(ledger_file)
+    )
+    assert summary1.counts.get(Status.FAILED) == 1
+
+    led2 = Ledger.load(ledger_file)
+    summary2 = runner.run(
+        xlsx, mapping, token="t", dry_run=False, settings=s, ledger=led2, retry_pending=True
+    )
+    assert summary2.created == 1
+    assert create_route.call_count == 2
+
+    led3 = Ledger.load(ledger_file)
+    summary3 = runner.run(xlsx, mapping, token="t", dry_run=False, settings=s, ledger=led3)
+    assert summary3.counts.get(Status.SKIPPED_ALREADY) == 1
+    assert summary3.created == 0
+    assert create_route.call_count == 2  # third run makes no new create call either
+
+
+@respx.mock
+def test_successful_commit_writes_pending_then_done_and_reruns_skip(mapping, tmp_path):
+    _mock_search(found=True)
+    respx.post(f"{BASE}{exams.CREATE_PATH}").mock(
+        return_value=httpx.Response(200, json={"data": {"medicalRecordId": 555}})
+    )
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    ledger_file = tmp_path / "ledger.jsonl"
+
+    summary = runner.run(
+        xlsx, mapping, token="t", dry_run=False, settings=s, ledger=Ledger(ledger_file)
+    )
+    assert summary.created == 1
+
+    lines = ledger_file.read_text(encoding="utf-8").splitlines()
+    assert any('"pending": true' in ln for ln in lines)
+    assert any('"recordId"' in ln for ln in lines)
+
+    # Upgrade path: the key is done (not pending) once reloaded, so a re-run skips it.
+    led2 = Ledger.load(ledger_file)
+    summary2 = runner.run(xlsx, mapping, token="t", dry_run=False, settings=s, ledger=led2)
+    assert summary2.counts.get(Status.SKIPPED_ALREADY) == 1
+    assert summary2.created == 0
+
+
+@respx.mock
+def test_dry_run_writes_zero_ledger_lines(mapping, tmp_path):
+    _mock_search(found=True)
+    respx.post(f"{BASE}{exams.CREATE_PATH}").mock(
+        return_value=httpx.Response(200, json={"data": {"medicalRecordId": 555}})
+    )
+    xlsx = _two_row_xlsx(tmp_path)
+    s = _settings(tmp_path)
+    ledger_file = tmp_path / "ledger.jsonl"
+
+    summary = runner.run(
+        xlsx, mapping, token="t", dry_run=True, settings=s, ledger=Ledger(ledger_file)
+    )
+    assert summary.counts.get(Status.DRY_RUN_OK) == 1
+    assert not ledger_file.exists()

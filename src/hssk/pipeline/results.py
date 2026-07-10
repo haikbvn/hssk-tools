@@ -20,6 +20,7 @@ class Status(StrEnum):
     DELETED = "DELETED"
     DRY_RUN_OK = "DRY_RUN_OK"
     SKIPPED_ALREADY = "SKIPPED_ALREADY"
+    PENDING_VERIFY = "PENDING_VERIFY"
     INVALID = "INVALID"
     NO_PATIENT = "NO_PATIENT"
     MULTI_MATCH = "MULTI_MATCH"
@@ -79,5 +80,11 @@ class RunSummary:
     def failed(self) -> int:
         return sum(
             self.counts.get(s, 0)
-            for s in (Status.FAILED, Status.NO_PATIENT, Status.MULTI_MATCH, Status.INVALID)
+            for s in (
+                Status.FAILED,
+                Status.NO_PATIENT,
+                Status.MULTI_MATCH,
+                Status.INVALID,
+                Status.PENDING_VERIFY,
+            )
         )

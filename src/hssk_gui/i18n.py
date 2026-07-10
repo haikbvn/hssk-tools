@@ -27,6 +27,16 @@ _STRINGS: dict[str, dict[str, str]] = {
     "msg_ROW_DRY_RUN": {"en": "Payload built (not sent)", "vi": "Đã dựng dữ liệu (chưa gửi)"},
     "msg_no_record_id": {"en": "no record id returned", "vi": "không nhận được mã hồ sơ"},
     "msg_ROW_ALREADY_PROCESSED": {"en": "Already processed", "vi": "Đã xử lý trước đó"},
+    "msg_ROW_PENDING_VERIFY": {
+        "en": (
+            "Interrupted while sending previously — check on the website whether the record "
+            "exists before re-sending"
+        ),
+        "vi": (
+            "Lần gửi trước bị gián đoạn — kiểm tra trên website xem hồ sơ đã tồn tại chưa trước "
+            "khi gửi lại"
+        ),
+    },
     "msg_ROW_ID_BLANK": {"en": "Identifier is blank", "vi": "Mã định danh trống"},
     "msg_ROW_RECORD_ID_BLANK": {"en": "medicalRecordId is blank", "vi": "medicalRecordId trống"},
     "msg_ROW_COERCE_ERROR": {"en": "Coercion error: ", "vi": "Lỗi chuyển đổi: "},
@@ -324,6 +334,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "status_DELETED": {"en": "Deleted", "vi": "Đã xoá"},
     "status_DRY_RUN_OK": {"en": "Dry-run OK", "vi": "Chạy thử OK"},
     "status_SKIPPED_ALREADY": {"en": "Skipped (already sent)", "vi": "Bỏ qua (đã gửi)"},
+    "status_PENDING_VERIFY": {"en": "Needs verification", "vi": "Cần kiểm tra lại"},
     "status_INVALID": {"en": "Invalid", "vi": "Không hợp lệ"},
     "status_NO_PATIENT": {"en": "No patient found", "vi": "Không thấy bệnh nhân"},
     "status_MULTI_MATCH": {"en": "Multiple matches", "vi": "Trùng nhiều bệnh nhân"},
