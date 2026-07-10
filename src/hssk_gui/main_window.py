@@ -190,6 +190,8 @@ class MainWindow(QMainWindow):
         self._token_timer.timeout.connect(self._tick_token)
         self._token_timer.start()
 
+        self._auto_purge_on_launch()
+
         if self._ui.check_updates:
             self._start_update_check()
 
@@ -359,6 +361,26 @@ class MainWindow(QMainWindow):
             return
         removed = purge_runs(old)
         self.error_banner.show_message(tr("msg_purge_done").format(n=removed), severity="info")
+
+    def _auto_purge_on_launch(self) -> None:
+        # Opt-in (Preferences, default off): silently delete run-report folders older than the
+        # retention window at startup, then report the count. Reuses the same run-*-only scanner as
+        # the manual "Purge old reports" action; never runs mid-batch (this is __init__, before any
+        # worker starts).
+        if not self._ui.auto_purge:
+            return
+        from hssk.maintenance import find_old_runs, purge_runs
+
+        s = engine_settings()
+        base = (s.data_dir / "output") if s.data_dir else output_dir()
+        old = find_old_runs(base, s.output_retention_days)
+        if not old:
+            return
+        removed = purge_runs(old)
+        if removed:
+            self.error_banner.show_message(
+                tr("msg_auto_purge_done").format(n=removed), severity="info"
+            )
 
     def _ui_snapshot(self) -> dict[str, object]:
         """Non-PII UI settings for the support snapshot — no file paths or the recent-files list."""

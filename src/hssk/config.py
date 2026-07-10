@@ -44,7 +44,9 @@ class Settings(BaseSettings):
     token_exp_skew: int = 120
 
     # Age (in days) beyond which run-report folders are offered for deletion by the manual
-    # "Purge old reports" action. Retention is never enforced automatically — see maintenance.py.
+    # "Purge old reports" action, or (if the operator has opted in via GUI Preferences, default
+    # off) auto-deleted at launch. Retention is not enforced automatically by default — see
+    # maintenance.py.
     output_retention_days: int = 90
 
     # Optional base-dir overrides (else platformdirs defaults). Useful for tests/dev.

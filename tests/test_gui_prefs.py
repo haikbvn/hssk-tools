@@ -77,6 +77,7 @@ def test_ui_settings_factory_constants() -> None:
     assert UiSettings.LIMIT_DEFAULT == 0
     assert UiSettings.DRY_RUN_DEFAULT is True
     assert UiSettings.CHECK_UPDATES_DEFAULT is True
+    assert UiSettings.AUTO_PURGE_DEFAULT is False
     assert UiSettings.LANGUAGE_DEFAULT == "vi"
 
 
