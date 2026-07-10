@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from .config import ensure_mapping_file, ensure_update_overlay_file, settings
 from .errors import ConfigError, HsskError
@@ -45,6 +47,51 @@ def _confirm_production(action: str) -> bool:
         print("Aborted.")
         return False
     return True
+
+
+def _cmd_batch(
+    args: argparse.Namespace,
+    *,
+    confirm_action: str,
+    resolve_kwargs: dict[str, bool],
+    run_fn: Callable[..., runner.RunSummary],
+    run_kwargs: dict[str, Any] | None = None,
+) -> int:
+    from .auth.token_store import load_valid_token
+
+    token = load_valid_token()
+    mapping = _resolve_mapping(args.mapping, **resolve_kwargs)
+    dry_run = not args.commit
+
+    s = settings()
+    if args.delay is not None:
+        s = s.model_copy(update={"request_delay": args.delay})
+
+    if not dry_run and not args.yes and not _confirm_production(confirm_action):
+        return 1
+
+    def on_row(o: runner.RowOutcome) -> None:
+        print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
+
+    cb = runner.Callbacks(on_row=on_row, on_log=lambda e: print(f"  · {render_en(e)}"))
+    summary = run_fn(
+        args.input,
+        mapping,
+        token=token,
+        dry_run=dry_run,
+        limit=args.limit,
+        settings=s,
+        callbacks=cb,
+        **(run_kwargs or {}),
+    )
+
+    print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")
+    for status, count in sorted(summary.counts.items(), key=lambda kv: kv[0].value):
+        print(f"  {status.value:<16} {count}")
+    if summary.aborted:
+        print(f"⚠️  Aborted: {summary.abort_reason}")
+    print(f"Report: {summary.run_dir}")
+    return 0 if not summary.aborted else 2
 
 
 def cmd_login(args: argparse.Namespace) -> int:
@@ -96,120 +143,34 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    from .auth.token_store import load_valid_token
-
-    token = load_valid_token()
-    mapping = _resolve_mapping(args.mapping)
-    dry_run = not args.commit
-
-    s = settings()
-    if args.delay is not None:
-        s = s.model_copy(update={"request_delay": args.delay})
-
     led = Ledger.load()
     if args.reset_ledger:
         led.reset()
-
-    if not dry_run and not args.yes and not _confirm_production("create"):
-        return 1
-
-    def on_row(o: runner.RowOutcome) -> None:
-        print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
-
-    cb = runner.Callbacks(on_row=on_row, on_log=lambda e: print(f"  · {render_en(e)}"))
-    summary = runner.run(
-        args.input,
-        mapping,
-        token=token,
-        dry_run=dry_run,
-        limit=args.limit,
-        settings=s,
-        callbacks=cb,
-        ledger=led,
-        retry_pending=args.retry_pending,
+    return _cmd_batch(
+        args,
+        confirm_action="create",
+        resolve_kwargs={},
+        run_fn=runner.run,
+        run_kwargs={"ledger": led, "retry_pending": args.retry_pending},
     )
-
-    print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")
-    for status, count in sorted(summary.counts.items(), key=lambda kv: kv[0].value):
-        print(f"  {status.value:<16} {count}")
-    if summary.aborted:
-        print(f"⚠️  Aborted: {summary.abort_reason}")
-    print(f"Report: {summary.run_dir}")
-    return 0 if not summary.aborted else 2
 
 
 def cmd_update(args: argparse.Namespace) -> int:
-    from .auth.token_store import load_valid_token
-
-    token = load_valid_token()
-    mapping = _resolve_mapping(args.mapping, update=True)
-    dry_run = not args.commit
-
-    s = settings()
-    if args.delay is not None:
-        s = s.model_copy(update={"request_delay": args.delay})
-
-    if not dry_run and not args.yes and not _confirm_production("update"):
-        return 1
-
-    def on_row(o: runner.RowOutcome) -> None:
-        print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
-
-    cb = runner.Callbacks(on_row=on_row, on_log=lambda e: print(f"  · {render_en(e)}"))
-    summary = runner.run_update(
-        args.input,
-        mapping,
-        token=token,
-        dry_run=dry_run,
-        limit=args.limit,
-        settings=s,
-        callbacks=cb,
+    return _cmd_batch(
+        args,
+        confirm_action="update",
+        resolve_kwargs={"update": True},
+        run_fn=runner.run_update,
     )
-
-    print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")
-    for status, count in sorted(summary.counts.items(), key=lambda kv: kv[0].value):
-        print(f"  {status.value:<16} {count}")
-    if summary.aborted:
-        print(f"⚠️  Aborted: {summary.abort_reason}")
-    print(f"Report: {summary.run_dir}")
-    return 0 if not summary.aborted else 2
 
 
 def cmd_delete(args: argparse.Namespace) -> int:
-    from .auth.token_store import load_valid_token
-
-    token = load_valid_token()
-    mapping = _resolve_mapping(args.mapping, delete=True)
-    dry_run = not args.commit
-
-    s = settings()
-    if args.delay is not None:
-        s = s.model_copy(update={"request_delay": args.delay})
-
-    if not dry_run and not args.yes and not _confirm_production("PERMANENTLY DELETE"):
-        return 1
-
-    def on_row(o: runner.RowOutcome) -> None:
-        print(f"  row {o.row_index:<4} {o.status.value:<16} {o.identifier or '':<14} {o.message}")
-
-    cb = runner.Callbacks(on_row=on_row, on_log=lambda e: print(f"  · {render_en(e)}"))
-    summary = runner.run_delete(
-        args.input,
-        mapping,
-        token=token,
-        dry_run=dry_run,
-        limit=args.limit,
-        settings=s,
-        callbacks=cb,
+    return _cmd_batch(
+        args,
+        confirm_action="PERMANENTLY DELETE",
+        resolve_kwargs={"delete": True},
+        run_fn=runner.run_delete,
     )
-
-    print(f"\n{'DRY-RUN ' if dry_run else ''}done — {summary.total} rows")
-    for status, count in sorted(summary.counts.items(), key=lambda kv: kv[0].value):
-        print(f"  {status.value:<16} {count}")
-    if summary.aborted:
-        print(f"⚠️  Aborted: {summary.abort_reason}")
-    print(f"Report: {summary.run_dir}")
-    return 0 if not summary.aborted else 2
 
 
 def build_parser() -> argparse.ArgumentParser:
