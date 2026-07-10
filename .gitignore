@@ -26,3 +26,7 @@ config/mapping.yaml
 # OS
 .DS_Store
 Thumbs.db
+
+# Dev artifacts (smoke-test screenshots, promo-video workspace)
+smoke_*.png
+media/
