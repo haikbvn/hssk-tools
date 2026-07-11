@@ -44,16 +44,17 @@ class SafetyStepper(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(theme.SPACING["md"])
         self._login = _Step()
         self._file = _Step()
         self._validated = _Step()
         self._mode = _Step()
+        self._seps: list[QLabel] = []
         for i, step in enumerate((self._login, self._file, self._validated, self._mode)):
             if i > 0:
                 sep = QLabel("→")
-                sep.setStyleSheet(f"color: {theme.color('muted')};")
+                self._seps.append(sep)
                 lay.addWidget(sep)
             lay.addWidget(step)
         lay.addStretch(1)
@@ -71,3 +72,6 @@ class SafetyStepper(QWidget):
         self._file.set_state(tr("step_file"), done=file_chosen)
         self._validated.set_state(tr("step_validated"), done=validated)
         self._mode.set_state(tr("step_dryrun") if dry_run else tr("step_commit"), done=not dry_run)
+        sep_style = f"color: {theme.color('muted')};"
+        for sep in self._seps:
+            sep.setStyleSheet(sep_style)
