@@ -40,6 +40,22 @@ application you agree to the following conditions.</p>
 <p>This software is provided as-is for internal operational use. It is not a certified
 medical device. The tool relies on the undocumented internal API of hososuckhoe.com.vn;
 API changes by the national system operator may require updates to this application.</p>
+
+<h4>Purchases &amp; Refunds</h4>
+<p>HSSK Tools requires a purchased license key to run. Purchases are processed by
+<a href="https://polar.sh">Polar</a>, acting as merchant of record; your payment details are
+handled entirely by Polar and are never seen by this application beyond the license key it
+issues.</p>
+<ul>
+  <li>Refunds are handled by Polar under its own terms — considered on a discretionary basis,
+      typically within 60 days of purchase. See Polar's
+      <a href="https://polar.sh/legal/checkout-buyer-terms">Checkout Buyer Terms</a> for the
+      terms that govern your purchase.</li>
+  <li>If a license is refunded, revoked, or expires, the application will stop working —
+      including Dry-run and validation — until a valid license key is reinstalled.</li>
+  <li>License keys are issued per buyer for use at your facility; do not share a purchased key
+      outside your organisation.</li>
+</ul>
 """
 
 _TERMS_HTML_VI = """
@@ -72,6 +88,22 @@ Khi sử dụng ứng dụng này, bạn đồng ý với các điều khoản s
 phải là thiết bị y tế được chứng nhận. Công cụ phụ thuộc vào API nội bộ chưa được
 tài liệu hoá của hososuckhoe.com.vn; các thay đổi API từ phía vận hành hệ thống quốc
 gia có thể yêu cầu cập nhật ứng dụng này.</p>
+
+<h4>Mua hàng &amp; Hoàn tiền</h4>
+<p>HSSK Tools yêu cầu mã giấy phép đã mua để có thể chạy. Giao dịch mua được xử lý bởi
+<a href="https://polar.sh">Polar</a> với vai trò đơn vị bán hàng chính thức (merchant of
+record); thông tin thanh toán của bạn do Polar xử lý hoàn toàn và ứng dụng này không bao giờ
+nhìn thấy, ngoài mã giấy phép mà Polar cấp.</p>
+<ul>
+  <li>Việc hoàn tiền do Polar xử lý theo điều khoản riêng của họ — được xem xét theo từng
+      trường hợp, thường trong vòng 60 ngày kể từ khi mua. Xem
+      <a href="https://polar.sh/legal/checkout-buyer-terms">Điều khoản mua hàng của Polar</a>
+      (Checkout Buyer Terms) để biết điều khoản đầy đủ áp dụng cho giao dịch mua của bạn.</li>
+  <li>Nếu giấy phép bị hoàn tiền, thu hồi hoặc hết hạn, ứng dụng sẽ ngừng hoạt động — kể cả
+      chế độ Chạy thử và xác thực dữ liệu — cho đến khi cài đặt lại mã giấy phép hợp lệ.</li>
+  <li>Mã giấy phép được cấp cho từng người mua để sử dụng tại cơ sở của bạn; không chia sẻ
+      mã đã mua ra ngoài tổ chức của bạn.</li>
+</ul>
 """
 
 _PRIVACY_HTML = """
