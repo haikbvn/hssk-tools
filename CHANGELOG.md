@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.18.0 — 2026-07-16
+## v1.18.0 — 2026-07-17
 
 ### HSSK Tools now requires a purchased license
 
@@ -16,6 +16,9 @@
   still get a normal Polar checkout link and a regular license key.
 - **Note for existing installs**: upgrading to this version will require entering a license key
   before the app opens again.
+- The Terms of Use tab now explains what a purchase means: Polar is merchant of record, refunds
+  are discretionary and handled by Polar (typically within 60 days), and the app will stop working
+  — including Dry-run — if your license is refunded, revoked, or expires.
 
 ## v1.17.0 — 2026-07-10
 
