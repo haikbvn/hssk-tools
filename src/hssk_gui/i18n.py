@@ -304,6 +304,69 @@ _STRINGS: dict[str, dict[str, str]] = {
     # inline notice banner
     "tip_dismiss_banner": {"en": "Dismiss", "vi": "Đóng thông báo"},
     "a11y_error_banner": {"en": "Notification", "vi": "Thông báo"},
+    # license dialog (Plan 012 — Polar license gate)
+    "menu_license": {"en": "License…", "vi": "Giấy phép…"},
+    "license_title": {"en": "HSSK Tools License", "vi": "Giấy phép HSSK Tools"},
+    "license_status_active": {
+        "en": "Licensed to {who} — expires: {expires}",
+        "vi": "Đã cấp phép cho {who} — hết hạn: {expires}",
+    },
+    "license_status_perpetual": {"en": "never (perpetual)", "vi": "vĩnh viễn (không hết hạn)"},
+    "license_status_grace": {
+        "en": "Running offline on the last successful check — reconnect soon to re-verify.",
+        "vi": "Đang chạy ngoại tuyến theo lần kiểm tra thành công gần nhất — hãy kết nối lại "
+        "sớm để xác minh.",
+    },
+    "license_reason_missing_key": {
+        "en": "No license key installed yet. Enter your key below, or buy one.",
+        "vi": "Chưa cài đặt mã giấy phép. Nhập mã bên dưới, hoặc mua giấy phép.",
+    },
+    "license_reason_unconfigured": {
+        "en": "This build isn't configured for licensing yet. Contact the developer.",
+        "vi": "Bản dựng này chưa được cấu hình cấp phép. Vui lòng liên hệ nhà phát triển.",
+    },
+    "license_reason_revoked": {
+        "en": "This license key has been revoked.",
+        "vi": "Mã giấy phép này đã bị thu hồi.",
+    },
+    "license_reason_disabled": {
+        "en": "This license key has been disabled.",
+        "vi": "Mã giấy phép này đã bị vô hiệu hoá.",
+    },
+    "license_reason_expired": {
+        "en": "This license has expired.",
+        "vi": "Giấy phép này đã hết hạn.",
+    },
+    "license_reason_not_found": {
+        "en": "This license key was not found. Check for typos.",
+        "vi": "Không tìm thấy mã giấy phép này. Vui lòng kiểm tra lại.",
+    },
+    "license_reason_malformed_response": {
+        "en": "Unexpected response from the license server. Try again later.",
+        "vi": "Phản hồi bất thường từ máy chủ cấp phép. Vui lòng thử lại sau.",
+    },
+    "license_reason_offline_no_cache": {
+        "en": "No internet connection, and no previous successful check to fall back on.",
+        "vi": "Không có kết nối mạng, và chưa có lần kiểm tra thành công trước đó để dùng tạm.",
+    },
+    "license_reason_offline_grace_expired": {
+        "en": "No internet connection for too long — the offline grace period has expired.",
+        "vi": "Mất kết nối mạng quá lâu — thời gian ân hạn ngoại tuyến đã hết.",
+    },
+    "license_input_label": {"en": "License key:", "vi": "Mã giấy phép:"},
+    "license_apply": {"en": "Apply", "vi": "Áp dụng"},
+    "license_buy": {"en": "Buy a license…", "vi": "Mua giấy phép…"},
+    "license_buy_momo_note": {
+        "en": (
+            "No international card? Email haikbvn@gmail.com for a MoMo/bank-transfer checkout code."
+        ),
+        "vi": (
+            "Không có thẻ quốc tế? Gửi email đến haikbvn@gmail.com để được cấp mã thanh toán "
+            "qua MoMo/chuyển khoản ngân hàng."
+        ),
+    },
+    "license_continue": {"en": "Continue", "vi": "Tiếp tục"},
+    "license_quit": {"en": "Quit", "vi": "Thoát"},
     # about dialog
     "about_title": {"en": "About HSSK Tools", "vi": "Về HSSK Tools"},
     "about_body": {

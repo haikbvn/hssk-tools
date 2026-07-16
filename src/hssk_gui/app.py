@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from hssk import __version__
 from hssk.config import app_icon, data_dir
+from hssk.licensing import check_license
 from hssk.logging_setup import configure_logging
 
 from .i18n import set_language, tr
@@ -31,6 +32,22 @@ def _ensure_terms_accepted() -> bool:
     return False
 
 
+def _ensure_licensed() -> bool:
+    """Hard paywall gate (Plan 012): the app requires a valid Polar license to run at all.
+
+    A fresh cache makes this instant and offline; a stale/missing one may block on the network
+    for up to ``license_timeout`` seconds (accepted for v1 — it happens at most ~daily).
+    """
+    if check_license().ok:
+        return True
+    from .license_dialog import LicenseDialog
+
+    dlg = LicenseDialog(gate=True)
+    if dlg.exec() == QDialog.DialogCode.Accepted:
+        return dlg.current_check().ok
+    return False
+
+
 def main() -> int:
     configure_logging()
     app = QApplication(sys.argv)
@@ -49,6 +66,8 @@ def main() -> int:
         QMessageBox.warning(None, "HSSK Tools", tr("msg_gui_already_running"))
         return 0
     if not _ensure_terms_accepted():
+        return 0
+    if not _ensure_licensed():
         return 0
     window = MainWindow()
     # Re-theme the window's programmatically-coloured labels/button when the OS toggles Light/Dark.

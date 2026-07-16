@@ -294,6 +294,13 @@ class MainWindow(QMainWindow):
 
         help_menu.addSeparator()
 
+        license_action = QAction(tr("menu_license"), self)
+        license_action.setMenuRole(QAction.MenuRole.NoRole)
+        license_action.triggered.connect(self._show_license)
+        help_menu.addAction(license_action)
+
+        help_menu.addSeparator()
+
         sponsor_action = QAction(tr("menu_sponsor"), self)
         sponsor_action.setMenuRole(QAction.MenuRole.NoRole)
         sponsor_action.triggered.connect(self._show_sponsor)
@@ -438,6 +445,11 @@ class MainWindow(QMainWindow):
         from .sponsor_dialog import SponsorDialog
 
         SponsorDialog(self).exec()
+
+    def _show_license(self) -> None:
+        from .license_dialog import LicenseDialog
+
+        LicenseDialog(self, gate=False).exec()
 
     def _show_about(self) -> None:
         from hssk import __version__
