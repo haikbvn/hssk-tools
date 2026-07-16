@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     data_dir: Path | None = None
     config_dir: Path | None = None
 
+    # Licensing (Polar merchant-of-record; see licensing.py)
+    polar_api_base: str = "https://api.polar.sh"  # sandbox: https://sandbox-api.polar.sh
+    polar_organization_id: str = ""  # REQUIRED before release — maintainer fills
+    polar_checkout_url: str = ""  # buy-page URL — maintainer fills
+    license_refresh_hours: int = 24  # cache age before revalidating online
+    license_grace_days: int = 14  # offline tolerance after last successful check
+    license_timeout: float = 8.0  # seconds, single attempt, no retries
+
 
 @lru_cache(maxsize=1)
 def settings() -> Settings:
@@ -92,6 +100,16 @@ def token_path() -> Path:
 
 def profile_path() -> Path:
     return secrets_dir() / "profile.json"
+
+
+def license_path() -> Path:
+    """Purchased Polar license key (a credential — lives in secrets/, excluded from bundles)."""
+    return secrets_dir() / "license.key"
+
+
+def license_cache_path() -> Path:
+    """Last successful license validation (non-secret snapshot for the offline grace window)."""
+    return data_dir() / "license-cache.json"
 
 
 def auth_profile_dir() -> Path:
