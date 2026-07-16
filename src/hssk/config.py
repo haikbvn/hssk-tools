@@ -55,8 +55,12 @@ class Settings(BaseSettings):
 
     # Licensing (Polar merchant-of-record; see licensing.py)
     polar_api_base: str = "https://api.polar.sh"  # sandbox: https://sandbox-api.polar.sh
-    polar_organization_id: str = ""  # REQUIRED before release — maintainer fills
-    polar_checkout_url: str = ""  # buy-page URL — maintainer fills
+    # Polar organization ID (public identifier, sent in the unauthenticated validate request)
+    polar_organization_id: str = "abfabddd-8ceb-42aa-9587-51302d6defe3"
+    # Buy-page URL — opened by the License dialog's Buy button
+    polar_checkout_url: str = (
+        "https://buy.polar.sh/polar_cl_hT1JCRbSguMuSHy3HrBcs4gDBdO9hi1XZWTrX0FBwAX"
+    )
     license_refresh_hours: int = 24  # cache age before revalidating online
     license_grace_days: int = 14  # offline tolerance after last successful check
     license_timeout: float = 8.0  # seconds, single attempt, no retries

@@ -67,7 +67,9 @@ def test_unconfigured_org_id_denies_with_zero_requests(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
-    monkeypatch.delenv("HSSK_POLAR_ORGANIZATION_ID", raising=False)
+    # Force the empty/unconfigured case regardless of the real shipped default (delenv alone
+    # would now leave a real org id configured).
+    monkeypatch.setenv("HSSK_POLAR_ORGANIZATION_ID", "")
     _settings_cached.cache_clear()
     try:
         route = respx.post(VALIDATE_URL).mock(return_value=httpx.Response(200, json={}))

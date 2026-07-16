@@ -26,9 +26,10 @@ def _default_licensed(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub a granted license for every CLI test by default.
 
     Plan 012 added a launch-time license gate to `hssk.cli.main`; without this, every pre-existing
-    command test below would fail with `unconfigured` (the real `polar_organization_id` setting
-    ships empty). Tests that exercise licensing itself restore the real function via
-    `_REAL_CHECK_LICENSE` and drive it against a sandboxed HSSK_DATA_DIR/HSSK_CONFIG_DIR.
+    command test below would fail (no license key is installed in these sandboxed HSSK_DATA_DIR/
+    HSSK_CONFIG_DIR runs, regardless of the shipped `polar_organization_id` default). Tests that
+    exercise licensing itself restore the real function via `_REAL_CHECK_LICENSE` and drive it
+    directly.
     """
     monkeypatch.setattr(
         licensing,
@@ -514,8 +515,8 @@ _POLAR_VALIDATE_URL = "https://api.polar.sh" + licensing.VALIDATE_PATH
 
 
 def test_gated_command_blocked_without_license(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """A gated command (template) exits 1 with the license message and writes nothing when the
-    build is unconfigured — the real-world shipped-empty default for polar_organization_id."""
+    """A gated command (template) exits 1 with the license message and writes nothing when no
+    license key is installed (the sandboxed HSSK_DATA_DIR here has none)."""
     monkeypatch.setattr(licensing, "check_license", _REAL_CHECK_LICENSE)
     monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
