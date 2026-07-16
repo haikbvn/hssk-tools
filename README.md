@@ -27,6 +27,21 @@ xattr -dr com.apple.quarantine "/Applications/HSSK Tools.app"
 **Windows** — download `HSSK-Tools-Setup-*.exe` and run it (no admin required).
 The installer is not code-signed; if SmartScreen appears, click "More info" → "Run anyway".
 
+## License
+
+HSSK Tools requires a purchased license key — there is no free tier. Licensing is handled by
+[Polar](https://polar.sh), a merchant of record: buy a license via the **Buy a license…** button
+in the app's License dialog (Help menu, or shown automatically on first launch), then paste the
+key you receive by email. From the CLI, install a key with `hssk license --set <KEY>` and check
+status with `hssk license`.
+
+The license is checked online at launch, with a local cache so a normal day-to-day launch is
+instant and works offline; if the app can't reach the license server it keeps working for up to
+**14 days** on the last successful check before it needs to reconnect.
+
+No international card? Email **haikbvn@gmail.com** for a MoMo/bank-transfer checkout code — you'll
+still receive a normal Polar checkout link and a regular license key.
+
 ## Requirements
 
 - **Python 3.12** (3.11/3.13 also work; the dev Mac's system 3.14 is too new for some wheels).

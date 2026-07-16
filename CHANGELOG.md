@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.18.0 — 2026-07-16
+
+### HSSK Tools now requires a purchased license
+
+- The app is now a paid product: a valid [Polar](https://polar.sh) license key is required to use
+  it at all, both the GUI and the CLI. A new **License** dialog (shown automatically on first
+  launch, and any time from Help → License…) lets you paste a key or open the Polar checkout page;
+  the CLI equivalent is `hssk license --set <KEY>` (install) and `hssk license` (check status).
+- Licensing is checked online, with a local cache: once validated, a normal launch is instant and
+  works fully offline, and the app tolerates up to **14 days** without reaching the license server
+  before it needs to reconnect. A revoked or expired license is enforced immediately once the app
+  is back online — the offline grace period only covers connectivity gaps, never an actual denial.
+- No international card? Email **haikbvn@gmail.com** for a MoMo/bank-transfer checkout code — you
+  still get a normal Polar checkout link and a regular license key.
+- **Note for existing installs**: upgrading to this version will require entering a license key
+  before the app opens again.
+
 ## v1.17.0 — 2026-07-10
 
 ### Old reports can now be cleaned up automatically (opt-in)
