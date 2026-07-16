@@ -11,9 +11,31 @@ import pytest
 import respx
 from openpyxl import Workbook
 
+from hssk import licensing
 from hssk.cli import main
 
+# Captured before any test monkeypatches licensing.check_license (see _default_licensed below),
+# so license-specific tests can restore the real implementation and drive it directly.
+_REAL_CHECK_LICENSE = licensing.check_license
+
 EXAMPLE_MAPPING = Path(__file__).resolve().parents[1] / "config" / "mapping.example.yaml"
+
+
+@pytest.fixture(autouse=True)
+def _default_licensed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub a granted license for every CLI test by default.
+
+    Plan 012 added a launch-time license gate to `hssk.cli.main`; without this, every pre-existing
+    command test below would fail with `unconfigured` (the real `polar_organization_id` setting
+    ships empty). Tests that exercise licensing itself restore the real function via
+    `_REAL_CHECK_LICENSE` and drive it against a sandboxed HSSK_DATA_DIR/HSSK_CONFIG_DIR.
+    """
+    monkeypatch.setattr(
+        licensing,
+        "check_license",
+        lambda **_kw: licensing.LicenseCheck(ok=True, source="cache", display_key="TEST-STUB"),
+    )
+
 
 _HEADERS = [
     "Mã định danh",
@@ -481,5 +503,110 @@ def test_cmd_delete_commit_yes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
         assert main(["delete", "-m", str(mapping_path), "-i", str(xlsx), "--commit", "--yes"]) == 0
         assert delete_route.call_count == 1
+    finally:
+        _s.cache_clear()
+
+
+# -- license gate + `hssk license` subcommand (Plan 012) --------------------------------
+
+_POLAR_ORG = "11111111-1111-1111-1111-111111111111"
+_POLAR_VALIDATE_URL = "https://api.polar.sh" + licensing.VALIDATE_PATH
+
+
+def test_gated_command_blocked_without_license(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A gated command (template) exits 1 with the license message and writes nothing when the
+    build is unconfigured — the real-world shipped-empty default for polar_organization_id."""
+    monkeypatch.setattr(licensing, "check_license", _REAL_CHECK_LICENSE)
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        mapping_path = _copy_mapping(tmp_path)
+        out = tmp_path / "out.xlsx"
+        result = main(["template", "-m", str(mapping_path), "-o", str(out)])
+        assert result == 1
+        assert not out.exists()
+    finally:
+        _s.cache_clear()
+
+
+@respx.mock
+def test_cmd_license_set_writes_cache_and_unblocks_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """`hssk license --set` against a granted key writes the cache and exits 0, and a
+    subsequently-run gated command then goes through."""
+    monkeypatch.setattr(licensing, "check_license", _REAL_CHECK_LICENSE)
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HSSK_POLAR_ORGANIZATION_ID", _POLAR_ORG)
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        respx.post(_POLAR_VALIDATE_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "status": "granted",
+                    "expires_at": None,
+                    "display_key": "TEST-****",
+                    "customer": {"email": "clinic@example.com"},
+                },
+            )
+        )
+        assert main(["license", "--set", "SOME-KEY"]) == 0
+
+        from hssk.config import license_cache_path
+
+        assert license_cache_path().exists()
+
+        mapping_path = _copy_mapping(tmp_path)
+        out = tmp_path / "out.xlsx"
+        assert main(["template", "-m", str(mapping_path), "-o", str(out)]) == 0
+        assert out.exists()
+    finally:
+        _s.cache_clear()
+
+
+def test_cmd_license_bare_reports_not_licensed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    monkeypatch.setattr(licensing, "check_license", _REAL_CHECK_LICENSE)
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        result = main(["license"])
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "Not licensed" in out
+    finally:
+        _s.cache_clear()
+
+
+def test_cmd_license_itself_bypasses_the_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """`hssk license` (requires_license=False) must run and print its own status, never the
+    gate's "requires a license" message, even on an unconfigured/unlicensed build."""
+    monkeypatch.setattr(licensing, "check_license", _REAL_CHECK_LICENSE)
+    monkeypatch.setenv("HSSK_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("HSSK_DATA_DIR", str(tmp_path))
+
+    from hssk.config import settings as _s
+
+    _s.cache_clear()
+    try:
+        main(["license"])
+        out = capsys.readouterr().out
+        assert "requires a license" not in out
     finally:
         _s.cache_clear()

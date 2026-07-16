@@ -173,6 +173,24 @@ def cmd_delete(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_license(args: argparse.Namespace) -> int:
+    from .licensing import check_license, save_key
+
+    if args.set is not None:
+        save_key(args.set)
+        check = check_license(force_refresh=True)
+    else:
+        check = check_license()
+
+    if check.ok:
+        who = check.customer_email or check.display_key or "?"
+        expiry = "perpetual" if check.expires_at is None else check.expires_at.isoformat()
+        print(f"✓ Licensed to {who} — expires: {expiry} (source: {check.source})")
+        return 0
+    print(f"✗ Not licensed ({check.reason}).")
+    return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="hssk", description="Push health-checkup data to hososuckhoe")
     sub = p.add_subparsers(dest="command", required=True)
@@ -249,6 +267,10 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--yes", action="store_true", help="Skip the production confirmation prompt")
     d.set_defaults(func=cmd_delete)
 
+    lic = sub.add_parser("license", help="Show license status, or install a purchased key")
+    lic.add_argument("--set", metavar="KEY", help="Save a Polar license key and validate it")
+    lic.set_defaults(func=cmd_license, requires_license=False)
+
     return p
 
 
@@ -257,6 +279,17 @@ def main(argv: list[str] | None = None) -> int:
 
     configure_logging()
     args = build_parser().parse_args(argv)
+    if getattr(args, "requires_license", True):
+        from .licensing import check_license
+
+        check = check_license()
+        if not check.ok:
+            print(f"✋ HSSK Tools requires a license ({check.reason}).", file=sys.stderr)
+            print(
+                "   Buy: see README → License. Install: hssk license --set <KEY>",
+                file=sys.stderr,
+            )
+            return 1
     try:
         return args.func(args)
     except (HsskError, ConfigError) as exc:
